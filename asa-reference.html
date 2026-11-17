@@ -1,0 +1,1664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cisco ASA Reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: fixed left index, scrolling reference column, live filter across terms and table rows. */
+:root{
+  --bg:#f5f7f9; --surface:#ffffff; --surface-2:#eceff4; --surface-3:#e3e8ee;
+  --ink:#141e28; --ink-2:#4e6070; --ink-3:#7c8d9b;
+  --line:#d9e0e7; --line-strong:#c3cdd6;
+  --accent:#0d7a84; --accent-ink:#0a5e66; --accent-soft:rgba(13,122,132,.10);
+  --amber:#9a5c08; --amber-soft:rgba(154,92,8,.10);
+  --good:#1a7347; --crit:#a92a20; --crit-soft:rgba(169,42,32,.09);
+  --font-display:"IBM Plex Serif",Georgia,"Times New Roman",serif;
+  --font-body:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d141a; --surface:#141d25; --surface-2:#1a242d; --surface-3:#212d37;
+    --ink:#e4ecf2; --ink-2:#9db0be; --ink-3:#6f8393;
+    --line:#253239; --line-strong:#334450;
+    --accent:#3ab8c0; --accent-ink:#5fd0d6; --accent-soft:rgba(58,184,192,.14);
+    --amber:#dda550; --amber-soft:rgba(221,165,80,.13);
+    --good:#48c184; --crit:#ef7065; --crit-soft:rgba(239,112,101,.13);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d141a; --surface:#141d25; --surface-2:#1a242d; --surface-3:#212d37;
+  --ink:#e4ecf2; --ink-2:#9db0be; --ink-3:#6f8393;
+  --line:#253239; --line-strong:#334450;
+  --accent:#3ab8c0; --accent-ink:#5fd0d6; --accent-soft:rgba(58,184,192,.14);
+  --amber:#dda550; --amber-soft:rgba(221,165,80,.13);
+  --good:#48c184; --crit:#ef7065; --crit-soft:rgba(239,112,101,.13);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.6}
+h1,h2,h3{font-family:var(--font-display);text-wrap:balance;margin:0}
+a{color:var(--accent-ink)}
+code,kbd{font-family:var(--font-mono);font-size:.88em}
+code{background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:.08em .34em;white-space:nowrap}
+pre{background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:13px 15px;overflow-x:auto;margin:0 0 11px;font-family:var(--font-mono);font-size:12.6px;line-height:1.65;color:var(--ink)}
+pre code{background:none;border:0;padding:0;white-space:pre;font-size:inherit}
+.cmt{color:var(--ink-3)}
+
+.masthead{background:var(--surface);border-bottom:1px solid var(--line)}
+.masthead-in{max-width:1200px;margin:0 auto;padding:26px 20px 22px;display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;justify-content:space-between}
+.brand h1{font-size:27px;line-height:1.2;letter-spacing:-.01em}
+.brand p{margin:6px 0 0;color:var(--ink-2);font-size:14px;max-width:64ch}
+.eyebrow{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--accent-ink);background:var(--accent-soft);border-radius:3px;padding:3px 8px;margin-bottom:10px}
+.themebtn{font:inherit;font-size:13px;font-weight:500;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:7px 13px;cursor:pointer;white-space:nowrap}
+.themebtn:hover{border-color:var(--line-strong);color:var(--ink)}
+
+.toolbar{position:sticky;top:0;z-index:30;background:var(--bg);border-bottom:1px solid var(--line)}
+.toolbar-in{max-width:1200px;margin:0 auto;padding:12px 20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.searchwrap{position:relative;flex:1 1 300px;min-width:0}
+#q{width:100%;font:inherit;font-size:14px;color:var(--ink);background:var(--surface);border:1px solid var(--line-strong);border-radius:7px;padding:9px 34px 9px 12px}
+#q::placeholder{color:var(--ink-3)}
+#q:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+.clearq{position:absolute;right:5px;top:50%;transform:translateY(-50%);border:0;background:none;color:var(--ink-3);font-size:17px;line-height:1;cursor:pointer;padding:5px 7px;border-radius:4px}
+.clearq:hover{color:var(--ink)}
+.count{font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.progwrap{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink-2);white-space:nowrap}
+.progbar{width:92px;height:6px;border-radius:3px;background:var(--surface-3);overflow:hidden}
+.progfill{height:100%;width:0;background:var(--accent);transition:width .25s ease}
+
+.shell{max-width:1200px;margin:0 auto;padding:0 20px 80px;display:flex;gap:34px;align-items:flex-start}
+nav.index{position:sticky;top:64px;flex:0 0 224px;width:224px;max-height:calc(100vh - 84px);overflow-y:auto;padding:22px 0 20px}
+nav.index h2{font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);font-family:var(--font-body);font-weight:600;margin:0 0 9px}
+nav.index ol{list-style:none;margin:0;padding:0;counter-reset:nav}
+nav.index li{counter-increment:nav}
+nav.index a{display:flex;gap:9px;padding:5px 9px;border-radius:5px;color:var(--ink-2);text-decoration:none;font-size:13.5px;line-height:1.35}
+nav.index a::before{content:counter(nav,decimal-leading-zero);color:var(--ink-3);font-variant-numeric:tabular-nums;font-size:11.5px;padding-top:2px}
+nav.index a:hover{background:var(--surface-2);color:var(--ink)}
+nav.index a.on{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
+nav.index a.on::before{color:var(--accent-ink)}
+main{flex:1 1 auto;min-width:0;padding:22px 0 0}
+
+section.block{margin-bottom:38px;scroll-margin-top:72px}
+.sechead{display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap;padding-bottom:9px;border-bottom:2px solid var(--line-strong);margin-bottom:16px}
+.sechead h2{font-size:21px;letter-spacing:-.005em}
+.sechead .num{color:var(--ink-3);font-family:var(--font-mono);font-size:12.5px;margin-right:9px}
+.lede{color:var(--ink-2);font-size:14.5px;margin:0 0 16px;max-width:68ch}
+.reviewed{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-3);cursor:pointer;user-select:none}
+.reviewed input{accent-color:var(--accent);width:14px;height:14px;cursor:pointer}
+
+.terms{display:grid;gap:11px}
+.term{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--line-strong);border-radius:7px;padding:13px 16px}
+.term h3{font-family:var(--font-body);font-size:14.5px;font-weight:700;letter-spacing:-.003em;margin:0 0 5px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+.term h3 .exp{font-weight:400;font-size:12.5px;color:var(--ink-3);font-family:var(--font-mono)}
+.term p{margin:0 0 7px;color:var(--ink-2);font-size:14px}
+.term p:last-child{margin-bottom:0}
+.term strong{color:var(--ink);font-weight:600}
+.term ul,.term ol{margin:6px 0 0;padding-left:20px;color:var(--ink-2);font-size:14px}
+.term li{margin-bottom:4px}
+.term li::marker{color:var(--ink-3)}
+.term .tablewrap,.term pre{margin-top:10px}
+
+.tip{margin-top:9px;padding:8px 11px;border-radius:5px;background:var(--amber-soft);border-left:2px solid var(--amber);font-size:13.3px;color:var(--ink-2)}
+.tip b{color:var(--amber);font-weight:600;letter-spacing:.02em;font-size:11px;text-transform:uppercase;display:block;margin-bottom:2px}
+.gotcha{margin-top:9px;padding:8px 11px;border-radius:5px;background:var(--crit-soft);border-left:2px solid var(--crit);font-size:13.3px;color:var(--ink-2)}
+.gotcha b{color:var(--crit);font-weight:600;letter-spacing:.02em;font-size:11px;text-transform:uppercase;display:block;margin-bottom:2px}
+
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:7px;background:var(--surface);margin:0 0 11px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:520px}
+caption{text-align:left;padding:11px 14px 0;font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+th,td{text-align:left;padding:8px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+thead th{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:600;background:var(--surface-2);white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+td code{white-space:nowrap}
+.num-col{font-variant-numeric:tabular-nums;white-space:nowrap}
+
+.figure{background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:6px 6px 0;margin:0 0 11px}
+.figscroll{overflow-x:auto}
+.figscroll svg{display:block;width:100%;min-width:680px;height:auto}
+.figcap{padding:6px 12px 11px;font-size:12.5px;color:var(--ink-3)}
+
+.noresult{display:none;padding:26px;text-align:center;color:var(--ink-2);background:var(--surface);border:1px dashed var(--line-strong);border-radius:7px}
+body.filtering .lede,body.filtering .reviewed,body.filtering .figure{display:none}
+
+footer{max-width:1200px;margin:0 auto;padding:22px 20px 40px;border-top:1px solid var(--line);color:var(--ink-3);font-size:12.5px}
+footer p{margin:0 0 5px;max-width:78ch}
+footer a{color:var(--accent-ink)}
+
+@media (max-width:900px){
+  .shell{flex-direction:column;gap:0;padding-bottom:56px}
+  nav.index{position:sticky;top:57px;z-index:20;width:auto;flex:none;max-height:none;padding:9px 0;background:var(--bg);border-bottom:1px solid var(--line);overflow-x:auto;overflow-y:hidden}
+  nav.index h2{display:none}
+  nav.index ol{display:flex;gap:5px;white-space:nowrap}
+  nav.index a{border:1px solid var(--line);background:var(--surface);padding:5px 11px}
+  section.block{scroll-margin-top:118px}
+  .toolbar-in{padding:9px 20px}
+  .progwrap{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+@media print{.toolbar,nav.index,.themebtn{display:none}.shell{display:block}}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-in">
+    <div class="brand">
+      <span class="eyebrow">Firewall reference</span>
+      <h1>Cisco ASA</h1>
+      <p>Architecture, the packet-flow order of operations, NAT, VPN, failover and clustering, with the commands and ASP drop reasons that turn a symptom into a cause. Basics through to the things that bite in production.</p>
+    </div>
+    <button class="themebtn" id="themebtn" type="button">Switch theme</button>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="toolbar-in">
+    <div class="searchwrap">
+      <input id="q" type="search" placeholder="Filter: try packet-tracer, xlate, 106023, asp drop, failover&hellip;" autocomplete="off" aria-label="Filter content">
+      <button class="clearq" id="clearq" type="button" aria-label="Clear filter" hidden>&times;</button>
+    </div>
+    <span class="count" id="count"></span>
+    <div class="progwrap">
+      <span>Reviewed</span>
+      <span class="progbar"><span class="progfill" id="progfill"></span></span>
+      <span class="num-col" id="progtxt">0/18</span>
+    </div>
+  </div>
+</div>
+
+<div class="shell">
+<nav class="index" aria-label="Sections">
+  <h2>Sections</h2>
+  <ol>
+    <li><a href="#platform">Platforms &amp; architecture</a></li>
+    <li><a href="#packetflow">Packet flow</a></li>
+    <li><a href="#interfaces">Interfaces &amp; security levels</a></li>
+    <li><a href="#acl">ACLs &amp; objects</a></li>
+    <li><a href="#nat">NAT</a></li>
+    <li><a href="#routing">Routing</a></li>
+    <li><a href="#mpf">MPF &amp; inspection</a></li>
+    <li><a href="#conn">Connections &amp; xlates</a></li>
+    <li><a href="#failover">Failover</a></li>
+    <li><a href="#cluster">Clustering</a></li>
+    <li><a href="#s2s">Site-to-site VPN</a></li>
+    <li><a href="#ravpn">Remote access VPN</a></li>
+    <li><a href="#context">Multiple context mode</a></li>
+    <li><a href="#transparent">Transparent mode</a></li>
+    <li><a href="#aaa">AAA &amp; management</a></li>
+    <li><a href="#logging">Logging &amp; syslog IDs</a></li>
+    <li><a href="#troubleshoot">Troubleshooting</a></li>
+    <li><a href="#ftd">ASA vs FTD</a></li>
+  </ol>
+</nav>
+
+<main>
+<div class="noresult" id="noresult">Nothing matches that filter. Try a shorter word, or a term such as <code>xlate</code>, <code>no-route</code>, <code>IKEv2</code>.</div>
+
+<!-- ============ 1 ============ -->
+<section class="block" id="platform">
+  <div class="sechead">
+    <h2><span class="num">01</span>Platforms and architecture</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="platform"> Reviewed</label>
+  </div>
+  <p class="lede">The ASA is a stateful, flow-based firewall. Almost everything about its behaviour follows from that one design decision, so start there.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Flow-based stateful inspection</h3>
+      <p>The ASA does not evaluate every packet against the full rule set. The first packet of a connection takes the <strong>slow path</strong>, where ACLs, NAT, routing and inspection policy are all resolved, and the result is written into the connection table. Every subsequent packet of that flow takes the <strong>fast path</strong>, matched against the conn table entry and forwarded with far less work.</p>
+      <p>This explains a long list of real behaviours: an ACL change does not affect existing connections, return traffic needs no ACL, asymmetric routing breaks things badly, and <code>clear conn</code> is sometimes the only way to make a config change take effect.</p>
+      <div class="tip"><b>The core mental model</b>Two paths, one table. If something works for existing traffic but not new traffic, you are looking at a slow-path problem (ACL, NAT, route). If it breaks mid-session, you are looking at the conn table, a timeout, or inspection.</div>
+    </div>
+
+    <div class="term">
+      <h3>Hardware families</h3>
+      <ul>
+        <li><strong>ASA 5500-X series</strong> &mdash; the classic x86 appliances (5506-X through 5585-X). Largely end of sale, still widely deployed.</li>
+        <li><strong>Firepower 1000 / 2100 / 3100 series</strong> &mdash; current appliances, which run either the ASA image or FTD. The 2100 in particular can run ASA in <em>appliance mode</em> or <em>platform mode</em> (the latter managed through FXOS).</li>
+        <li><strong>Firepower 4100 / 9300</strong> &mdash; chassis platforms running FXOS, with ASA or FTD as a logical device. The 9300 takes multiple security modules.</li>
+        <li><strong>ASAv</strong> &mdash; the virtual appliance for VMware, KVM, AWS, Azure and GCP, licensed by throughput tier.</li>
+      </ul>
+      <p>On FXOS-based platforms remember there are two layers of configuration: the chassis (interfaces, port-channels, logical devices) and the ASA application itself. An interface must exist and be allocated at the FXOS layer before the ASA can see it.</p>
+    </div>
+
+    <div class="term">
+      <h3>Data plane and control plane</h3>
+      <p>The data plane forwards traffic; the control plane handles management, routing protocols, VPN negotiation and anything addressed <em>to</em> the ASA itself. Traffic destined for the box is called <strong>to-the-box</strong> traffic and is governed by different rules than through-the-box traffic &mdash; notably it is checked against the control-plane ACL and the management access configuration, not your normal interface ACLs.</p>
+      <p>The accelerated path is often called the <strong>ASP</strong> (Accelerated Security Path). Its drop counters, exposed by <code>show asp drop</code>, are the single most useful diagnostic on the platform.</p>
+    </div>
+
+    <div class="term">
+      <h3>Memory structures worth knowing</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Structure</th><th>Holds</th><th>Inspect with</th></tr></thead>
+          <tbody>
+            <tr><td>Connection table</td><td>Active flows: 5-tuple, state flags, idle time, byte counts</td><td><code>show conn</code></td></tr>
+            <tr><td>Translation (xlate) table</td><td>Active NAT translations, real to mapped</td><td><code>show xlate</code></td></tr>
+            <tr><td>Local-host table</td><td>Per-host state, conn and xlate counts, used by threat detection</td><td><code>show local-host</code></td></tr>
+            <tr><td>Blocks</td><td>Fixed-size packet memory pools (1550, 16384, 2048&hellip;)</td><td><code>show blocks</code></td></tr>
+            <tr><td>ASP tables</td><td>Compiled classify rules, routing, sockets</td><td><code>show asp table classify</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Depleted blocks, particularly the 1550 and 16384 pools, point to the box being unable to keep up with traffic or to a driver-level problem. Persistent zero in the <code>CNT</code> column is a bad sign.</p>
+    </div>
+
+    <div class="term">
+      <h3>Boot, images and upgrade</h3>
+<pre><code>show version                       <span class="cmt">! image, uptime, licence, serial</span>
+dir disk0:
+boot system disk0:/asa9-16-4-55-smp-k8.bin
+show bootvar
+show running-config boot
+
+copy tftp://10.1.1.1/asa.bin disk0:
+verify /md5 disk0:/asa.bin</code></pre>
+      <p>Order matters: the ASA tries <code>boot system</code> entries in the order configured. Always verify the MD5 against Cisco's published value before reloading, and on a failover pair upgrade the standby first.</p>
+    </div>
+
+    <div class="term">
+      <h3>Licensing</h3>
+      <p>Older platforms use <strong>activation keys</strong> (Base vs Security Plus, context counts, encryption, AnyConnect Premium). Newer platforms use <strong>Smart Licensing</strong> against a Smart Account. Check with <code>show activation-key</code> or <code>show license all</code>. Common gotchas: security contexts, failover (Security Plus on small platforms), and AnyConnect session counts are all licence-gated, and a licence mismatch between failover peers prevents the pair from forming.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section class="block" id="packetflow">
+  <div class="sechead">
+    <h2><span class="num">02</span>Packet flow: the order of operations</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="packetflow"> Reviewed</label>
+  </div>
+  <p class="lede">If you learn one thing about the ASA, learn this sequence. Nearly every troubleshooting question resolves to &ldquo;which of these steps did the packet fail at?&rdquo;, and <code>packet-tracer</code> walks the same list.</p>
+
+  <div class="figure">
+    <div class="figscroll">
+      <svg viewBox="0 0 760 806" role="img" aria-label="ASA slow path: un-NAT before ACL, route lookup before source NAT" font-size="13" font-family="var(--font-body)">
+        <defs>
+          <marker id="pfarrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="var(--line-strong)"></path>
+          </marker>
+          <marker id="pfdrop" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="var(--crit)"></path>
+          </marker>
+        </defs>
+
+        <text x="24" y="28" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--font-display)">Un-NAT runs before the ACL, and routing before source NAT</text>
+        <text x="24" y="48" font-size="11.5" fill="var(--ink-3)">ASA slow path, 8.3 and later. Existing flows skip to inspection.</text>
+        <text x="548" y="84" font-size="11" font-weight="600" fill="var(--ink-3)" letter-spacing="0.06em">ASP DROP REASON</text>
+
+        <!-- connectors -->
+        <g fill="none" stroke="var(--line-strong)" stroke-width="1.25" marker-end="url(#pfarrow)">
+          <path d="M300 134V164"></path>
+          <path d="M300 236V258"></path>
+          <path d="M300 302V326"></path>
+          <path d="M300 370V394"></path>
+          <path d="M300 438V462"></path>
+          <path d="M300 506V530"></path>
+          <path d="M300 574V598"></path>
+          <path d="M300 642V666"></path>
+          <path d="M300 710V734"></path>
+        </g>
+
+        <!-- fast path bypass -->
+        <g fill="none" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#pfarrow)">
+          <path d="M190 200H48V620H170"></path>
+        </g>
+        <text x="56" y="392" font-size="11.5" font-weight="600" fill="var(--accent-ink)">fast path</text>
+        <text x="56" y="408" font-size="11" fill="var(--ink-3)">existing flow</text>
+
+        <!-- drop arrows -->
+        <g fill="none" stroke="var(--crit)" stroke-width="1.25" stroke-dasharray="4 3" marker-end="url(#pfdrop)">
+          <path d="M430 348H545"></path>
+          <path d="M430 416H545"></path>
+          <path d="M430 484H545"></path>
+          <path d="M430 620H545"></path>
+          <path d="M430 688H545"></path>
+        </g>
+
+        <!-- main boxes -->
+        <g>
+          <rect x="170" y="90" width="260" height="44" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="300" y="117" text-anchor="middle" fill="var(--ink)">1 &middot; Packet hits ingress interface</text>
+        </g>
+        <g>
+          <polygon points="190,200 300,164 410,200 300,236" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></polygon>
+          <text x="300" y="204" text-anchor="middle" fill="var(--ink)">2 &middot; In the conn table?</text>
+        </g>
+        <g>
+          <rect x="170" y="258" width="260" height="44" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="300" y="285" text-anchor="middle" fill="var(--ink)">3 &middot; Un-NAT the destination</text>
+        </g>
+        <g>
+          <rect x="170" y="326" width="260" height="44" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"></rect>
+          <text x="300" y="353" text-anchor="middle" font-weight="600" fill="var(--ink)">4 &middot; ACL check, on the real IP</text>
+        </g>
+        <g>
+          <rect x="170" y="394" width="260" height="44" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="300" y="421" text-anchor="middle" fill="var(--ink)">5 &middot; Route lookup, egress intf</text>
+        </g>
+        <g>
+          <rect x="170" y="462" width="260" height="44" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="300" y="489" text-anchor="middle" fill="var(--ink)">6 &middot; NAT, source translation</text>
+        </g>
+        <g>
+          <rect x="170" y="530" width="260" height="44" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="300" y="557" text-anchor="middle" fill="var(--ink)">7 &middot; Create conn and xlate</text>
+        </g>
+        <g>
+          <rect x="170" y="598" width="260" height="44" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="300" y="625" text-anchor="middle" fill="var(--ink)">8 &middot; Inspection, MPF policy</text>
+        </g>
+        <g>
+          <rect x="170" y="666" width="260" height="44" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="300" y="693" text-anchor="middle" fill="var(--ink)">9 &middot; L2 rewrite, ARP resolve</text>
+        </g>
+        <g>
+          <rect x="170" y="734" width="260" height="44" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"></rect>
+          <text x="300" y="761" text-anchor="middle" font-weight="600" fill="var(--ink)">10 &middot; Transmit on egress</text>
+        </g>
+
+        <!-- drop boxes -->
+        <g>
+          <rect x="545" y="330" width="191" height="36" rx="6" fill="none" stroke="var(--crit)" stroke-width="1.25"></rect>
+          <text x="640" y="352" text-anchor="middle" font-size="11.5" fill="var(--ink)" font-family="var(--font-mono)">acl-drop</text>
+        </g>
+        <g>
+          <rect x="545" y="398" width="191" height="36" rx="6" fill="none" stroke="var(--crit)" stroke-width="1.25"></rect>
+          <text x="640" y="420" text-anchor="middle" font-size="11.5" fill="var(--ink)" font-family="var(--font-mono)">no-route</text>
+        </g>
+        <g>
+          <rect x="545" y="466" width="191" height="36" rx="6" fill="none" stroke="var(--crit)" stroke-width="1.25"></rect>
+          <text x="640" y="488" text-anchor="middle" font-size="11.5" fill="var(--ink)" font-family="var(--font-mono)">nat-xlate-failed</text>
+        </g>
+        <g>
+          <rect x="545" y="602" width="191" height="36" rx="6" fill="none" stroke="var(--crit)" stroke-width="1.25"></rect>
+          <text x="640" y="624" text-anchor="middle" font-size="11.5" fill="var(--ink)" font-family="var(--font-mono)">inspect-*</text>
+        </g>
+        <g>
+          <rect x="545" y="670" width="191" height="36" rx="6" fill="none" stroke="var(--crit)" stroke-width="1.25"></rect>
+          <text x="640" y="692" text-anchor="middle" font-size="11.5" fill="var(--ink)" font-family="var(--font-mono)">no mac entry</text>
+        </g>
+
+        <text x="440" y="194" font-size="11.5" font-weight="600" fill="var(--accent-ink)">yes</text>
+        <text x="312" y="252" font-size="11.5" fill="var(--ink-3)">no &middot; new flow</text>
+      </svg>
+    </div>
+    <p class="figcap">ASA slow path &middot; 10 steps, 5 drop exits. Blue marks the two steps people most often get wrong.</p>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The two steps everyone gets wrong</h3>
+      <p><strong>Un-NAT happens before the ACL (step 3 before 4).</strong> From 8.3 onward, your inbound ACL is written against the <em>real</em> destination address, not the mapped one. If you publish a server as 203.0.113.10 which NATs to 10.1.1.10, the outside ACL permits <code>10.1.1.10</code>. Engineers coming from 8.2 or from other vendors get this backwards constantly.</p>
+      <p><strong>Route lookup happens before source NAT (step 5 before 6).</strong> The egress interface is chosen by the routing table, and <em>then</em> the NAT rule for that interface pair is applied. A NAT rule alone will not pull traffic out of a different interface. The exception is NAT divert: a matching NAT rule with a specific destination interface can take precedence over the route for identity/twice NAT, which is why the <code>route-lookup</code> keyword exists to force normal routing.</p>
+      <div class="gotcha"><b>Classic failure</b>Publishing a server, permitting the public IP in the ACL, and wondering why it is denied. <code>packet-tracer</code> shows the ACL phase dropping on the <em>translated</em> address. Permit the real IP.</div>
+    </div>
+
+    <div class="term">
+      <h3>Fast path vs slow path</h3>
+      <p>Step 2 is the fork. A packet matching an existing conn entry skips ACL, NAT lookup and route lookup entirely, going straight to inspection and egress. Consequences:</p>
+      <ul>
+        <li>Changing an ACL does not tear down existing connections. Use <code>clear conn address x.x.x.x</code> to force re-evaluation.</li>
+        <li>Return traffic needs no ACL &mdash; the conn entry covers it. This is why ASA ACLs are written in one direction only.</li>
+        <li>A packet arriving for a flow the ASA does not know about (after a failover, or with asymmetric routing) is dropped, typically as <code>tcp-not-syn</code> or syslog 106015.</li>
+      </ul>
+    </div>
+
+    <div class="term">
+      <h3>Reading packet-tracer against this list</h3>
+      <p><code>packet-tracer</code> prints its phases in exactly this order, so you can map a failure straight onto the diagram.</p>
+<pre><code>packet-tracer input outside tcp 198.51.100.5 12345 203.0.113.10 443 detailed
+
+Phase: 1  ACCESS-LIST          <span class="cmt">! implicit, interface check</span>
+Phase: 2  UN-NAT               <span class="cmt">! step 3 — destination rewritten</span>
+Phase: 3  ACCESS-LIST          <span class="cmt">! step 4 — the real test</span>
+Phase: 4  NAT                  <span class="cmt">! step 6</span>
+Phase: 5  ROUTE-LOOKUP         <span class="cmt">! step 5</span>
+Phase: 6  INSPECT              <span class="cmt">! step 8</span>
+Phase: 7  FLOW-CREATION        <span class="cmt">! step 7</span>
+Result: ALLOW | DROP (drop reason)</code></pre>
+      <p>The last line gives you the ASP drop reason directly. Phase ordering in the output varies slightly by release and by whether NAT divert applies &mdash; read the phases themselves rather than memorising a fixed list.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section class="block" id="interfaces">
+  <div class="sechead">
+    <h2><span class="num">03</span>Interfaces and security levels</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="interfaces"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Security levels</h3>
+      <p>Every named interface carries a level from <strong>0 to 100</strong>. Convention: outside 0, inside 100, DMZ something in between. The level governs default behaviour when no ACL is applied:</p>
+      <ul>
+        <li>Higher to lower &mdash; permitted by default.</li>
+        <li>Lower to higher &mdash; denied by default.</li>
+        <li>Same to same &mdash; denied, unless <code>same-security-traffic permit inter-interface</code>.</li>
+        <li>In and out of the same interface (hairpin) &mdash; denied, unless <code>same-security-traffic permit intra-interface</code>.</li>
+      </ul>
+      <p>In practice most deployments apply an explicit ACL to every interface, which overrides the default entirely. The security level then matters mainly for <code>same-security</code> rules, for NAT interface pairing, and for which interface wins in a tie.</p>
+      <div class="tip"><b>Interview staple</b>&ldquo;Traffic from DMZ (50) to inside (100) &mdash; what do you need?&rdquo; An ACL on the DMZ interface permitting it, and a NAT rule (or NAT exemption) for that interface pair. The level alone denies it.</div>
+    </div>
+
+    <div class="term">
+      <h3>Interface configuration</h3>
+<pre><code>interface GigabitEthernet0/0
+ nameif outside
+ security-level 0
+ ip address 203.0.113.2 255.255.255.0
+ no shutdown
+
+interface GigabitEthernet0/1.10          <span class="cmt">! subinterface</span>
+ vlan 10
+ nameif dmz
+ security-level 50
+ ip address 10.10.10.1 255.255.255.0
+
+interface Port-channel1
+ lacp max-bundle 8
+ nameif inside
+ security-level 100
+
+interface Management0/0
+ management-only                          <span class="cmt">! no through traffic</span></code></pre>
+      <p>An interface with no <code>nameif</code> is invisible to policy. <code>management-only</code> blocks through-the-box traffic on that interface, which is what you want for an out-of-band management port.</p>
+    </div>
+
+    <div class="term">
+      <h3>Redundant and port-channel interfaces</h3>
+      <p>A <strong>redundant interface</strong> pairs two physical ports in active/standby, failing over on link loss &mdash; simple, no switch configuration needed. A <strong>port-channel</strong> bundles ports with LACP for both redundancy and aggregate bandwidth, and is the usual modern choice. Both can carry subinterfaces.</p>
+    </div>
+
+    <div class="term">
+      <h3>MTU, fragments and MSS</h3>
+<pre><code>mtu outside 1500
+sysopt connection tcpmss 1380            <span class="cmt">! clamp TCP MSS</span>
+fragment chain 1 outside                 <span class="cmt">! disallow fragments</span>
+show fragment</code></pre>
+      <p>The ASA reassembles fragments before inspection by default, which can be a resource issue under attack. <code>sysopt connection tcpmss</code> clamps the MSS in passing SYNs &mdash; essential when traffic crosses a tunnel, where the default 1380 is often still too high for IPsec with additional overhead.</p>
+    </div>
+
+    <div class="term">
+      <h3>Useful verification</h3>
+<pre><code>show interface ip brief
+show nameif
+show interface GigabitEthernet0/0        <span class="cmt">! errors, drops, duplex</span>
+show traffic
+show arp</code></pre>
+      <p>On <code>show interface</code>, watch <em>input errors</em>, <em>overruns</em> and <em>no buffer</em>. Overruns mean the interface received faster than the box could process &mdash; a capacity or interrupt problem, not a cabling one.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section class="block" id="acl">
+  <div class="sechead">
+    <h2><span class="num">04</span>ACLs and object groups</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="acl"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>ACL types</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Type</th><th>Used for</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Extended</strong></td><td>The normal through-traffic policy: source, destination, protocol, ports</td></tr>
+            <tr><td><strong>Standard</strong></td><td>Destination only. Used for route maps and split-tunnel lists, not interface policy</td></tr>
+            <tr><td><strong>EtherType</strong></td><td>Transparent mode only, for non-IP traffic such as BPDUs, IPX, MPLS</td></tr>
+            <tr><td><strong>Webtype</strong></td><td>Clientless SSL VPN URL filtering</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="term">
+      <h3>Applying an ACL</h3>
+<pre><code>access-list OUTSIDE_IN extended permit tcp any4 host 10.1.1.10 eq 443
+access-list OUTSIDE_IN extended deny ip any4 any4 log
+access-group OUTSIDE_IN in interface outside
+
+access-group GLOBAL_POLICY global        <span class="cmt">! applies to all interfaces, after per-intf</span></code></pre>
+      <p>Direction is nearly always <code>in</code>. An <code>out</code> ACL is evaluated on the egress interface after routing and is rarely needed. There is an implicit <code>deny ip any any</code> at the end of every applied ACL &mdash; but add an explicit one with <code>log</code>, because the implicit rule does not generate syslogs.</p>
+      <p>A <strong>global ACL</strong> applies to traffic on every interface and is evaluated after interface ACLs. Useful for a blanket blocklist without touching each interface.</p>
+    </div>
+
+    <div class="term">
+      <h3>Object groups</h3>
+<pre><code>object network SRV-WEB
+ host 10.1.1.10
+
+object-group network DMZ-SERVERS
+ network-object host 10.10.10.5
+ network-object host 10.10.10.6
+ group-object SRV-WEB                    <span class="cmt">! nesting is allowed</span>
+
+object-group service WEB-PORTS tcp
+ port-object eq www
+ port-object eq https
+
+access-list OUTSIDE_IN extended permit tcp any4 object-group DMZ-SERVERS object-group WEB-PORTS</code></pre>
+      <p>Object groups expand into individual ACEs internally. <code>show access-list</code> shows both the configured line and the expanded entries with their hit counts, which is where you actually read hits.</p>
+    </div>
+
+    <div class="term">
+      <h3>Reading hit counts</h3>
+<pre><code>show access-list OUTSIDE_IN
+show access-list OUTSIDE_IN | include hitcnt=[1-9]   <span class="cmt">! only rules being used</span>
+clear access-list OUTSIDE_IN counters</code></pre>
+      <p>Zero hit counts over a long period are the basis of rule cleanup. Be careful: a rule can legitimately have zero hits because a rule above it shadows it, so check order before deleting.</p>
+      <div class="tip"><b>Operational habit</b>Before any ACL change, <code>show access-list</code> and save it. The ASA has no built-in rule-change rollback, and <code>no access-list</code> on a line with object groups can remove more than you intended.</div>
+    </div>
+
+    <div class="term">
+      <h3>Logging and time ranges</h3>
+<pre><code>access-list OUTSIDE_IN extended deny ip any4 any4 log 4 interval 300
+
+time-range BUSINESS-HOURS
+ periodic weekdays 08:00 to 18:00
+access-list X extended permit ip any4 any4 time-range BUSINESS-HOURS</code></pre>
+      <p>ACL logging produces syslog 106100 with per-flow aggregation at the configured interval, instead of 106023 per denied packet. On a busy deny-all rule, always set an interval or you will flood the log.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section class="block" id="nat">
+  <div class="sechead">
+    <h2><span class="num">05</span>NAT</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="nat"> Reviewed</label>
+  </div>
+  <p class="lede">The 8.3 rewrite changed NAT completely, and it remains the most misconfigured feature on the platform. Learn the three sections and the ordering rules and most of it falls out.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The three NAT sections</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th class="num-col">Section</th><th>Name</th><th>Order within the section</th></tr></thead>
+          <tbody>
+            <tr><td class="num-col">1</td><td><strong>Manual NAT</strong> (twice NAT)</td><td>In the order you configure it. First match wins</td></tr>
+            <tr><td class="num-col">2</td><td><strong>Auto NAT</strong> (object NAT)</td><td>Automatic: static before dynamic, then fewest real IPs, then lowest IP, then name alphabetically</td></tr>
+            <tr><td class="num-col">3</td><td><strong>Manual NAT after-auto</strong></td><td>In configured order, evaluated last</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The ASA walks section 1, then 2, then 3, and the first matching rule wins. This is why a broad manual NAT rule configured early can silently shadow every object NAT you write afterwards.</p>
+<pre><code>show nat                                 <span class="cmt">! all rules in evaluation order, with hits</span>
+show nat detail
+show run nat</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Auto NAT (object NAT)</h3>
+      <p>Defined inside a network object. Simpler, covers most cases, translates source only on the way out (or destination on the way in for a static).</p>
+<pre><code><span class="cmt">! Dynamic PAT: inside hosts share the outside interface IP</span>
+object network INSIDE-NET
+ subnet 10.1.0.0 255.255.0.0
+ nat (inside,outside) dynamic interface
+
+<span class="cmt">! Static one-to-one: publish a server</span>
+object network SRV-WEB
+ host 10.1.1.10
+ nat (inside,outside) static 203.0.113.10
+
+<span class="cmt">! Static PAT: port forward only 443</span>
+object network SRV-WEB-443
+ host 10.1.1.10
+ nat (inside,outside) static interface service tcp 443 443</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Manual NAT (twice NAT)</h3>
+      <p>Matches on source <em>and</em> destination together, which is what you need for policy NAT and for VPN exemption.</p>
+<pre><code><span class="cmt">! NAT exemption: do not translate inside-to-VPN-peer traffic</span>
+nat (inside,outside) source static INSIDE-NET INSIDE-NET \
+    destination static REMOTE-NET REMOTE-NET no-proxy-arp route-lookup
+
+<span class="cmt">! Policy NAT: translate differently depending on destination</span>
+nat (inside,outside) 1 source dynamic INSIDE-NET PARTNER-POOL \
+    destination static PARTNER-NET PARTNER-NET</code></pre>
+      <p>Two keywords you will use constantly on exemption rules:</p>
+      <ul>
+        <li><code>no-proxy-arp</code> &mdash; stops the ASA answering ARP for the mapped addresses, which otherwise black-holes traffic on a shared segment.</li>
+        <li><code>route-lookup</code> &mdash; forces a normal routing-table decision for the egress interface instead of letting the NAT rule's interface pair dictate it. Essential when the NAT would otherwise divert traffic out of the wrong interface.</li>
+      </ul>
+      <div class="gotcha"><b>The number one VPN fault</b>Traffic to a VPN peer being PATed to the outside interface instead of entering the tunnel, because no exemption rule exists or it sits below a broader rule. <code>packet-tracer</code> shows the wrong NAT rule matching in the NAT phase. Fix with an exemption rule placed above the PAT rule in section 1.</div>
+    </div>
+
+    <div class="term">
+      <h3>Identity NAT, and the order trick</h3>
+      <p>Identity NAT translates an address to itself &mdash; the mechanism behind NAT exemption. To control placement explicitly:</p>
+<pre><code>nat (inside,outside) 1 source static A A destination static B B   <span class="cmt">! line 1 of section 1</span>
+nat (inside,outside) after-auto source dynamic ANY interface       <span class="cmt">! section 3</span></code></pre>
+      <p>The numeric argument sets the line number within section 1. <code>after-auto</code> pushes a rule into section 3, which is the clean way to write a catch-all PAT that must never shadow anything specific.</p>
+    </div>
+
+    <div class="term">
+      <h3>Verifying translations</h3>
+<pre><code>show xlate                               <span class="cmt">! active translations</span>
+show xlate detail
+show xlate local 10.1.1.10
+clear xlate local 10.1.1.10              <span class="cmt">! also kills the conn</span>
+show nat pool                            <span class="cmt">! PAT pool utilisation</span></code></pre>
+      <p><code>clear xlate</code> tears down the associated connections too, so treat it as disruptive. PAT pool exhaustion shows as syslog 305006 or ASP drop <code>nat-no-xlate-to-pat-pool</code>; the fix is a larger pool, <code>pat-pool</code> with round-robin, or extended PAT.</p>
+    </div>
+
+    <div class="term">
+      <h3>Pre-8.3 vs post-8.3</h3>
+      <p>Pre-8.3 used <code>nat</code> / <code>global</code> pairs with NAT IDs, <code>static (inside,outside)</code> statements, and ACLs written against the <strong>mapped</strong> address. Post-8.3 uses the object and manual syntax above with ACLs against the <strong>real</strong> address. You still meet old configs and migration scripts, so recognise the old form &mdash; and remember that a migrated config very often has its ACLs wrong for exactly this reason.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section class="block" id="routing">
+  <div class="sechead">
+    <h2><span class="num">06</span>Routing</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="routing"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Static routes and tracking</h3>
+<pre><code>route outside 0.0.0.0 0.0.0.0 203.0.113.1 1
+route backup 0.0.0.0 0.0.0.0 198.51.100.1 254     <span class="cmt">! floating static</span>
+
+sla monitor 10
+ type echo protocol ipIcmpEcho 8.8.8.8 interface outside
+ frequency 10
+sla monitor schedule 10 life forever start-time now
+
+track 1 rtr 10 reachability
+route outside 0.0.0.0 0.0.0.0 203.0.113.1 1 track 1</code></pre>
+      <p>SLA-tracked default routes are the standard dual-ISP pattern on ASA. Without tracking, a floating static only takes over if the interface goes down &mdash; which does not happen when the failure is upstream.</p>
+    </div>
+
+    <div class="term">
+      <h3>Dynamic routing</h3>
+      <p>The ASA supports OSPFv2/v3, EIGRP, RIP and BGP. Points that come up:</p>
+      <ul>
+        <li>The ASA is a security device first; it will not form adjacencies through itself transparently in routed mode.</li>
+        <li>Dynamic routing is supported in multiple context mode from 9.0 onward, but not every protocol in every mode &mdash; check the release notes.</li>
+        <li>Routing protocol traffic is to-the-box, so it must be permitted by the control-plane policy if you have tightened it.</li>
+        <li>Redistribution between protocols is supported but limited compared with IOS.</li>
+      </ul>
+<pre><code>show route
+show route | include 10.1.1
+show ospf neighbor
+show bgp summary
+show asp table routing | include 10.1.1.0     <span class="cmt">! what the dataplane actually uses</span></code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Asymmetric routing and TCP state bypass</h3>
+      <p>A stateful firewall needs to see both directions of a flow. If routing sends the return path around the ASA, or through a different ASA, mid-flow packets arrive with no matching conn and are dropped as <code>tcp-not-syn</code>.</p>
+      <p>Proper fixes are routing fixes. Where you genuinely cannot make traffic symmetric, <strong>TCP state bypass</strong> disables stateful checks for selected flows:</p>
+<pre><code>access-list BYPASS extended permit ip 10.1.0.0 255.255.0.0 10.2.0.0 255.255.0.0
+class-map TCP-BYPASS
+ match access-list BYPASS
+policy-map PM-BYPASS
+ class TCP-BYPASS
+  set connection advanced-options tcp-state-bypass
+service-policy PM-BYPASS interface inside</code></pre>
+      <div class="gotcha"><b>Understand the cost</b>TCP state bypass turns off sequence checking and most inspection for those flows. It is a workaround for a topology problem, not a feature. Scope it as narrowly as possible.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 7 ============ -->
+<section class="block" id="mpf">
+  <div class="sechead">
+    <h2><span class="num">07</span>Modular Policy Framework and inspection</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="mpf"> Reviewed</label>
+  </div>
+  <p class="lede">MPF is the ASA's equivalent of MQC: classify traffic, apply actions, attach the policy to an interface or globally.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The three-part structure</h3>
+<pre><code>class-map INSPECT-ICMP                   <span class="cmt">! 1. what traffic</span>
+ match default-inspection-traffic
+
+policy-map global_policy                 <span class="cmt">! 2. what to do with it</span>
+ class inspection_default
+  inspect dns preset_dns_map
+  inspect ftp
+  inspect icmp
+  inspect esmtp
+ class class-default
+  set connection timeout idle 1:00:00
+
+service-policy global_policy global      <span class="cmt">! 3. where it applies</span></code></pre>
+      <p>Only one service policy per interface, plus one global policy. An interface policy takes precedence over the global policy for the traffic it matches.</p>
+    </div>
+
+    <div class="term">
+      <h3>Why inspection matters</h3>
+      <p>Inspection engines do two jobs: they open secondary connections ("pinholes") for protocols that negotiate dynamic ports, and they enforce protocol conformance.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Inspect</th><th>Why you need it</th></tr></thead>
+          <tbody>
+            <tr><td><code>icmp</code></td><td>Without it, ICMP echo replies are not treated as return traffic and need an explicit ACL. Almost always enable it</td></tr>
+            <tr><td><code>ftp</code></td><td>Opens the data channel for active and passive FTP, and rewrites embedded addresses under NAT</td></tr>
+            <tr><td><code>dns</code></td><td>Enforces message length, does DNS doctoring, protects against some spoofing</td></tr>
+            <tr><td><code>sip</code>, <code>skinny</code>, <code>h323</code></td><td>Voice signalling: opens RTP pinholes and fixes embedded addresses</td></tr>
+            <tr><td><code>esmtp</code></td><td>Mail command filtering. A frequent cause of mysterious mail problems &mdash; often the right move is to disable it</td></tr>
+            <tr><td><code>sqlnet</code>, <code>tftp</code>, <code>rtsp</code>, <code>pptp</code></td><td>Same pattern: dynamic ports or embedded addressing</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="gotcha"><b>Inspection as the culprit</b>When an application half-works through the ASA &mdash; connects then hangs, or works one direction &mdash; suspect its inspect engine before anything else. Test by disabling that inspect temporarily and re-running. ESMTP and SIP are the usual offenders.</div>
+    </div>
+
+    <div class="term">
+      <h3>Connection limits and TCP normalisation</h3>
+<pre><code>policy-map PM-LIMITS
+ class class-default
+  set connection conn-max 10000 embryonic-conn-max 1000
+  set connection timeout idle 0:30:00 embryonic 0:00:30
+
+tcp-map TM-PERMISSIVE
+ urgent-flag allow
+ exceed-mss allow
+ check-retransmission
+
+policy-map PM-LIMITS
+ class SOME-CLASS
+  set connection advanced-options TM-PERMISSIVE</code></pre>
+      <p>Embryonic connection limits are the ASA's built-in SYN-flood protection: beyond the threshold it intercepts and proxies the handshake. TCP normalisation drops packets that violate TCP rules &mdash; which occasionally breaks legitimate but badly behaved applications, hence the permissive tcp-map pattern.</p>
+    </div>
+
+    <div class="term">
+      <h3>Verification</h3>
+<pre><code>show service-policy
+show service-policy inspect dns
+show service-policy interface outside
+show conn detail                          <span class="cmt">! flags show which inspect applies</span></code></pre>
+      <p><code>show service-policy</code> gives per-class packet counts and drop counts, which tells you whether an inspect engine is actually dropping your traffic.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 8 ============ -->
+<section class="block" id="conn">
+  <div class="sechead">
+    <h2><span class="num">08</span>Connections, xlates and timeouts</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="conn"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Reading the conn table</h3>
+<pre><code>show conn
+show conn count
+show conn address 10.1.1.10
+show conn port 443
+show conn detail | include 10.1.1.10
+clear conn address 10.1.1.10</code></pre>
+      <p>A typical line:</p>
+<pre><code>TCP outside 198.51.100.5:49152 inside 10.1.1.10:443, idle 0:00:12, bytes 84210, flags UIO</code></pre>
+      <p>The <strong>flags</strong> are the valuable part. <code>show conn detail</code> prints a legend. The ones to know:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th class="num-col">Flag</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td class="num-col">U</td><td>Up &mdash; the TCP handshake completed</td></tr>
+            <tr><td class="num-col">I / O</td><td>Inbound / outbound data has passed</td></tr>
+            <tr><td class="num-col">a / A</td><td>Awaiting outside/inside ACK to SYN &mdash; a half-open connection</td></tr>
+            <tr><td class="num-col">B</td><td>Initial SYN from outside</td></tr>
+            <tr><td class="num-col">R / r</td><td>Outside/inside has sent a RST; connection tearing down</td></tr>
+            <tr><td class="num-col">F / f</td><td>Outside/inside FIN received</td></tr>
+            <tr><td class="num-col">s</td><td>Awaiting outside SYN</td></tr>
+            <tr><td class="num-col">E</td><td>Inside back connection (inspection pinhole)</td></tr>
+            <tr><td class="num-col">V</td><td>VPN tunnel orphan / IPsec</td></tr>
+            <tr><td class="num-col">N</td><td>Inspected by an inspection engine</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tip"><b>Fast diagnosis</b>Lots of connections stuck at <code>saA</code> or <code>aB</code> means SYNs are going out and nothing is coming back &mdash; the far side or the return path is the problem, not the ASA's policy, because the conn was built.</div>
+    </div>
+
+    <div class="term">
+      <h3>Timeouts</h3>
+<pre><code>show running-config timeout
+timeout conn 1:00:00 half-closed 0:10:00 udp 0:02:00
+timeout xlate 3:00:00
+timeout sunrpc 0:10:00 h323 0:05:00 sip 0:30:00
+timeout floating-conn 0:00:30</code></pre>
+      <p>Defaults are one hour for TCP conns and two minutes for UDP. Idle timeouts are the usual explanation for a session that dies after a predictable interval &mdash; long-lived idle TCP sessions (database connections, SSH jump sessions) being the classic case. Either raise the timeout for that class via MPF or enable keepalives on the application.</p>
+      <p><code>timeout floating-conn</code> matters when a better route appears for an existing flow; it controls how long the old flow survives.</p>
+    </div>
+
+    <div class="term">
+      <h3>Local-host and threat detection</h3>
+<pre><code>show local-host                           <span class="cmt">! per-host conn and xlate counts</span>
+show local-host 10.1.1.10 detail
+show threat-detection statistics top host-stats
+show threat-detection rate
+shun 198.51.100.5                         <span class="cmt">! block a host immediately</span>
+show shun</code></pre>
+      <p><code>show local-host</code> is the fastest way to find the host responsible for a connection-count spike. <code>shun</code> installs an immediate block that is independent of the ACL and survives until cleared &mdash; useful during an incident, and easy to forget about afterwards.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 9 ============ -->
+<section class="block" id="failover">
+  <div class="sechead">
+    <h2><span class="num">09</span>Failover</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="failover"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Modes</h3>
+      <ul>
+        <li><strong>Active/Standby</strong> &mdash; one unit passes traffic, the other waits. Works in single and multiple context mode. The common deployment.</li>
+        <li><strong>Active/Active</strong> &mdash; requires multiple context mode. Contexts are split into two failover groups, each active on a different unit, so both units carry traffic. More complex; size each unit to carry everything after a failure.</li>
+      </ul>
+      <p>Both are <strong>stateful</strong> if you configure a state link: conn table, xlate table, ARP table and some VPN state replicate, so existing sessions survive a failover. Without the state link, failover is stateless and every session drops.</p>
+    </div>
+
+    <div class="term">
+      <h3>Configuration</h3>
+<pre><code><span class="cmt">! Primary unit</span>
+failover lan unit primary
+failover lan interface FOLINK GigabitEthernet0/3
+failover interface ip FOLINK 10.255.0.1 255.255.255.252 standby 10.255.0.2
+failover link FOSTATE GigabitEthernet0/4
+failover interface ip FOSTATE 10.255.0.5 255.255.255.252 standby 10.255.0.6
+failover key &lt;shared-key&gt;
+failover
+
+<span class="cmt">! On each data interface</span>
+interface GigabitEthernet0/0
+ ip address 203.0.113.2 255.255.255.0 standby 203.0.113.3
+
+monitor-interface inside
+monitor-interface outside
+failover polltime unit 1 holdtime 3
+failover polltime interface 5 holdtime 25</code></pre>
+      <p>The failover link carries hellos and config replication; the state link carries session state. They can share an interface on low-throughput deployments, but separate them where you can &mdash; state replication can be heavy.</p>
+    </div>
+
+    <div class="term">
+      <h3>What must match between peers</h3>
+      <p>Failover will not form, or will fall out, if these differ: software version (within the allowed combinations for a zero-downtime upgrade), hardware model, number and type of interfaces, operating mode (routed/transparent, single/multiple), and licensing of the relevant features.</p>
+<pre><code>show failover
+show failover history
+show failover state
+failover active                           <span class="cmt">! force this unit active</span>
+no failover active                        <span class="cmt">! force it standby</span>
+failover exec mate show version           <span class="cmt">! run a command on the peer</span>
+failover reload-standby</code></pre>
+      <div class="tip"><b>Always check history</b><code>show failover history</code> records every state change with a reason. &ldquo;Interface check&rdquo;, &ldquo;Failover state check&rdquo; and &ldquo;HELLO not heard&rdquo; each point somewhere different. Start here, not with <code>show failover</code> alone.</div>
+    </div>
+
+    <div class="term">
+      <h3>Interface monitoring and split brain</h3>
+      <p>Monitored interfaces are tested with hellos and, if those fail, with ARP and broadcast ping tests. If more monitored interfaces fail on the active than on the standby, failover occurs. Unmonitored interfaces never trigger failover &mdash; a common oversight on newly added interfaces.</p>
+      <p><strong>Split brain</strong> (both units active) usually means the failover link is down while data interfaces are up. The units cannot hear each other, so both assume the peer is dead. This is why the failover link should be a direct cable or a dedicated, highly reliable path.</p>
+    </div>
+
+    <div class="term">
+      <h3>Zero-downtime upgrade</h3>
+      <ol>
+        <li>Copy the image to both units and set <code>boot system</code> on both.</li>
+        <li><code>failover reload-standby</code> &mdash; the standby reloads on the new image.</li>
+        <li>Wait for it to come back and sync (<code>show failover</code> shows standby ready).</li>
+        <li><code>no failover active</code> on the primary &mdash; traffic moves to the upgraded unit.</li>
+        <li>Reload the now-standby original primary.</li>
+        <li>Optionally make it active again.</li>
+      </ol>
+      <p>Only certain version combinations are supported as a mixed pair. Check the upgrade path in the release notes before starting.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 10 ============ -->
+<section class="block" id="cluster">
+  <div class="sechead">
+    <h2><span class="num">10</span>Clustering</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="cluster"> Reviewed</label>
+  </div>
+  <p class="lede">Several ASAs acting as one logical firewall, for throughput beyond a single box. Distinct from failover, and with its own vocabulary.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Roles per flow</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Role</th><th>Does what</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Owner</strong></td><td>The unit that received the first packet and holds the connection state. Processes the flow</td></tr>
+            <tr><td><strong>Director</strong></td><td>Chosen by hash of the flow. Keeps a backup of the state and answers &ldquo;who owns this flow?&rdquo; queries</td></tr>
+            <tr><td><strong>Forwarder</strong></td><td>A unit that receives a packet for a flow it does not own; asks the director and forwards to the owner over the CCL</td></tr>
+            <tr><td><strong>Backup owner</strong></td><td>Holds a copy of the state so the flow survives the owner failing</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>This design is what makes clustering tolerate asymmetric traffic: any unit can receive a packet and get it to the owner.</p>
+    </div>
+
+    <div class="term">
+      <h3>Key components</h3>
+      <ul>
+        <li><strong>CCL (Cluster Control Link)</strong> &mdash; the dedicated backplane between units, carrying state, director queries and forwarded data. Size it generously; a congested CCL degrades everything. Usually a port-channel on a dedicated switch pair.</li>
+        <li><strong>Control unit</strong> &mdash; elected; owns configuration, which replicates to data units. Replaces the idea of a primary.</li>
+        <li><strong>Spanned EtherChannel mode</strong> &mdash; all units share one port-channel to the switch, which load-balances by hash. The usual choice.</li>
+        <li><strong>Individual interface mode</strong> &mdash; each unit has its own IP, with an upstream router load-balancing. Routed mode only.</li>
+      </ul>
+<pre><code>show cluster info
+show cluster info health
+show cluster conn count
+show conn detail | include Cluster
+cluster exec show conn count              <span class="cmt">! run across every unit</span></code></pre>
+      <div class="tip"><b>cluster exec is the one to remember</b>Any show command prefixed with <code>cluster exec</code> runs on every member and labels the output. Without it you are troubleshooting one unit of a system that spreads flows across all of them.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section class="block" id="s2s">
+  <div class="sechead">
+    <h2><span class="num">11</span>Site-to-site VPN</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="s2s"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The two phases</h3>
+      <p><strong>Phase 1 (IKE / ISAKMP)</strong> authenticates the peers and builds a secure management channel. Negotiates encryption, hash, authentication method, DH group and lifetime.</p>
+      <p><strong>Phase 2 (IPsec)</strong> builds the actual data SAs inside that channel, one pair per traffic selector. Negotiates the transform set / proposal, the proxy IDs (interesting traffic), PFS and lifetime.</p>
+      <p>Mismatches in phase 1 mean the tunnel never comes up at all. Mismatches in phase 2 mean phase 1 completes and then fails &mdash; which is a useful diagnostic split in itself.</p>
+    </div>
+
+    <div class="term">
+      <h3>IKEv2 configuration</h3>
+<pre><code>crypto ikev2 policy 10
+ encryption aes-256
+ integrity sha256
+ group 14
+ prf sha256
+ lifetime seconds 86400
+crypto ikev2 enable outside
+
+crypto ipsec ikev2 ipsec-proposal PROP-AES256
+ protocol esp encryption aes-256
+ protocol esp integrity sha-256
+
+tunnel-group 198.51.100.1 type ipsec-l2l
+tunnel-group 198.51.100.1 ipsec-attributes
+ ikev2 remote-authentication pre-shared-key &lt;key&gt;
+ ikev2 local-authentication pre-shared-key &lt;key&gt;
+
+access-list VPN-PARTNER extended permit ip 10.1.0.0 255.255.0.0 172.16.0.0 255.255.0.0
+
+crypto map OUTSIDE-MAP 10 match address VPN-PARTNER
+crypto map OUTSIDE-MAP 10 set peer 198.51.100.1
+crypto map OUTSIDE-MAP 10 set ikev2 ipsec-proposal PROP-AES256
+crypto map OUTSIDE-MAP 10 set pfs group14
+crypto map OUTSIDE-MAP interface outside</code></pre>
+      <p>The crypto map is processed in sequence order; a lower-numbered entry with a broad ACL will capture traffic intended for a later peer.</p>
+    </div>
+
+    <div class="term">
+      <h3>The three things that break site-to-site tunnels</h3>
+      <ol>
+        <li><strong>Mismatched proxy IDs.</strong> The crypto ACL must mirror the peer's exactly. Syslog 402116 tells you a packet did not match the SA's proxy ID. Non-Cisco peers often want specific (not aggregate) selectors.</li>
+        <li><strong>Missing NAT exemption.</strong> Traffic gets PATed to the outside interface instead of entering the tunnel. Covered in the NAT section &mdash; this is the most common fault of all.</li>
+        <li><strong>Mismatched phase 1 or 2 parameters.</strong> DH group, lifetime, PFS, integrity. Debugs name the attribute that failed.</li>
+      </ol>
+<pre><code>show crypto ikev2 sa
+show crypto ipsec sa peer 198.51.100.1
+show vpn-sessiondb l2l
+show crypto ipsec sa | include ident|encaps|decaps
+
+debug crypto ikev2 protocol 127
+debug crypto ipsec 127
+debug crypto condition peer 198.51.100.1  <span class="cmt">! scope the debug first</span></code></pre>
+      <div class="tip"><b>Encaps vs decaps</b>In <code>show crypto ipsec sa</code>, if <code>encaps</code> is incrementing but <code>decaps</code> is not, you are sending and they are not replying &mdash; look at their side, their NAT exemption, or a firewall in between. Both at zero means traffic is not reaching the crypto map at all, which is usually NAT or routing.</div>
+    </div>
+
+    <div class="term">
+      <h3>VTI, the modern alternative</h3>
+      <p>From 9.7, the ASA supports <strong>Virtual Tunnel Interfaces</strong> &mdash; a routable tunnel interface instead of a crypto map and ACL. Traffic enters the tunnel because of the routing table, not a crypto ACL, which removes the proxy-ID class of problems entirely and lets you run dynamic routing over the tunnel.</p>
+<pre><code>crypto ipsec profile PROF-VTI
+ set ikev2 ipsec-proposal PROP-AES256
+
+interface Tunnel1
+ nameif vti-partner
+ ip address 169.254.1.1 255.255.255.252
+ tunnel source interface outside
+ tunnel destination 198.51.100.1
+ tunnel mode ipsec ipv4
+ tunnel protection ipsec profile PROF-VTI
+
+route vti-partner 172.16.0.0 255.255.0.0 169.254.1.2</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>sysopt and tunnel traffic</h3>
+      <p><code>sysopt connection permit-vpn</code> (on by default) lets decrypted VPN traffic bypass the interface ACL. If you need to filter inside the tunnel, either disable it and write ACLs, or apply a <code>vpn-filter</code> in the group policy. Knowing it is on by default explains why tunnel traffic flows despite a restrictive outside ACL.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 12 ============ -->
+<section class="block" id="ravpn">
+  <div class="sechead">
+    <h2><span class="num">12</span>Remote access VPN</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="ravpn"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The building blocks</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Object</th><th>Holds</th></tr></thead>
+          <tbody>
+            <tr><td><strong>tunnel-group</strong> (connection profile)</td><td>How the user connects: authentication method, address pool, which group policy applies</td></tr>
+            <tr><td><strong>group-policy</strong></td><td>What the user gets: split tunnel, DNS, banner, timeouts, vpn-filter, allowed protocols</td></tr>
+            <tr><td><strong>ip local pool</strong></td><td>Addresses handed to clients</td></tr>
+            <tr><td><strong>webvpn</strong></td><td>Global SSL VPN settings, client images, profiles, enabled interfaces</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="term">
+      <h3>AnyConnect / Secure Client configuration</h3>
+<pre><code>ip local pool VPN-POOL 10.9.0.10-10.9.0.250 mask 255.255.255.0
+
+webvpn
+ enable outside
+ anyconnect image disk0:/anyconnect-win-5.1.pkg 1
+ anyconnect enable
+ tunnel-group-list enable
+
+group-policy GP-STAFF internal
+group-policy GP-STAFF attributes
+ vpn-tunnel-protocol ssl-client ikev2
+ split-tunnel-policy tunnelspecified
+ split-tunnel-network-list value SPLIT-ACL
+ dns-server value 10.1.1.53
+ default-domain value corp.example.com
+
+tunnel-group TG-STAFF type remote-access
+tunnel-group TG-STAFF general-attributes
+ address-pool VPN-POOL
+ authentication-server-group ISE-RADIUS
+ default-group-policy GP-STAFF
+tunnel-group TG-STAFF webvpn-attributes
+ group-alias Staff enable</code></pre>
+      <p>Do not forget the NAT exemption for pool-to-inside traffic, and a route back to the pool on your internal network if the ASA is not the default gateway.</p>
+    </div>
+
+    <div class="term">
+      <h3>Split tunnelling</h3>
+      <ul>
+        <li><code>tunnelall</code> &mdash; everything goes through the VPN. Most secure, highest load on the ASA and the internet link.</li>
+        <li><code>tunnelspecified</code> &mdash; only networks in the ACL are tunnelled.</li>
+        <li><code>excludespecified</code> &mdash; everything is tunnelled except the listed networks.</li>
+      </ul>
+      <p>Use a <strong>standard</strong> ACL for the split-tunnel list. Dynamic split tunnelling by FQDN is available in newer client and ASA versions and is the usual way to exclude SaaS traffic.</p>
+    </div>
+
+    <div class="term">
+      <h3>Hairpinning</h3>
+      <p>If VPN clients need to reach the internet through the ASA, traffic enters and leaves the same interface. That requires:</p>
+<pre><code>same-security-traffic permit intra-interface
+
+nat (outside,outside) source dynamic VPN-POOL interface</code></pre>
+      <p>Both pieces are needed. The missing <code>intra-interface</code> permit is a very common cause of &ldquo;VPN connects but no internet&rdquo;.</p>
+    </div>
+
+    <div class="term">
+      <h3>Verification</h3>
+<pre><code>show vpn-sessiondb anyconnect
+show vpn-sessiondb detail anyconnect filter name jdoe
+show vpn-sessiondb license-summary
+vpn-sessiondb logoff name jdoe noconfirm
+
+show webvpn anyconnect
+debug webvpn anyconnect 255
+debug aaa authentication</code></pre>
+      <p>For authentication problems, <code>test aaa-server authentication ISE-RADIUS host 10.1.1.20 username jdoe password x</code> isolates the ASA-to-server leg from the client.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 13 ============ -->
+<section class="block" id="context">
+  <div class="sechead">
+    <h2><span class="num">13</span>Multiple context mode</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="context"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The three spaces</h3>
+      <ul>
+        <li><strong>System execution space</strong> &mdash; no interfaces or routing of its own. Defines contexts, allocates interfaces, configures failover and resource classes.</li>
+        <li><strong>Admin context</strong> &mdash; a normal context that the system uses for things needing network access, such as TFTP and AAA for management.</li>
+        <li><strong>User contexts</strong> &mdash; independent virtual firewalls, each with its own config file, interfaces, policy, NAT and routing table.</li>
+      </ul>
+<pre><code>mode multiple                             <span class="cmt">! reboots the box</span>
+changeto system
+changeto context CTX-A
+show context
+show mode</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Interface allocation and the classifier</h3>
+<pre><code>context CTX-A
+ allocate-interface GigabitEthernet0/0.10
+ allocate-interface GigabitEthernet0/1.10 inside visible
+ config-url disk0:/ctx-a.cfg</code></pre>
+      <p>When an interface is shared between contexts, the ASA must decide which context a packet belongs to. The <strong>classifier</strong> uses, in order: unique interfaces (simplest and preferred), then unique MAC addresses, then the NAT configuration. Enable <code>mac-address auto</code> in the system space so shared interfaces get distinct MACs &mdash; without it, classification on shared interfaces is fragile.</p>
+    </div>
+
+    <div class="term">
+      <h3>Resource management</h3>
+<pre><code>class GOLD
+ limit-resource conns 20%
+ limit-resource xlates 20%
+ limit-resource rate conns 5000
+context CTX-A
+ member GOLD
+
+show resource usage context CTX-A
+show resource allocation</code></pre>
+      <p>Without resource classes, one context can exhaust the box for everyone. The default class is unlimited, which is rarely what you want in a shared deployment.</p>
+    </div>
+
+    <div class="term">
+      <h3>What you give up</h3>
+      <p>Historically multiple context mode excluded VPN, dynamic routing and multicast. Much of that has been relaxed &mdash; dynamic routing from 9.0, site-to-site VPN in contexts from 9.0, and remote access VPN in contexts from 9.5 with licensing caveats. Check the feature matrix for your exact release rather than quoting the old limitations.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 14 ============ -->
+<section class="block" id="transparent">
+  <div class="sechead">
+    <h2><span class="num">14</span>Transparent mode</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="transparent"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>What it is</h3>
+      <p>A layer 2 firewall: a "bump in the wire" that bridges two segments of the same subnet while still performing full stateful inspection. The ASA is not a routing hop, so you can insert it without re-addressing anything &mdash; the main reason to choose it.</p>
+<pre><code>firewall transparent                      <span class="cmt">! clears the config</span>
+show firewall
+
+interface BVI1
+ ip address 10.1.1.4 255.255.255.0        <span class="cmt">! management IP only</span>
+
+interface GigabitEthernet0/0
+ nameif outside
+ security-level 0
+ bridge-group 1
+
+interface GigabitEthernet0/1
+ nameif inside
+ security-level 100
+ bridge-group 1</code></pre>
+      <p>The BVI address is for management and for traffic the ASA originates; it is not a gateway for hosts. Hosts keep their original default gateway on the other side of the firewall.</p>
+    </div>
+
+    <div class="term">
+      <h3>EtherType ACLs</h3>
+      <p>Transparent mode passes IP traffic subject to normal ACLs, but non-IP traffic needs an EtherType ACL. Most commonly for BPDUs &mdash; which are <strong>not</strong> forwarded by default, and whose absence can cause a loop if the ASA bridges two paths.</p>
+<pre><code>access-list ETHER ethertype permit bpdu
+access-list ETHER ethertype permit mpls-unicast
+access-group ETHER in interface outside</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Limitations</h3>
+      <ul>
+        <li>No dynamic routing protocol participation through the ASA (it can still pass the traffic).</li>
+        <li>DHCP traffic passes, but the ASA cannot be the DHCP relay in the usual sense.</li>
+        <li>Each bridge group is limited in the number of interfaces, and the number of bridge groups is capped per release.</li>
+        <li>NAT is supported in transparent mode from 8.4, which surprises people who learned the older restriction.</li>
+      </ul>
+<pre><code>show mac-address-table
+show bridge-group</code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 15 ============ -->
+<section class="block" id="aaa">
+  <div class="sechead">
+    <h2><span class="num">15</span>AAA and management access</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="aaa"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Management AAA</h3>
+<pre><code>aaa-server ISE-TACACS protocol tacacs+
+aaa-server ISE-TACACS (inside) host 10.1.1.20
+ key &lt;shared-key&gt;
+
+aaa authentication ssh console ISE-TACACS LOCAL
+aaa authentication enable console ISE-TACACS LOCAL
+aaa authorization exec authentication-server
+aaa accounting command ISE-TACACS
+
+username admin password &lt;pw&gt; privilege 15</code></pre>
+      <p>The trailing <code>LOCAL</code> is the fallback and is not optional in practice &mdash; without it, losing the AAA server locks you out of the box. <code>aaa accounting command</code> gives you the per-command audit trail.</p>
+      <div class="tip"><b>Test before you log out</b><code>test aaa-server authentication ISE-TACACS host 10.1.1.20 username x password y</code> while still logged in. The ASA is unforgiving about a bad AAA config applied to the console.</div>
+    </div>
+
+    <div class="term">
+      <h3>Management access</h3>
+<pre><code>ssh 10.1.1.0 255.255.255.0 inside
+ssh version 2
+ssh key-exchange group dh-group14-sha256
+http server enable
+http 10.1.1.0 255.255.255.0 inside        <span class="cmt">! ASDM</span>
+management-access inside                  <span class="cmt">! reach inside IP over a VPN</span>
+
+crypto key generate rsa modulus 2048
+show ssh
+show run http</code></pre>
+      <p><code>management-access</code> is the one people miss: without it you cannot manage the ASA on its inside interface address when you arrive through a VPN terminating on the outside.</p>
+    </div>
+
+    <div class="term">
+      <h3>Cut-through proxy and identity</h3>
+      <p>The ASA can authenticate users for through traffic (<code>aaa authentication match</code>), intercepting HTTP/FTP/Telnet to prompt for credentials &mdash; the classic cut-through proxy. More modern deployments use the <strong>Identity Firewall</strong> with the AD agent, or TrustSec SGTs learned over SXP from ISE, so that ACLs can reference users and groups rather than addresses.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 16 ============ -->
+<section class="block" id="logging">
+  <div class="sechead">
+    <h2><span class="num">16</span>Logging and syslog IDs</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="logging"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Configuration</h3>
+<pre><code>logging enable
+logging timestamp
+logging buffer-size 1048576
+logging buffered informational
+logging trap informational
+logging host inside 10.1.1.50
+logging device-id hostname
+logging rate-limit 100 1 level 6
+
+no logging message 302013                 <span class="cmt">! suppress a noisy ID</span>
+logging message 106023 level 4            <span class="cmt">! change an ID's severity</span>
+
+show logging
+show logging | include 10.1.1.10</code></pre>
+      <p>Severity levels run 0 (emergencies) to 7 (debugging). <strong>Informational (6)</strong> is the usual trap level because connection build/teardown messages live there &mdash; and those are what security teams need. Level 7 on a busy box will overwhelm both the ASA and your collector.</p>
+    </div>
+
+    <div class="term">
+      <h3>Message IDs worth memorising</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th class="num-col">ID</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td class="num-col">106023</td><td>Deny protocol src dst by access-group &mdash; the standard ACL deny</td></tr>
+            <tr><td class="num-col">106100</td><td>Permit/deny by an ACE with the <code>log</code> keyword, aggregated per interval</td></tr>
+            <tr><td class="num-col">106015</td><td>Deny TCP (no connection) &mdash; a non-SYN packet with no conn. Asymmetry or a timed-out flow</td></tr>
+            <tr><td class="num-col">302013 / 302014</td><td>Built / Teardown inbound or outbound TCP connection. Teardown includes the reason</td></tr>
+            <tr><td class="num-col">302015 / 302016</td><td>Built / Teardown UDP connection</td></tr>
+            <tr><td class="num-col">302020 / 302021</td><td>Built / Teardown ICMP connection</td></tr>
+            <tr><td class="num-col">305011 / 305012</td><td>Built / Teardown dynamic translation (PAT)</td></tr>
+            <tr><td class="num-col">305006</td><td>Translation failed &mdash; no xlate could be created. PAT exhaustion or a missing rule</td></tr>
+            <tr><td class="num-col">313001</td><td>Denied ICMP type to the ASA itself</td></tr>
+            <tr><td class="num-col">402116</td><td>IPsec packet did not match the SA's proxy ID. Mismatched crypto ACLs</td></tr>
+            <tr><td class="num-col">419002</td><td>Duplicate TCP SYN with a different sequence number</td></tr>
+            <tr><td class="num-col">609001 / 609002</td><td>Built / Teardown local-host entry</td></tr>
+            <tr><td class="num-col">710003</td><td>Access denied to the ASA itself (to-the-box). Check <code>ssh</code> / <code>http</code> statements</td></tr>
+            <tr><td class="num-col">713120 / 751022</td><td>IKEv1 phase 2 complete / IKEv2 negotiation events</td></tr>
+            <tr><td class="num-col">733100</td><td>Threat detection rate exceeded for an object</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tip"><b>Teardown reasons</b>302014 carries a reason string: <em>TCP FINs</em> (normal), <em>TCP Reset-I/O</em> (one side reset), <em>Flow closed by inspection</em>, <em>Conn-timeout</em>, <em>Free the flow created as result of packet injection</em>, <em>Deny Terminate</em>. That string often answers the whole ticket.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 17 ============ -->
+<section class="block" id="troubleshoot">
+  <div class="sechead">
+    <h2><span class="num">17</span>Troubleshooting</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="troubleshoot"> Reviewed</label>
+  </div>
+  <p class="lede">Three tools do ninety percent of the work: packet-tracer, capture with trace, and show asp drop. Learn those properly before reaching for debugs.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>packet-tracer &mdash; simulate a flow</h3>
+<pre><code>packet-tracer input inside tcp 10.1.1.50 12345 8.8.8.8 443 detailed
+packet-tracer input outside tcp 198.51.100.5 12345 203.0.113.10 443 detailed
+
+<span class="cmt">! newer syntax with full 6-tuple and persistence</span>
+packet-tracer input outside tcp 198.51.100.5 12345 203.0.113.10 443 \
+  detailed xml
+packet-tracer input inside icmp 10.1.1.50 8 0 8.8.8.8</code></pre>
+      <p>It walks the real configuration through the real order of operations and tells you which phase dropped the packet and why. It does not test whether the far end responds, and it uses a synthetic packet, so a clean packet-tracer with a broken application means the problem is beyond the ASA's policy.</p>
+      <div class="tip"><b>Habit worth forming</b>Run packet-tracer in both directions before escalating anything. Half of &ldquo;the firewall is blocking it&rdquo; tickets are answered in thirty seconds this way, and the output is evidence you can paste into the ticket.</div>
+    </div>
+
+    <div class="term">
+      <h3>capture &mdash; see the real packets</h3>
+<pre><code><span class="cmt">! standard data capture</span>
+access-list CAPACL extended permit ip host 10.1.1.50 host 8.8.8.8
+access-list CAPACL extended permit ip host 8.8.8.8 host 10.1.1.50
+capture CAP interface inside access-list CAPACL buffer 10000000
+
+<span class="cmt">! or match syntax, quicker to type</span>
+capture CAP interface inside match tcp host 10.1.1.50 host 8.8.8.8 eq 443
+
+<span class="cmt">! capture what the ASP is dropping</span>
+capture ASPDROP type asp-drop all buffer 10000000
+capture ASPDROP type asp-drop acl-drop
+
+<span class="cmt">! trace each captured packet through the phases</span>
+capture CAP interface inside trace trace-count 50 match ip host 10.1.1.50 any
+show capture CAP
+show capture CAP trace detail
+show capture CAP packet-number 3 trace
+
+copy /pcap capture:CAP tftp://10.1.1.50/cap.pcap
+no capture CAP                            <span class="cmt">! always clean up</span></code></pre>
+      <p><code>capture ... trace</code> is the strongest tool on the box: it takes a <em>real</em> packet and shows you the same phase-by-phase walk as packet-tracer. When packet-tracer says allow but traffic still fails, this is the next step.</p>
+      <div class="gotcha"><b>Remember to remove captures</b>They consume memory and, with large buffers on a busy box, can affect performance. <code>clear capture /all</code> and <code>no capture NAME</code>.</div>
+    </div>
+
+    <div class="term">
+      <h3>show asp drop &mdash; why packets died</h3>
+<pre><code>clear asp drop
+<span class="cmt">! reproduce the problem, then:</span>
+show asp drop
+show asp drop frame acl-drop</code></pre>
+      <div class="tablewrap">
+        <table>
+          <caption>Common ASP drop reasons</caption>
+          <thead><tr><th>Reason</th><th>Means</th></tr></thead>
+          <tbody>
+            <tr><td><code>acl-drop</code></td><td>Denied by an ACL. Which one is in the syslog or capture trace</td></tr>
+            <tr><td><code>flow-denied</code></td><td>Denied by the security policy for an existing flow context</td></tr>
+            <tr><td><code>no-route</code></td><td>No route to the destination out of any interface</td></tr>
+            <tr><td><code>nat-xlate-failed</code> / <code>nat-no-xlate-to-pat-pool</code></td><td>NAT could not be applied, or the PAT pool is exhausted</td></tr>
+            <tr><td><code>nat-rpf-failed</code></td><td>Packet arrived on an interface inconsistent with the NAT rule. Classic asymmetry or wrong interface pair</td></tr>
+            <tr><td><code>tcp-not-syn</code></td><td>First packet of an unknown flow was not a SYN. Asymmetric routing, or the conn timed out</td></tr>
+            <tr><td><code>tcp-rstfin-ooo</code>, <code>tcp-ack-syn-diff</code></td><td>TCP normaliser rejected the packet as out of spec</td></tr>
+            <tr><td><code>sp-security-failed</code></td><td>A security check failed, often unicast RPF or an anti-spoofing rule</td></tr>
+            <tr><td><code>rpf-violated</code></td><td>Unicast RPF check failed &mdash; the source is not reachable via the ingress interface</td></tr>
+            <tr><td><code>inspect-dns-pak-too-long</code></td><td>DNS inspection length limit. Raise it in the DNS inspect policy map</td></tr>
+            <tr><td><code>interface-down</code></td><td>Egress interface is down</td></tr>
+            <tr><td><code>fo-standby</code></td><td>Packet arrived on the standby unit. Expected, unless it is constant</td></tr>
+            <tr><td><code>punt-rate-limit</code></td><td>Control-plane punt rate exceeded. Often a symptom of an attack or a loop</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="term">
+      <h3>Performance triage</h3>
+<pre><code>show cpu usage
+show processes cpu-usage sorted non-zero
+show cpu detailed                         <span class="cmt">! dataplane vs control plane split</span>
+show memory
+show memory detail
+show blocks
+show conn count
+show perfmon
+show traffic
+show resource usage                       <span class="cmt">! multi-context</span></code></pre>
+      <p>High CPU in the data plane points at traffic volume, inspection load or an attack. High CPU in a single named process points at that process &mdash; <code>Dispatch Unit</code> is dataplane, <code>Logger</code> means you are logging too much, <code>snmp</code> means a polling problem. Correlate with <code>show conn count</code> and <code>show local-host</code> to find a source.</p>
+    </div>
+
+    <div class="term">
+      <h3>First ten minutes on an unknown problem</h3>
+      <ol>
+        <li><code>show version</code> and <code>show failover</code> &mdash; what am I on, and is this the active unit?</li>
+        <li><code>packet-tracer</code> for the reported flow, both directions.</li>
+        <li><code>show conn address &lt;host&gt;</code> &mdash; does the flow exist, and what are its flags?</li>
+        <li><code>show xlate local &lt;host&gt;</code> &mdash; is NAT doing what you expect?</li>
+        <li><code>clear asp drop</code>, reproduce, <code>show asp drop</code>.</li>
+        <li><code>show logging | include &lt;host&gt;</code> for the syslog story.</li>
+        <li>Only then: capture with trace, and only then debugs.</li>
+      </ol>
+      <div class="gotcha"><b>Debugs last, and scoped</b>Debugs on a production ASA can wedge the box. Always scope first &mdash; <code>debug crypto condition peer x.x.x.x</code> &mdash; set <code>logging buffered debugging</code> rather than printing to console, and have <code>undebug all</code> ready.</div>
+    </div>
+
+    <div class="term">
+      <h3>Support bundle</h3>
+<pre><code>show tech-support
+show tech-support detail
+terminal pager 0                          <span class="cmt">! before capturing output</span>
+show running-config
+show startup-config</code></pre>
+      <p>For TAC, <code>show tech-support detail</code> plus the relevant captures and the syslog window around the event. Set <code>terminal pager 0</code> first or you will spend the next ten minutes pressing space.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 18 ============ -->
+<section class="block" id="ftd">
+  <div class="sechead">
+    <h2><span class="num">18</span>ASA vs FTD</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="ftd"> Reviewed</label>
+  </div>
+  <p class="lede">Most ASA work now happens alongside a migration conversation, so be able to speak to both.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Dimension</th><th>ASA</th><th>FTD (Secure Firewall Threat Defense)</th></tr></thead>
+      <tbody>
+        <tr><td>Management</td><td>CLI and ASDM, or CSM</td><td>FMC (Secure Firewall Management Center) or FDM; CLI is diagnostic, not configuration</td></tr>
+        <tr><td>Policy model</td><td>ACL plus MPF inspection</td><td>Access Control Policy with rules referencing applications, URLs, users and intrusion policies</td></tr>
+        <tr><td>IPS</td><td>Separate module (legacy)</td><td>Snort, integrated</td></tr>
+        <tr><td>Application awareness</td><td>Limited</td><td>OpenAppID application visibility and control</td></tr>
+        <tr><td>Config changes</td><td>Immediate on commit</td><td>Staged, then deployed from FMC</td></tr>
+        <tr><td>Packet path</td><td>LINA only</td><td>LINA (the ASA data plane) then Snort, for traffic that needs it</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>What carries over</h3>
+      <p>FTD still contains <strong>LINA</strong> &mdash; essentially the ASA data plane. So the packet-flow order of operations, NAT model, conn and xlate tables, ASP drop reasons and many show commands are the same. From the FTD CLI, <code>system support diagnostic-cli</code> drops you into a familiar ASA prompt where <code>packet-tracer</code>, <code>show conn</code> and <code>show asp drop</code> all work.</p>
+      <p>That is the reason ASA knowledge remains directly useful: the inspection layer above changed, the forwarding engine underneath did not.</p>
+    </div>
+
+    <div class="term">
+      <h3>Migration</h3>
+      <p>Cisco's <strong>Secure Firewall Migration Tool</strong> converts an ASA configuration into an FTD policy, handling objects, ACLs, NAT and interfaces, with a report of what it could not translate. Expect manual work on: VPN configuration, anything using MPF features without an FTD equivalent, and rules that relied on ASA-specific NAT ordering.</p>
+      <div class="tip"><b>Worth saying in an interview</b>The migration tool gets you a starting policy, not a finished one. The value of understanding ASA packet flow is that you can tell whether the converted policy actually behaves the same way.</div>
+    </div>
+  </div>
+</section>
+
+</main>
+</div>
+
+<footer>
+  <p>Command syntax, defaults and feature availability vary by ASA release. Verify against the configuration guide, command reference and release notes for the exact version in front of you before applying anything from this page to production.</p>
+  <p>Examples use documentation address ranges (RFC 5737: 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24) and RFC 1918 space. Replace keys, passwords and addresses with your own.</p>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var q = document.getElementById('q');
+  var clearBtn = document.getElementById('clearq');
+  var countEl = document.getElementById('count');
+  var noResult = document.getElementById('noresult');
+  var sections = Array.prototype.slice.call(document.querySelectorAll('section.block'));
+  var navLinks = Array.prototype.slice.call(document.querySelectorAll('nav.index a'));
+
+  var items = [];
+  sections.forEach(function(sec){
+    Array.prototype.slice.call(sec.querySelectorAll('.term')).forEach(function(el){
+      items.push({el: el, sec: sec, text: (el.textContent || '').toLowerCase()});
+    });
+  });
+
+  var tables = [];
+  sections.forEach(function(sec){
+    Array.prototype.slice.call(sec.querySelectorAll('.tablewrap')).forEach(function(w){
+      if(w.closest('.term')){ return; }
+      var rows = Array.prototype.slice.call(w.querySelectorAll('tbody tr')).map(function(tr){
+        return {tr: tr, text: (tr.textContent || '').toLowerCase()};
+      });
+      tables.push({wrap: w, sec: sec, rows: rows});
+    });
+  });
+
+  var totalItems = items.length + tables.reduce(function(n, t){ return n + t.rows.length; }, 0);
+
+  function applyFilter(raw){
+    var term = (raw || '').trim().toLowerCase();
+    var filtering = term.length > 0;
+    document.body.classList.toggle('filtering', filtering);
+    clearBtn.hidden = !filtering;
+
+    if(!filtering){
+      items.forEach(function(it){ it.el.style.display = ''; });
+      tables.forEach(function(t){
+        t.wrap.style.display = '';
+        t.rows.forEach(function(r){ r.tr.style.display = ''; });
+      });
+      sections.forEach(function(s){ s.style.display = ''; });
+      noResult.style.display = 'none';
+      countEl.textContent = totalItems + ' entries';
+      return;
+    }
+
+    var shown = 0;
+    var live = {};
+
+    items.forEach(function(it){
+      var hit = it.text.indexOf(term) !== -1;
+      it.el.style.display = hit ? '' : 'none';
+      if(hit){ shown++; live[it.sec.id] = true; }
+    });
+
+    tables.forEach(function(t){
+      var any = false;
+      t.rows.forEach(function(r){
+        var hit = r.text.indexOf(term) !== -1;
+        r.tr.style.display = hit ? '' : 'none';
+        if(hit){ any = true; shown++; }
+      });
+      t.wrap.style.display = any ? '' : 'none';
+      if(any){ live[t.sec.id] = true; }
+    });
+
+    sections.forEach(function(s){ s.style.display = live[s.id] ? '' : 'none'; });
+    noResult.style.display = shown ? 'none' : 'block';
+    countEl.textContent = shown + ' of ' + totalItems + ' entries';
+  }
+
+  q.addEventListener('input', function(){ applyFilter(q.value); });
+  clearBtn.addEventListener('click', function(){ q.value = ''; applyFilter(''); q.focus(); });
+  q.addEventListener('keydown', function(e){
+    if(e.key === 'Escape'){ q.value = ''; applyFilter(''); }
+  });
+  document.addEventListener('keydown', function(e){
+    if(e.key === '/' && document.activeElement !== q){
+      e.preventDefault(); q.focus(); q.select();
+    }
+  });
+
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('.reviewed input'));
+  var fill = document.getElementById('progfill');
+  var ptxt = document.getElementById('progtxt');
+  var KEY = 'asa-ref-reviewed-v1';
+
+  function load(){
+    try{
+      var raw = window.localStorage.getItem(KEY);
+      return raw ? JSON.parse(raw) : {};
+    }catch(err){ return {}; }
+  }
+  function save(state){
+    try{ window.localStorage.setItem(KEY, JSON.stringify(state)); }catch(err){ /* storage unavailable */ }
+  }
+  function paint(){
+    var done = boxes.filter(function(b){ return b.checked; }).length;
+    ptxt.textContent = done + '/' + boxes.length;
+    fill.style.width = (boxes.length ? (done / boxes.length * 100) : 0) + '%';
+  }
+  var state = load();
+  boxes.forEach(function(b){
+    if(state[b.dataset.sec]){ b.checked = true; }
+    b.addEventListener('change', function(){
+      var s = load();
+      if(b.checked){ s[b.dataset.sec] = 1; } else { delete s[b.dataset.sec]; }
+      save(s);
+      paint();
+    });
+  });
+  paint();
+
+  var tbtn = document.getElementById('themebtn');
+  var TKEY = 'asa-ref-theme-v1';
+  try{
+    var saved = window.localStorage.getItem(TKEY);
+    if(saved === 'dark' || saved === 'light'){ document.documentElement.setAttribute('data-theme', saved); }
+  }catch(err){ /* ignore */ }
+  tbtn.addEventListener('click', function(){
+    var cur = document.documentElement.getAttribute('data-theme');
+    var isDark;
+    if(cur){ isDark = cur === 'dark'; }
+    else { isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches; }
+    var next = isDark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try{ window.localStorage.setItem(TKEY, next); }catch(err){ /* ignore */ }
+  });
+
+  if('IntersectionObserver' in window){
+    var obs = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(!en.isIntersecting){ return; }
+        navLinks.forEach(function(a){
+          a.classList.toggle('on', a.getAttribute('href') === '#' + en.target.id);
+        });
+      });
+    }, {rootMargin: '-72px 0px -70% 0px', threshold: 0});
+    sections.forEach(function(s){ obs.observe(s); });
+  }
+
+  applyFilter('');
+})();
+</script>
+</body>
+</html>
