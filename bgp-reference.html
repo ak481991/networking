@@ -692,6 +692,63 @@ address-family ipv4 unicast
 
   <div class="terms">
     <div class="term">
+      <h3>How an attribute is encoded</h3>
+      <p>Each attribute in an UPDATE is a TLV: a flags octet, a type code octet, a length (one or two octets), and the value. The flags are what determine how a router that does not understand the attribute must behave.</p>
+      <div class="tablewrap">
+        <table>
+          <caption>Attribute flags &mdash; the first octet</caption>
+          <thead><tr><th class="num-col">Bit</th><th>Mask</th><th>Name</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td class="num-col">0</td><td><code>0x80</code></td><td><strong>Optional</strong></td><td>0 = well-known (every implementation must support it), 1 = optional</td></tr>
+            <tr><td class="num-col">1</td><td><code>0x40</code></td><td><strong>Transitive</strong></td><td>0 = non-transitive, 1 = transitive. Well-known attributes are always transitive</td></tr>
+            <tr><td class="num-col">2</td><td><code>0x20</code></td><td><strong>Partial</strong></td><td>Set by a router that passed on an optional transitive attribute it did not recognise</td></tr>
+            <tr><td class="num-col">3</td><td><code>0x10</code></td><td><strong>Extended length</strong></td><td>0 = 1-octet length field, 1 = 2-octet. Needed once the value exceeds 255 bytes</td></tr>
+            <tr><td class="num-col">4&ndash;7</td><td>&mdash;</td><td>Unused</td><td>Must be zero</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>So the two flag bits give four classes, and each has a defined handling rule when the receiving router does not recognise the type code:</p>
+      <ul>
+        <li><strong>Well-known mandatory and discretionary</strong> &mdash; must be recognised. An unrecognised well-known attribute is an error and triggers a NOTIFICATION, dropping the session.</li>
+        <li><strong>Optional transitive</strong> &mdash; keep it, set the Partial bit, pass it on unchanged. This is how new attributes propagate across routers that predate them.</li>
+        <li><strong>Optional non-transitive</strong> &mdash; silently discard. The attribute never leaves the AS boundary it arrived at.</li>
+      </ul>
+      <div class="tip"><b>Why this matters in practice</b>Optional transitive is why COMMUNITY survives transit through networks that ignore it, and why MED (optional non-transitive) stops at the first AS. It also explains a real failure class: a malformed optional transitive attribute propagated by routers that did not parse it, reaching one that did and resetting its sessions. RFC 7606 added "treat as withdraw" handling precisely so a bad attribute no longer drops the session.</div>
+    </div>
+
+    <div class="term">
+      <h3>Complete type code list</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th class="num-col">Code</th><th>Attribute</th><th>Class</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="num-col">1</td><td>ORIGIN</td><td>Well-known mandatory</td><td>0 = IGP, 1 = EGP, 2 = Incomplete</td></tr>
+            <tr><td class="num-col">2</td><td>AS_PATH</td><td>Well-known mandatory</td><td>Segments: AS_SET (1), AS_SEQUENCE (2), AS_CONFED_SEQUENCE (3), AS_CONFED_SET (4)</td></tr>
+            <tr><td class="num-col">3</td><td>NEXT_HOP</td><td>Well-known mandatory</td><td>IPv4 only; MP-BGP carries its next hop inside type 14</td></tr>
+            <tr><td class="num-col">4</td><td>MULTI_EXIT_DISC</td><td>Optional non-transitive</td><td>The MED</td></tr>
+            <tr><td class="num-col">5</td><td>LOCAL_PREF</td><td>Well-known discretionary</td><td>iBGP only; must not be sent to an eBGP peer</td></tr>
+            <tr><td class="num-col">6</td><td>ATOMIC_AGGREGATE</td><td>Well-known discretionary</td><td>Zero length. Flags that a less specific route was chosen over more specifics</td></tr>
+            <tr><td class="num-col">7</td><td>AGGREGATOR</td><td>Optional transitive</td><td>ASN and router ID of the aggregating router</td></tr>
+            <tr><td class="num-col">8</td><td>COMMUNITY</td><td>Optional transitive</td><td>RFC 1997. 32-bit values</td></tr>
+            <tr><td class="num-col">9</td><td>ORIGINATOR_ID</td><td>Optional non-transitive</td><td>Route reflection loop prevention</td></tr>
+            <tr><td class="num-col">10</td><td>CLUSTER_LIST</td><td>Optional non-transitive</td><td>Route reflection loop prevention</td></tr>
+            <tr><td class="num-col">14</td><td>MP_REACH_NLRI</td><td>Optional non-transitive</td><td>MP-BGP reachable prefixes, with AFI/SAFI and next hop</td></tr>
+            <tr><td class="num-col">15</td><td>MP_UNREACH_NLRI</td><td>Optional non-transitive</td><td>MP-BGP withdrawals</td></tr>
+            <tr><td class="num-col">16</td><td>EXTENDED COMMUNITIES</td><td>Optional transitive</td><td>64-bit. Route targets, site of origin, link bandwidth</td></tr>
+            <tr><td class="num-col">17</td><td>AS4_PATH</td><td>Optional transitive</td><td>Real 4-byte path across 2-byte-only speakers</td></tr>
+            <tr><td class="num-col">18</td><td>AS4_AGGREGATOR</td><td>Optional transitive</td><td>4-byte counterpart of AGGREGATOR</td></tr>
+            <tr><td class="num-col">22</td><td>PMSI_TUNNEL</td><td>Optional transitive</td><td>Multicast VPN tunnel signalling</td></tr>
+            <tr><td class="num-col">23</td><td>TUNNEL_ENCAP</td><td>Optional transitive</td><td>Tunnel encapsulation parameters</td></tr>
+            <tr><td class="num-col">26</td><td>AIGP</td><td>Optional non-transitive</td><td>Accumulated IGP metric, RFC 7311</td></tr>
+            <tr><td class="num-col">32</td><td>LARGE_COMMUNITY</td><td>Optional transitive</td><td>RFC 8092. Three 32-bit fields</td></tr>
+            <tr><td class="num-col">35</td><td>OTC</td><td>Optional transitive</td><td>Only To Customer, RFC 9234. Automatic route-leak prevention</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>You can see the raw attributes on the wire with a capture, or on some platforms with <code>show bgp ipv4 unicast &lt;prefix&gt; detail</code>. Unknown ones usually surface as "unknown attribute 0x..." in debug output.</p>
+    </div>
+
+    <div class="term">
       <h3>AS_PATH</h3>
       <p>An ordered list of the ASes traversed, prepended on every eBGP advertisement. Segment types: <code>AS_SEQUENCE</code> (ordered, the normal case), <code>AS_SET</code> (unordered, produced by aggregation with <code>as-set</code>), and the confederation variants <code>AS_CONFED_SEQUENCE</code> and <code>AS_CONFED_SET</code>.</p>
       <p>Loop prevention: if a router sees its own ASN in the received AS_PATH, it discards the route. Two commands override this, both of which should make you nervous:</p>
@@ -752,6 +809,104 @@ bgp bestpath med missing-as-worst</code></pre>
       <p>Default 0 for learned routes, 32768 for locally originated. Highest wins, and it is checked <em>first</em> in best-path. It is never advertised anywhere.</p>
 <pre><code>neighbor 203.0.113.1 weight 100</code></pre>
       <p>Because it is purely local, weight is excellent for a quick fix on one router and dangerous as a design tool &mdash; it creates an inconsistency the rest of the AS cannot see. Prefer LOCAL_PREF for anything intended to be a policy.</p>
+    </div>
+
+    <div class="term">
+      <h3>ORIGIN</h3>
+      <p>Three values, preferred in this order at step 5: <strong>IGP (i)</strong> &lt; <strong>EGP (e)</strong> &lt; <strong>Incomplete (?)</strong>. Set automatically by how the route entered BGP &mdash; <code>network</code> gives IGP, redistribution gives Incomplete, and EGP is a historical artefact you will essentially never see.</p>
+      <p>It can be set explicitly, which is occasionally the cleanest tie-breaker when you want to de-preference a path without touching AS_PATH or LOCAL_PREF:</p>
+<pre><code>route-map DEPREF permit 10
+ set origin incomplete</code></pre>
+      <div class="tip"><b>A quiet cause of surprise</b>Routes you redistribute carry Incomplete and lose at step 5 against an otherwise identical route someone else originated with <code>network</code>. If your own prefix is being reached via a longer path, check the origin codes on both.</div>
+    </div>
+
+    <div class="term">
+      <h3>ATOMIC_AGGREGATE and AGGREGATOR</h3>
+      <p><strong>ATOMIC_AGGREGATE</strong> is a zero-length flag meaning "a less specific route was selected over more specific ones, and some path information was lost". It warns downstream routers that the AS_PATH may not list every AS actually traversed.</p>
+      <p><strong>AGGREGATOR</strong> carries the ASN and router ID of whoever performed the aggregation &mdash; useful for tracing where a summary was created.</p>
+      <p>Using <code>as-set</code> on your aggregate avoids setting ATOMIC_AGGREGATE, because the AS_SET preserves the path information instead of discarding it.</p>
+<pre><code>R1# show bgp ipv4 unicast 192.0.0.0/14
+  65001, (aggregated by 65001 10.0.0.1), (atomic-aggregate)
+    0.0.0.0 from 0.0.0.0 (10.0.0.1)
+      Origin IGP, localpref 100, weight 32768, valid, aggregated, local, best</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>AIGP <span class="exp">Accumulated IGP metric, RFC 7311</span></h3>
+      <p>Carries an accumulated IGP cost across BGP, so that a path's true end-to-end metric can be compared rather than only the local IGP distance to the next hop. It inserts into best-path <em>between steps 3 and 4</em> &mdash; after locally originated, before AS_PATH.</p>
+      <p>The use case is a single administrative domain split into multiple ASes or regions, where you want BGP to behave like one large IGP. Seamless MPLS designs and some SR deployments depend on it.</p>
+<pre><code>router bgp 65001
+ address-family ipv4 unicast
+  bgp bestpath aigp ignore          <span class="cmt">! opt out of AIGP comparison</span>
+ !
+ neighbor 10.0.0.2 aigp
+ neighbor 10.0.0.2 aigp send-cost-community 100 poi igp-cost
+!
+route-map SET-AIGP permit 10
+ set aigp-metric 500
+ set aigp-metric igp-cost          <span class="cmt">! derive from the IGP metric</span></code></pre>
+      <div class="gotcha"><b>AIGP is domain-scoped</b>It is optional non-transitive and must only be used within a trusted domain. Accepting AIGP from an external peer would let them manipulate your path selection at a step above AS_PATH. Never enable it on an internet-facing eBGP session.</div>
+    </div>
+
+    <div class="term">
+      <h3>Extended communities</h3>
+      <p>64 bits rather than 32, structured as a type field plus a value. The extra structure is what lets them carry meaning beyond an opaque tag.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Type</th><th>Carries</th><th>Used by</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Route Target (RT)</strong></td><td>Which VRFs import this route</td><td>MPLS L3VPN, EVPN</td></tr>
+            <tr><td><strong>Site of Origin (SoO)</strong></td><td>Which site originated it</td><td>L3VPN loop prevention on multihomed sites</td></tr>
+            <tr><td><strong>Link Bandwidth</strong></td><td>Bandwidth of the link to the next hop</td><td>Unequal-cost load balancing</td></tr>
+            <tr><td><strong>OSPF domain ID / router ID</strong></td><td>PE-CE OSPF continuity</td><td>L3VPN with OSPF as the PE-CE protocol</td></tr>
+            <tr><td><strong>Encapsulation</strong></td><td>Tunnel type</td><td>EVPN, VXLAN</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code>route-map SET-EXT permit 10
+ set extcommunity rt 65001:100 additive
+ set extcommunity soo 65001:500
+!
+ip extcommunity-list standard RT-100 permit rt 65001:100
+route-map MATCH-EXT permit 10
+ match extcommunity RT-100
+!
+neighbor 10.0.0.3 send-community extended</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Link bandwidth extended community</h3>
+      <p>Worth knowing separately because it enables something nothing else does: <strong>unequal-cost</strong> load balancing in BGP. Normally multipath splits traffic evenly; with the link bandwidth community, traffic is shared in proportion to the advertised bandwidth of each path.</p>
+<pre><code>router bgp 65001
+ address-family ipv4 unicast
+  maximum-paths 4
+  bgp dmzlink-bw                         <span class="cmt">! enable bandwidth-weighted sharing</span>
+ !
+ neighbor 203.0.113.1 dmzlink-bw         <span class="cmt">! advertise this link's bandwidth</span>
+!
+<span class="cmt">! or set it explicitly</span>
+route-map SET-BW permit 10
+ set extcommunity bandwidth 1000000      <span class="cmt">! kbps</span></code></pre>
+      <p>With a 10G link to one provider and a 1G to another, traffic splits roughly 10:1 instead of 1:1. The community is non-transitive by convention, so it is meaningful only within your own AS or between you and a directly cooperating peer.</p>
+    </div>
+
+    <div class="term">
+      <h3>Large communities <span class="exp">RFC 8092</span></h3>
+      <p>Standard communities are 32 bits, conventionally split as <code>ASN:value</code> with 16 bits each. A 4-byte ASN consumes the whole field, leaving nowhere for the value &mdash; which is precisely the problem large communities solve.</p>
+      <p>Three 32-bit fields: <strong>Global Administrator : Function : Parameter</strong>.</p>
+<pre><code>route-map TAG permit 10
+ set large-community 4200000001:1:65100 additive
+!
+ip large-community-list standard LC-1 permit 4200000001:1:65100
+route-map MATCH-LC permit 10
+ match large-community LC-1
+!
+neighbor 203.0.113.1 send-community large
+<span class="cmt">! or all three kinds at once</span>
+neighbor 203.0.113.1 send-community both large
+
+show bgp ipv4 unicast large-community 4200000001:1:65100</code></pre>
+      <div class="tip"><b>If your AS is 4-byte, use large communities from day one</b>Retrofitting a community scheme after you have built policy around a cramped 32-bit encoding is painful. Providers increasingly publish large-community equivalents of their standard community lists.</div>
     </div>
   </div>
 </section>
@@ -1050,50 +1205,153 @@ Paths: (2 available, best #1, table default)
     </div>
 
     <div class="term">
-      <h3>Aggregation</h3>
-<pre><code><span class="cmt">! advertise the aggregate AND the components</span>
-aggregate-address 192.0.0.0 255.252.0.0
-
-<span class="cmt">! advertise only the aggregate</span>
-aggregate-address 192.0.0.0 255.252.0.0 summary-only
-
-<span class="cmt">! aggregate, plus selected components via a suppress-map</span>
-aggregate-address 192.0.0.0 255.252.0.0 suppress-map ALLOW-SOME
-
-<span class="cmt">! keep AS_PATH information from the components</span>
-aggregate-address 192.0.0.0 255.252.0.0 summary-only as-set
-
-<span class="cmt">! set attributes on the aggregate itself</span>
-aggregate-address 192.0.0.0 255.252.0.0 summary-only attribute-map SET-COMM</code></pre>
-      <p>An aggregate is only generated if <strong>at least one more-specific component exists in the BGP table</strong>. If every component is withdrawn, the aggregate disappears too &mdash; which is usually the desired behaviour, but surprises people who expect it to be static.</p>
-      <p><code>as-set</code> builds an AS_SET from the component paths, preserving loop protection. Without it the aggregate carries only your own ASN, and a route you learned from AS 65100 could be advertised back to AS 65100 inside the aggregate. The downside is that any component flap changes the AS_SET and so re-advertises the aggregate, costing stability.</p>
+      <h3>Aggregation &mdash; the full option set</h3>
+      <p>Every modifier to <code>aggregate-address</code> answers a different question. Getting them straight is worth the five minutes.</p>
+      <div class="tablewrap">
+        <table>
+          <caption>What each keyword controls</caption>
+          <thead><tr><th>Keyword</th><th>Question it answers</th><th>Effect</th></tr></thead>
+          <tbody>
+            <tr><td><em>(none)</em></td><td>&mdash;</td><td>Advertise the aggregate <strong>and</strong> every component</td></tr>
+            <tr><td><code>summary-only</code></td><td>Which components do I hide?</td><td>Suppress <strong>all</strong> components; advertise only the aggregate</td></tr>
+            <tr><td><code>suppress-map MAP</code></td><td>Which components do I hide?</td><td>Suppress only components the map <strong>permits</strong>. The rest keep being advertised</td></tr>
+            <tr><td><code>advertise-map MAP</code></td><td>Which components build the aggregate's attributes?</td><td>Only the matched components contribute to AS_SET and communities</td></tr>
+            <tr><td><code>attribute-map MAP</code></td><td>What attributes does the aggregate carry?</td><td>Set attributes on the aggregate itself</td></tr>
+            <tr><td><code>as-set</code></td><td>Do I preserve path information?</td><td>Build AS_SET from component paths; avoids ATOMIC_AGGREGATE</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="gotcha"><b>Two different advertise-maps</b><code>aggregate-address ... advertise-map</code> selects which <em>components</em> contribute attributes to the aggregate. <code>neighbor ... advertise-map ... non-exist-map</code> is conditional advertisement and decides <em>whether</em> to advertise at all. Same keyword, unrelated features. This trips up people in exams and in production.</div>
     </div>
 
     <div class="term">
-      <h3>Default routes</h3>
-<pre><code><span class="cmt">! send a default to one neighbour, unconditionally</span>
-neighbor 10.0.0.3 default-originate
+      <h3>Aggregation &mdash; worked examples</h3>
+<pre><code><span class="cmt">! 1. Aggregate plus all components (rarely what you want to the internet)</span>
+aggregate-address 192.0.0.0 255.252.0.0
 
-<span class="cmt">! send it only if a condition is met</span>
-neighbor 10.0.0.3 default-originate route-map HAVE-INTERNET
+<span class="cmt">! 2. Aggregate only — the normal case</span>
+aggregate-address 192.0.0.0 255.252.0.0 summary-only
 
-<span class="cmt">! inject 0.0.0.0/0 into BGP if it exists in the RIB</span>
-default-information originate</code></pre>
-      <p><code>default-originate</code> does not require 0.0.0.0/0 to exist locally; <code>default-information originate</code> does. The conditional form is the useful one &mdash; advertise a default only while you actually have a working path to the internet.</p>
+<span class="cmt">! 3. Hide everything EXCEPT one site you want visible separately</span>
+ip prefix-list HIDE-THESE seq 5 permit 192.0.1.0/24
+ip prefix-list HIDE-THESE seq 10 permit 192.0.2.0/24
+ip prefix-list HIDE-THESE seq 15 permit 192.0.3.0/24
+<span class="cmt">! 192.0.0.0/24 is NOT listed, so it stays advertised</span>
+route-map SUPPRESS-MOST permit 10
+ match ip address prefix-list HIDE-THESE
+!
+aggregate-address 192.0.0.0 255.252.0.0 suppress-map SUPPRESS-MOST
+
+<span class="cmt">! 4. Preserve AS_PATH information from components</span>
+aggregate-address 192.0.0.0 255.252.0.0 summary-only as-set
+
+<span class="cmt">! 5. Tag the aggregate and set its origin</span>
+route-map AGG-ATTRS permit 10
+ set community 65001:3000 additive
+ set origin igp
+!
+aggregate-address 192.0.0.0 255.252.0.0 summary-only attribute-map AGG-ATTRS
+
+<span class="cmt">! 6. Only let certain components shape the AS_SET</span>
+route-map CONTRIBUTORS permit 10
+ match ip address prefix-list TRUSTED-COMPONENTS
+!
+aggregate-address 192.0.0.0 255.252.0.0 summary-only as-set advertise-map CONTRIBUTORS</code></pre>
+      <p>An aggregate is generated only if <strong>at least one more-specific component exists in the BGP table</strong>. If every component is withdrawn, the aggregate disappears too. See scenario 10 for how that bites, and for the Null0 anchor that fixes it.</p>
+      <p><code>as-set</code> preserves loop protection: without it, the aggregate carries only your own ASN, so a route you learned from AS 65100 could be advertised back to AS 65100 inside the summary. The cost is stability &mdash; any component flap changes the AS_SET and re-advertises the aggregate.</p>
+<pre><code>R1# show bgp ipv4 unicast | include 192\.0
+s>  192.0.1.0/24     10.0.0.5     0    100      0 i     <span class="cmt">! s = suppressed</span>
+s>  192.0.2.0/24     10.0.0.6     0    100      0 i
+*>  192.0.0.0/14     0.0.0.0               32768 i     <span class="cmt">! the aggregate</span></code></pre>
+      <p>The <code>s</code> flag in the first column marks a suppressed component. If you expect suppression and do not see <code>s</code>, your suppress-map is not matching.</p>
+    </div>
+
+    <div class="term">
+      <h3>unsuppress-map &mdash; leaking a component to one neighbour</h3>
+      <p>You summarise to the internet, but one specific peer needs to see a more specific prefix &mdash; a backup provider who must prefer the direct path, or a partner reaching one site. <code>summary-only</code> suppressed it globally; <code>unsuppress-map</code> re-advertises it to a chosen neighbour only.</p>
+<pre><code>router bgp 65001
+ address-family ipv4 unicast
+  aggregate-address 192.0.0.0 255.252.0.0 summary-only
+  !
+  <span class="cmt">! everyone gets the /14 only</span>
+  <span class="cmt">! except ISP-B, who also gets the one site that homes to them</span>
+  neighbor 198.51.100.1 unsuppress-map LEAK-SITE-3
+!
+ip prefix-list SITE-3 seq 5 permit 192.0.3.0/24
+route-map LEAK-SITE-3 permit 10
+ match ip address prefix-list SITE-3</code></pre>
+<pre><code>R1# show bgp ipv4 unicast neighbors 203.0.113.1 advertised-routes | include 192\.0
+*>  192.0.0.0/14     203.0.113.2      0   32768 i
+
+R1# show bgp ipv4 unicast neighbors 198.51.100.1 advertised-routes | include 192\.0
+*>  192.0.0.0/14     198.51.100.2     0   32768 i
+*>  <span class="hl">192.0.3.0/24</span>     198.51.100.2     0   32768 i</code></pre>
+      <div class="tip"><b>The three-way distinction</b><code>summary-only</code> suppresses globally. <code>suppress-map</code> chooses <em>which</em> components to suppress globally. <code>unsuppress-map</code> un-does suppression for <em>one neighbour</em>. They compose: summarise with <code>summary-only</code>, then selectively leak per peer with <code>unsuppress-map</code>. That combination is the standard multihoming pattern.</div>
+    </div>
+
+    <div class="term">
+      <h3>Default route generation &mdash; four methods</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Method</th><th>Needs 0.0.0.0/0 locally?</th><th>Scope</th><th>Use when</th></tr></thead>
+          <tbody>
+            <tr><td><code>neighbor X default-originate</code></td><td>No</td><td>One neighbour</td><td>Feeding a default to internal routers or a customer</td></tr>
+            <tr><td><code>neighbor X default-originate route-map M</code></td><td>No</td><td>One neighbour, conditional</td><td>Only advertise while you actually have internet</td></tr>
+            <tr><td><code>default-information originate</code></td><td><strong>Yes</strong>, plus redistribution</td><td>All neighbours</td><td>Injecting a default learned from elsewhere into BGP</td></tr>
+            <tr><td><code>network 0.0.0.0</code></td><td><strong>Yes</strong></td><td>All neighbours</td><td>Explicit origination of a default you really own</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code><span class="cmt">! 1. Unconditional, to internal routers</span>
+router bgp 65001
+ address-family ipv4 unicast
+  neighbor 10.0.0.3 default-originate
+
+<span class="cmt">! 2. Conditional — only while we can actually reach the internet</span>
+<span class="cmt">!    The route-map MATCHES against the local routing table.</span>
+<span class="cmt">!    If nothing matches, the default is withdrawn.</span>
+ip prefix-list INTERNET-ALIVE seq 5 permit 8.8.8.0/24
+route-map HAVE-INTERNET permit 10
+ match ip address prefix-list INTERNET-ALIVE
+!
+ neighbor 10.0.0.3 default-originate route-map HAVE-INTERNET
+
+<span class="cmt">! 3. Inject a default that exists in the RIB</span>
+ip route 0.0.0.0 0.0.0.0 203.0.113.1
+router bgp 65001
+ address-family ipv4 unicast
+  default-information originate
+  redistribute static route-map ONLY-DEFAULT
+
+<span class="cmt">! 4. Explicit network statement</span>
+  network 0.0.0.0</code></pre>
+      <div class="gotcha"><b>Conditional default is the one to use internally</b>An unconditional <code>default-originate</code> keeps advertising 0.0.0.0/0 to your core even after both provider sessions have dropped. Internal routers then black-hole everything at the edge router instead of failing over. The route-map form costs one extra line and removes that failure mode entirely.</div>
+      <p>Note the asymmetry: <code>default-originate</code> ignores whether a default exists locally, while <code>default-information originate</code> requires one and also requires that redistribution bring it in. That difference accounts for most "why isn't my default being advertised" tickets.</p>
     </div>
 
     <div class="term">
       <h3>Conditional advertisement</h3>
-      <p>Advertise a prefix only when some other prefix is <em>absent</em> &mdash; the classic primary/backup pattern that avoids relying on the other provider to withdraw anything.</p>
+      <p>Advertise a prefix only when some other prefix is <em>absent</em> &mdash; the primary/backup pattern that does not depend on the other provider withdrawing anything.</p>
 <pre><code>router bgp 65001
  address-family ipv4 unicast
   neighbor 198.51.100.1 advertise-map ADVERTISE-BACKUP non-exist-map CHECK-PRIMARY
 !
+<span class="cmt">! WHAT to advertise when the condition fires</span>
+ip prefix-list OUR-PREFIX seq 5 permit 192.0.2.0/24
 route-map ADVERTISE-BACKUP permit 10
  match ip address prefix-list OUR-PREFIX
+!
+<span class="cmt">! WHAT to watch for. While this is present, stay silent.</span>
+ip prefix-list PRIMARY-LEARNED seq 5 permit 10.99.99.0/24
 route-map CHECK-PRIMARY permit 10
  match ip address prefix-list PRIMARY-LEARNED</code></pre>
-      <p>While the prefix matched by <code>CHECK-PRIMARY</code> is present in the BGP table, nothing is advertised to ISP-B. When it disappears, the backup advertisement starts. Verify with <code>show bgp ipv4 unicast neighbors 198.51.100.1 | include Condition</code>.</p>
+      <p>While a prefix matching <code>CHECK-PRIMARY</code> exists in the BGP table, nothing is advertised to ISP-B. When it disappears &mdash; because the primary path is gone &mdash; the backup advertisement starts.</p>
+<pre><code>R1# show bgp ipv4 unicast neighbors 198.51.100.1 | include Condition
+  Condition-map CHECK-PRIMARY, Advertise-map ADVERTISE-BACKUP, status: <span class="hl">Withdraw</span>
+<span class="cmt">! status Withdraw = condition present, not advertising</span>
+<span class="cmt">! status Advertise = condition gone, advertising the backup</span></code></pre>
+      <div class="tip"><b>Pick a sentinel you trust</b>The watched prefix should be something that genuinely disappears when the primary path fails &mdash; a prefix originated only by the primary provider, or a loopback behind the primary link. Watching a prefix that is reachable via both providers means the condition never fires.</div>
+      <p>There is also an <code>exist-map</code> variant: advertise <em>while</em> the watched prefix is present, rather than while it is absent. Same syntax, inverted logic.</p>
     </div>
   </div>
 </section>
@@ -1120,6 +1378,34 @@ route-map CHECK-PRIMARY permit 10
         </table>
       </div>
       <p>Only one of prefix-list, distribute-list and filter-list may be applied per direction per neighbor, but a route-map can be combined with them &mdash; and a route-map can match a prefix-list internally, which is the cleanest pattern.</p>
+    </div>
+
+    <div class="term">
+      <h3>Distribute-list</h3>
+      <p>The original filtering mechanism, using an ACL instead of a prefix-list. Still appears in older configurations, and worth understanding because its <em>extended</em> ACL form behaves in a way nobody guesses correctly.</p>
+<pre><code><span class="cmt">! Standard ACL form — matches the NETWORK ADDRESS only.</span>
+<span class="cmt">! Cannot distinguish 192.0.2.0/24 from 192.0.2.0/26.</span>
+access-list 10 permit 192.0.2.0 0.0.0.255
+!
+router bgp 65001
+ address-family ipv4 unicast
+  neighbor 203.0.113.1 distribute-list 10 out</code></pre>
+      <div class="gotcha"><b>The extended ACL form is not what it looks like</b>In a BGP distribute-list, an extended ACL does <strong>not</strong> mean "source and destination". The <em>source</em> fields match the network address, and the <em>destination</em> fields match the subnet mask. It is a two-part prefix matcher wearing an ACL's clothes.</div>
+<pre><code><span class="cmt">! Read this as: network 192.0.2.0 exactly, mask 255.255.255.0 exactly</span>
+<span class="cmt">!              ^^^^ source ^^^^        ^^^^ destination ^^^^</span>
+access-list 100 permit ip host 192.0.2.0 host 255.255.255.0
+
+<span class="cmt">! Any prefix in 192.0.0.0/16 with a /24 mask</span>
+access-list 101 permit ip 192.0.0.0 0.0.255.255 host 255.255.255.0
+
+<span class="cmt">! Any prefix in 10.0.0.0/8 with a mask from /24 to /32</span>
+<span class="cmt">! (the destination wildcard 0.0.0.255 lets the last octet vary)</span>
+access-list 102 permit ip 10.0.0.0 0.255.255.255 255.255.255.0 0.0.0.255
+
+!
+ neighbor 203.0.113.1 distribute-list 100 out</code></pre>
+      <p>The prefix-list equivalents are <code>permit 192.0.2.0/24</code>, <code>permit 192.0.0.0/16 ge 24 le 24</code> and <code>permit 10.0.0.0/8 ge 24</code> &mdash; obviously clearer, which is why prefix-lists won.</p>
+      <div class="tip"><b>When you still meet it</b>Migrating an old configuration, or on a platform where someone built the policy years ago. Translate to prefix-lists when you touch it, and verify the translation with <code>show bgp ipv4 unicast neighbors X advertised-routes</code> before and after &mdash; mis-translating the mask semantics is an easy way to leak.</div>
     </div>
 
     <div class="term">
@@ -1180,6 +1466,156 @@ route-map FROM-ISP-A deny 30
  match ip address prefix-list BOGONS</code></pre>
       <p>Sequences are evaluated in order and processing stops at the first match. A <code>permit</code> clause with no <code>match</code> matches everything. <strong>There is an implicit deny at the end</strong> &mdash; a route-map applied inbound that only matches your customer prefixes will discard every other route on the internet.</p>
       <div class="gotcha"><b>The implicit deny catches everyone</b>Apply a route-map to a neighbor and your prefix count can drop to near zero instantly. Always end with an explicit <code>permit</code> clause unless you genuinely mean to filter everything else.</div>
+    </div>
+
+    <div class="term">
+      <h3>match &mdash; the full set</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Clause</th><th>Matches</th></tr></thead>
+          <tbody>
+            <tr><td><code>match ip address prefix-list NAME</code></td><td>The prefix. The default choice</td></tr>
+            <tr><td><code>match ip address ACL</code></td><td>The prefix via an ACL. Legacy</td></tr>
+            <tr><td><code>match ip next-hop ACL | prefix-list NAME</code></td><td>The NEXT_HOP attribute. Useful for policy keyed on which edge router learned it</td></tr>
+            <tr><td><code>match ip route-source ACL</code></td><td>The peer that advertised it, which can differ from the next hop</td></tr>
+            <tr><td><code>match as-path ACL</code></td><td>AS_PATH regular expression</td></tr>
+            <tr><td><code>match community LIST [exact-match]</code></td><td>Standard communities. <code>exact-match</code> requires the set to match precisely, not just contain</td></tr>
+            <tr><td><code>match extcommunity LIST</code></td><td>Extended communities such as route targets</td></tr>
+            <tr><td><code>match large-community LIST</code></td><td>Large communities</td></tr>
+            <tr><td><code>match local-preference VALUE</code></td><td>LOCAL_PREF</td></tr>
+            <tr><td><code>match metric VALUE</code></td><td>MED</td></tr>
+            <tr><td><code>match origin igp | egp | incomplete</code></td><td>ORIGIN</td></tr>
+            <tr><td><code>match route-type internal | external</code></td><td>iBGP vs eBGP learned</td></tr>
+            <tr><td><code>match policy-list NAME</code></td><td>A reusable group of match clauses</td></tr>
+            <tr><td><code>match rpki valid | invalid | not-found</code></td><td>Origin validation state</td></tr>
+            <tr><td><code>match tag VALUE</code></td><td>Route tag, typically from redistribution</td></tr>
+            <tr><td><code>match source-protocol</code></td><td>Which protocol the route came from, in redistribution</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Multiple <code>match</code> statements of <strong>different</strong> types in one clause are ANDed. Multiple values within <strong>one</strong> match statement are ORed. So a clause matching a prefix-list and a community requires both; a clause matching two communities in one statement requires either.</p>
+    </div>
+
+    <div class="term">
+      <h3>set &mdash; the full set</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Clause</th><th>Effect</th></tr></thead>
+          <tbody>
+            <tr><td><code>set local-preference VALUE</code></td><td>LOCAL_PREF. The main outbound lever</td></tr>
+            <tr><td><code>set weight VALUE</code></td><td>Cisco weight, local to this router</td></tr>
+            <tr><td><code>set metric VALUE</code></td><td>MED. Also accepts <code>+N</code> and <code>-N</code> to adjust rather than replace</td></tr>
+            <tr><td><code>set metric-type internal</code></td><td>Set MED to the IGP metric of the next hop, dynamically</td></tr>
+            <tr><td><code>set origin igp | egp | incomplete</code></td><td>ORIGIN</td></tr>
+            <tr><td><code>set as-path prepend ASN [ASN...]</code></td><td>Prepend specific ASNs</td></tr>
+            <tr><td><code>set as-path prepend last-as N</code></td><td>Prepend the neighbouring AS N times. Handy in provider policy</td></tr>
+            <tr><td><code>set community VALUE [additive]</code></td><td>Without <code>additive</code> it <strong>replaces</strong> existing communities</td></tr>
+            <tr><td><code>set community none</code></td><td>Strip all communities</td></tr>
+            <tr><td><code>set comm-list LIST delete</code></td><td>Remove only the communities matching the list. The surgical option</td></tr>
+            <tr><td><code>set extcommunity rt | soo | bandwidth VALUE</code></td><td>Extended communities</td></tr>
+            <tr><td><code>set large-community VALUE [additive]</code></td><td>Large communities</td></tr>
+            <tr><td><code>set ip next-hop ADDRESS</code></td><td>Rewrite the next hop explicitly</td></tr>
+            <tr><td><code>set ip next-hop peer-address</code></td><td>Use the peering address. Inbound: their address; outbound: mine</td></tr>
+            <tr><td><code>set ip next-hop self</code></td><td>Next-hop-self, but conditional on the route-map matching</td></tr>
+            <tr><td><code>set ip next-hop unchanged</code></td><td>Preserve the next hop across an eBGP boundary. Used in route-server designs</td></tr>
+            <tr><td><code>set aigp-metric VALUE | igp-cost</code></td><td>AIGP</td></tr>
+            <tr><td><code>set dampening HL REUSE SUPPRESS MAX</code></td><td>Per-prefix dampening parameters</td></tr>
+            <tr><td><code>set traffic-index N</code></td><td>BGP policy accounting bucket</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tip"><b>set comm-list delete is the one people miss</b>To strip a provider's communities while keeping your own, <code>set community none</code> is too blunt and omitting it keeps everything. <code>set comm-list delete</code> removes exactly the ones matching a list. It is the correct tool for sanitising communities on ingress from an eBGP peer.</div>
+<pre><code>ip community-list standard STRIP-THEIRS permit 65100:100
+ip community-list standard STRIP-THEIRS permit 65100:200
+!
+route-map CLEAN-INBOUND permit 10
+ set comm-list STRIP-THEIRS delete
+ set community 65001:1001 additive
+!
+neighbor 203.0.113.1 route-map CLEAN-INBOUND in</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>route-map continue</h3>
+      <p>Normally processing stops at the first matching clause. <code>continue</code> carries on to a later clause, so several sets can be applied to one route without duplicating match logic.</p>
+<pre><code>route-map LAYERED permit 10
+ match ip address prefix-list CUSTOMER
+ set community 65001:2000 additive
+ <span class="hl">continue 30</span>
+!
+route-map LAYERED permit 20
+ match ip address prefix-list PEER
+ set community 65001:3000 additive
+ <span class="hl">continue 30</span>
+!
+route-map LAYERED permit 30
+ set local-preference 150
+ set origin igp</code></pre>
+      <p>Both customer and peer routes get their own community <em>and</em> the common local-preference, without repeating the local-preference in every clause. <code>continue</code> with no argument moves to the next clause in sequence.</p>
+      <div class="gotcha"><b>continue makes route-maps harder to read</b>It is genuinely useful for layered policy, but a route-map with several <code>continue</code> statements is difficult for the next engineer to trace. Comment every one, and prefer a flatter structure where the duplication is small.</div>
+    </div>
+
+    <div class="term">
+      <h3>Policy lists</h3>
+      <p>A reusable bundle of <code>match</code> clauses. Define a common matching condition once and reference it from several route-maps.</p>
+<pre><code>ip policy-list CUSTOMER-ROUTES permit
+ match ip address prefix-list CUSTOMER-SPACE
+ match community CUST-COMM
+!
+route-map INBOUND-A permit 10
+ match policy-list CUSTOMER-ROUTES
+ set local-preference 300
+!
+route-map INBOUND-B permit 10
+ match policy-list CUSTOMER-ROUTES
+ set local-preference 250</code></pre>
+      <p>Matches inside a policy list are ANDed, as they would be inside a route-map clause. Referencing several policy lists in one clause ORs them.</p>
+    </div>
+
+    <div class="term">
+      <h3>table-map</h3>
+      <p>Applied between the BGP table and the RIB. It can modify attributes as routes are installed, or &mdash; with the <code>filter</code> keyword &mdash; prevent installation entirely while keeping the route in BGP for onward advertisement.</p>
+<pre><code>router bgp 65001
+ address-family ipv4 unicast
+  table-map SET-INDEX
+  table-map FILTER-RIB filter        <span class="cmt">! keep in BGP, do not install in RIB</span>
+!
+route-map FILTER-RIB deny 10
+ match ip address prefix-list DO-NOT-INSTALL
+route-map FILTER-RIB permit 20</code></pre>
+      <p>The filter form matters on a route server or a route reflector that should propagate routes without forwarding along them itself. It is also used to keep a large table out of a FIB that cannot hold it, while still reflecting to clients.</p>
+    </div>
+
+    <div class="term">
+      <h3>ORF &mdash; outbound route filtering</h3>
+      <p>Push your inbound prefix-list <em>to the peer</em>, so they filter before transmitting. Saves bandwidth, memory and convergence time &mdash; you never receive the routes at all.</p>
+<pre><code>router bgp 65001
+ neighbor 203.0.113.1 capability orf prefix-list both
+ address-family ipv4 unicast
+  neighbor 203.0.113.1 prefix-list ONLY-WHAT-I-NEED in
+!
+<span class="cmt">! push the current filter to the peer</span>
+clear bgp ipv4 unicast 203.0.113.1 in prefix-filter
+
+show bgp ipv4 unicast neighbors 203.0.113.1 | include ORF
+show bgp ipv4 unicast neighbors 203.0.113.1 received prefix-filter</code></pre>
+      <p><code>both</code> means send and receive. The capability must be supported on both sides; many providers do not offer it, so treat it as an optimisation to ask about rather than to depend on.</p>
+    </div>
+
+    <div class="term">
+      <h3>Where each filter applies, and in what order</h3>
+      <p>All configured filters must pass &mdash; it is an AND, not a first-match. So the order rarely changes whether a route survives. It matters only when a route-map <em>sets</em> an attribute and another filter matches on that attribute.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Direction</th><th>Commonly documented order</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Inbound</strong></td><td>route-map &rarr; filter-list &rarr; prefix-list / distribute-list</td></tr>
+            <tr><td><strong>Outbound</strong></td><td>prefix-list / distribute-list &rarr; filter-list &rarr; route-map</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="gotcha"><b>Do not build a design on this order</b>The documented sequence has varied between releases and platforms, and it is widely misquoted. If your policy depends on one filter seeing the output of another, restructure it into a single route-map instead &mdash; where the order is explicit and visible. Verify any assumption with <code>show bgp ipv4 unicast neighbors X advertised-routes</code> on your actual code.</div>
+      <p>A practical rule: use <strong>one route-map per neighbour per direction</strong>, with prefix-lists and AS-path lists referenced from inside it. You then have a single ordered document describing the policy, rather than three independent filters whose interaction you have to reason about.</p>
     </div>
 
     <div class="term">
