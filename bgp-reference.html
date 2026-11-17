@@ -1,0 +1,2320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BGP Deep Dive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: fixed left index, scrolling reference column, live filter across terms, scenarios and table rows. */
+:root{
+  --bg:#f5f7f9; --surface:#ffffff; --surface-2:#eceff4; --surface-3:#e3e8ee;
+  --ink:#141e28; --ink-2:#4e6070; --ink-3:#7c8d9b;
+  --line:#d9e0e7; --line-strong:#c3cdd6;
+  --accent:#0d7a84; --accent-ink:#0a5e66; --accent-soft:rgba(13,122,132,.10);
+  --amber:#9a5c08; --amber-soft:rgba(154,92,8,.10);
+  --good:#1a7347; --good-soft:rgba(26,115,71,.09);
+  --crit:#a92a20; --crit-soft:rgba(169,42,32,.09);
+  --font-display:"IBM Plex Serif",Georgia,"Times New Roman",serif;
+  --font-body:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d141a; --surface:#141d25; --surface-2:#1a242d; --surface-3:#212d37;
+    --ink:#e4ecf2; --ink-2:#9db0be; --ink-3:#6f8393;
+    --line:#253239; --line-strong:#334450;
+    --accent:#3ab8c0; --accent-ink:#5fd0d6; --accent-soft:rgba(58,184,192,.14);
+    --amber:#dda550; --amber-soft:rgba(221,165,80,.13);
+    --good:#48c184; --good-soft:rgba(72,193,132,.12);
+    --crit:#ef7065; --crit-soft:rgba(239,112,101,.13);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d141a; --surface:#141d25; --surface-2:#1a242d; --surface-3:#212d37;
+  --ink:#e4ecf2; --ink-2:#9db0be; --ink-3:#6f8393;
+  --line:#253239; --line-strong:#334450;
+  --accent:#3ab8c0; --accent-ink:#5fd0d6; --accent-soft:rgba(58,184,192,.14);
+  --amber:#dda550; --amber-soft:rgba(221,165,80,.13);
+  --good:#48c184; --good-soft:rgba(72,193,132,.12);
+  --crit:#ef7065; --crit-soft:rgba(239,112,101,.13);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.6}
+h1,h2,h3{font-family:var(--font-display);text-wrap:balance;margin:0}
+a{color:var(--accent-ink)}
+code,kbd{font-family:var(--font-mono);font-size:.88em}
+code{background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:.08em .34em;white-space:nowrap}
+pre{background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:13px 15px;overflow-x:auto;margin:0 0 11px;font-family:var(--font-mono);font-size:12.5px;line-height:1.62;color:var(--ink)}
+pre code{background:none;border:0;padding:0;white-space:pre;font-size:inherit}
+.cmt{color:var(--ink-3)}
+.hl{color:var(--accent-ink);font-weight:500}
+.bad{color:var(--crit);font-weight:500}
+
+.masthead{background:var(--surface);border-bottom:1px solid var(--line)}
+.masthead-in{max-width:1200px;margin:0 auto;padding:26px 20px 22px;display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;justify-content:space-between}
+.brand h1{font-size:27px;line-height:1.2;letter-spacing:-.01em}
+.brand p{margin:6px 0 0;color:var(--ink-2);font-size:14px;max-width:64ch}
+.eyebrow{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--accent-ink);background:var(--accent-soft);border-radius:3px;padding:3px 8px;margin-bottom:10px}
+.themebtn{font:inherit;font-size:13px;font-weight:500;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:7px 13px;cursor:pointer;white-space:nowrap}
+.themebtn:hover{border-color:var(--line-strong);color:var(--ink)}
+
+.toolbar{position:sticky;top:0;z-index:30;background:var(--bg);border-bottom:1px solid var(--line)}
+.toolbar-in{max-width:1200px;margin:0 auto;padding:12px 20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.searchwrap{position:relative;flex:1 1 300px;min-width:0}
+#q{width:100%;font:inherit;font-size:14px;color:var(--ink);background:var(--surface);border:1px solid var(--line-strong);border-radius:7px;padding:9px 34px 9px 12px}
+#q::placeholder{color:var(--ink-3)}
+#q:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+.clearq{position:absolute;right:5px;top:50%;transform:translateY(-50%);border:0;background:none;color:var(--ink-3);font-size:17px;line-height:1;cursor:pointer;padding:5px 7px;border-radius:4px}
+.clearq:hover{color:var(--ink)}
+.count{font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.progwrap{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink-2);white-space:nowrap}
+.progbar{width:92px;height:6px;border-radius:3px;background:var(--surface-3);overflow:hidden}
+.progfill{height:100%;width:0;background:var(--accent);transition:width .25s ease}
+
+.shell{max-width:1200px;margin:0 auto;padding:0 20px 80px;display:flex;gap:34px;align-items:flex-start}
+nav.index{position:sticky;top:64px;flex:0 0 232px;width:232px;max-height:calc(100vh - 84px);overflow-y:auto;padding:22px 0 20px}
+nav.index h2{font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);font-family:var(--font-body);font-weight:600;margin:0 0 9px}
+nav.index ol{list-style:none;margin:0;padding:0;counter-reset:nav}
+nav.index li{counter-increment:nav}
+nav.index a{display:flex;gap:9px;padding:5px 9px;border-radius:5px;color:var(--ink-2);text-decoration:none;font-size:13.5px;line-height:1.35}
+nav.index a::before{content:counter(nav,decimal-leading-zero);color:var(--ink-3);font-variant-numeric:tabular-nums;font-size:11.5px;padding-top:2px}
+nav.index a:hover{background:var(--surface-2);color:var(--ink)}
+nav.index a.on{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
+nav.index a.on::before{color:var(--accent-ink)}
+main{flex:1 1 auto;min-width:0;padding:22px 0 0}
+
+section.block{margin-bottom:38px;scroll-margin-top:72px}
+.sechead{display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap;padding-bottom:9px;border-bottom:2px solid var(--line-strong);margin-bottom:16px}
+.sechead h2{font-size:21px;letter-spacing:-.005em}
+.sechead .num{color:var(--ink-3);font-family:var(--font-mono);font-size:12.5px;margin-right:9px}
+.lede{color:var(--ink-2);font-size:14.5px;margin:0 0 16px;max-width:68ch}
+.reviewed{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-3);cursor:pointer;user-select:none}
+.reviewed input{accent-color:var(--accent);width:14px;height:14px;cursor:pointer}
+
+.terms{display:grid;gap:11px}
+.term{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--line-strong);border-radius:7px;padding:13px 16px}
+.term h3{font-family:var(--font-body);font-size:14.5px;font-weight:700;letter-spacing:-.003em;margin:0 0 5px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+.term h3 .exp{font-weight:400;font-size:12.5px;color:var(--ink-3);font-family:var(--font-mono)}
+.term p{margin:0 0 7px;color:var(--ink-2);font-size:14px}
+.term p:last-child{margin-bottom:0}
+.term strong{color:var(--ink);font-weight:600}
+.term ul,.term ol{margin:6px 0 0;padding-left:20px;color:var(--ink-2);font-size:14px}
+.term li{margin-bottom:4px}
+.term li::marker{color:var(--ink-3)}
+.term .tablewrap,.term pre{margin-top:10px}
+
+.tip{margin-top:9px;padding:8px 11px;border-radius:5px;background:var(--amber-soft);border-left:2px solid var(--amber);font-size:13.3px;color:var(--ink-2)}
+.tip b{color:var(--amber);font-weight:600;letter-spacing:.02em;font-size:11px;text-transform:uppercase;display:block;margin-bottom:2px}
+.gotcha{margin-top:9px;padding:8px 11px;border-radius:5px;background:var(--crit-soft);border-left:2px solid var(--crit);font-size:13.3px;color:var(--ink-2)}
+.gotcha b{color:var(--crit);font-weight:600;letter-spacing:.02em;font-size:11px;text-transform:uppercase;display:block;margin-bottom:2px}
+
+/* scenarios */
+.scn{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:7px;padding:0;margin-bottom:12px;overflow:hidden}
+.scn > summary{cursor:pointer;padding:13px 16px;font-weight:700;font-size:14.5px;color:var(--ink);list-style:none;display:flex;gap:11px;align-items:flex-start}
+.scn > summary::-webkit-details-marker{display:none}
+.scn > summary::before{content:attr(data-n);flex:0 0 22px;height:22px;border-radius:5px;background:var(--accent-soft);color:var(--accent-ink);font-size:11.5px;font-weight:700;display:grid;place-items:center;margin-top:1px;font-family:var(--font-mono)}
+.scn > summary:hover{color:var(--accent-ink)}
+.scn[open] > summary{border-bottom:1px solid var(--line);background:var(--surface-2)}
+.scn .body{padding:14px 16px 16px}
+.scn .body p{margin:0 0 8px;color:var(--ink-2);font-size:14px}
+.scn .body ul,.scn .body ol{margin:6px 0 10px;padding-left:20px;color:var(--ink-2);font-size:14px}
+.scn .body li{margin-bottom:4px}
+.scn .body strong{color:var(--ink);font-weight:600}
+.step{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin:14px 0 6px;display:block}
+.step:first-child{margin-top:0}
+.verdict{margin-top:10px;padding:9px 12px;border-radius:5px;background:var(--good-soft);border-left:2px solid var(--good);font-size:13.5px;color:var(--ink-2)}
+.verdict b{color:var(--good);font-weight:600;letter-spacing:.02em;font-size:11px;text-transform:uppercase;display:block;margin-bottom:2px}
+
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:7px;background:var(--surface);margin:0 0 11px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:540px}
+caption{text-align:left;padding:11px 14px 0;font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+th,td{text-align:left;padding:8px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+thead th{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:600;background:var(--surface-2);white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+td code{white-space:nowrap}
+.num-col{font-variant-numeric:tabular-nums;white-space:nowrap}
+
+.figure{background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:6px 6px 0;margin:0 0 11px}
+.figscroll{overflow-x:auto}
+.figscroll svg{display:block;width:100%;min-width:680px;height:auto}
+.figcap{padding:6px 12px 11px;font-size:12.5px;color:var(--ink-3)}
+
+.noresult{display:none;padding:26px;text-align:center;color:var(--ink-2);background:var(--surface);border:1px dashed var(--line-strong);border-radius:7px}
+body.filtering .lede,body.filtering .reviewed,body.filtering .figure{display:none}
+
+footer{max-width:1200px;margin:0 auto;padding:22px 20px 40px;border-top:1px solid var(--line);color:var(--ink-3);font-size:12.5px}
+footer p{margin:0 0 5px;max-width:78ch}
+footer a{color:var(--accent-ink)}
+
+@media (max-width:900px){
+  .shell{flex-direction:column;gap:0;padding-bottom:56px}
+  nav.index{position:sticky;top:57px;z-index:20;width:auto;flex:none;max-height:none;padding:9px 0;background:var(--bg);border-bottom:1px solid var(--line);overflow-x:auto;overflow-y:hidden}
+  nav.index h2{display:none}
+  nav.index ol{display:flex;gap:5px;white-space:nowrap}
+  nav.index a{border:1px solid var(--line);background:var(--surface);padding:5px 11px}
+  section.block{scroll-margin-top:118px}
+  .toolbar-in{padding:9px 20px}
+  .progwrap{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+@media print{.toolbar,nav.index,.themebtn{display:none}.shell{display:block}.scn .body{display:block !important}}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-in">
+    <div class="brand">
+      <span class="eyebrow">Routing deep dive</span>
+      <h1>BGP, end to end</h1>
+      <p>One multihomed lab topology, every BGP mechanism configured against it, the best-path algorithm step by step, and ten real incidents worked through from symptom to root cause with the actual command output you would see.</p>
+    </div>
+    <button class="themebtn" id="themebtn" type="button">Switch theme</button>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="toolbar-in">
+    <div class="searchwrap">
+      <input id="q" type="search" placeholder="Filter: try local-pref, route reflector, Active, dampening, prepend&hellip;" autocomplete="off" aria-label="Filter content">
+      <button class="clearq" id="clearq" type="button" aria-label="Clear filter" hidden>&times;</button>
+    </div>
+    <span class="count" id="count"></span>
+    <div class="progwrap">
+      <span>Reviewed</span>
+      <span class="progbar"><span class="progfill" id="progfill"></span></span>
+      <span class="num-col" id="progtxt">0/18</span>
+    </div>
+  </div>
+</div>
+
+<div class="shell">
+<nav class="index" aria-label="Sections">
+  <h2>Sections</h2>
+  <ol>
+    <li><a href="#fundamentals">Fundamentals</a></li>
+    <li><a href="#topology">Lab topology</a></li>
+    <li><a href="#messages">Messages &amp; the FSM</a></li>
+    <li><a href="#neighbors">Neighbor establishment</a></li>
+    <li><a href="#attributes">Path attributes</a></li>
+    <li><a href="#bestpath">Best path selection</a></li>
+    <li><a href="#ibgp">iBGP, RR &amp; confederations</a></li>
+    <li><a href="#originate">Originating &amp; aggregating</a></li>
+    <li><a href="#filtering">Filtering &amp; policy</a></li>
+    <li><a href="#communities">Communities</a></li>
+    <li><a href="#multihoming">Multihoming &amp; TE</a></li>
+    <li><a href="#scaling">Scaling &amp; stability</a></li>
+    <li><a href="#mpbgp">MP-BGP</a></li>
+    <li><a href="#security">Security</a></li>
+    <li><a href="#troubleshooting">Troubleshooting</a></li>
+    <li><a href="#scenarios">Real-world scenarios</a></li>
+    <li><a href="#commands">Command reference</a></li>
+    <li><a href="#checklist">Design checklist</a></li>
+  </ol>
+</nav>
+
+<main>
+<div class="noresult" id="noresult">Nothing matches that filter. Try a shorter word, or a term such as <code>MED</code>, <code>next-hop</code>, <code>65001</code>.</div>
+
+<!-- ============ 1 ============ -->
+<section class="block" id="fundamentals">
+  <div class="sechead">
+    <h2><span class="num">01</span>Fundamentals</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="fundamentals"> Reviewed</label>
+  </div>
+  <p class="lede">BGP is not an IGP with more knobs. It is a policy engine that happens to carry routes, and almost every design decision follows from that.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Path-vector protocol</h3>
+      <p>BGP does not compute a shortest path from a link-state database or exchange distance vectors with metrics. Each route carries the explicit <strong>list of autonomous systems</strong> it has traversed. That list serves two purposes: loop detection (an AS rejects a route containing its own ASN) and a crude distance measure.</p>
+      <p>Because the path is explicit rather than computed, BGP can be <em>steered</em>. That is why it is the inter-domain protocol: AS 65001 can decide, for business rather than topological reasons, that traffic should leave via one provider rather than another.</p>
+      <div class="tip"><b>The mental model</b>An IGP answers "what is the shortest way there?" BGP answers "whose network am I willing to use to get there, and who am I willing to carry traffic for?" Those are policy questions.</div>
+    </div>
+
+    <div class="term">
+      <h3>Autonomous system numbers</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Range</th><th>Use</th></tr></thead>
+          <tbody>
+            <tr><td><code>1 &ndash; 64495</code></td><td>Public, 16-bit, assigned by RIRs</td></tr>
+            <tr><td><code>64496 &ndash; 64511</code></td><td>Reserved for documentation (RFC 5398)</td></tr>
+            <tr><td><code>64512 &ndash; 65534</code></td><td>Private 16-bit. Used inside enterprises and by providers for customers</td></tr>
+            <tr><td><code>65535</code></td><td>Reserved</td></tr>
+            <tr><td><code>65536 &ndash; 4199999999</code></td><td>Public 32-bit (RFC 6793)</td></tr>
+            <tr><td><code>4200000000 &ndash; 4294967294</code></td><td>Private 32-bit</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>32-bit ASNs are written in <strong>asplain</strong> (<code>65536</code>) or <strong>asdot</strong> (<code>1.0</code>). Cisco defaults to asplain on modern code; <code>bgp asnotation dot</code> switches the display. Mixed notation in a team's documentation causes real confusion, so pick one and enforce it.</p>
+      <p>A router that does not support 4-byte ASNs sees <code>AS 23456</code> (AS_TRANS) in the AS_PATH, with the real path carried in the optional <code>AS4_PATH</code> attribute. Seeing 23456 in a path is a sign of an old speaker somewhere upstream.</p>
+    </div>
+
+    <div class="term">
+      <h3>eBGP and iBGP</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>&nbsp;</th><th>eBGP</th><th>iBGP</th></tr></thead>
+          <tbody>
+            <tr><td>Peers</td><td>Different ASNs</td><td>Same ASN</td></tr>
+            <tr><td>TTL default</td><td>1 (directly connected expected)</td><td>255</td></tr>
+            <tr><td>AS_PATH</td><td>Local ASN prepended on advertisement</td><td>Unchanged</td></tr>
+            <tr><td>NEXT_HOP</td><td>Rewritten to self by default</td><td>Preserved unless <code>next-hop-self</code></td></tr>
+            <tr><td>LOCAL_PREF</td><td>Not sent to eBGP peers</td><td>Sent, and is the main internal policy lever</td></tr>
+            <tr><td>Administrative distance</td><td>20</td><td>200</td></tr>
+            <tr><td>Re-advertisement</td><td>Routes propagate freely</td><td><strong>Split horizon:</strong> a route learned from an iBGP peer is never sent to another iBGP peer</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="gotcha"><b>The iBGP split-horizon rule</b>This single rule is behind the full-mesh requirement, route reflectors and confederations. A route learned from one iBGP peer is <strong>not</strong> passed to another iBGP peer &mdash; because there is no AS_PATH change inside an AS, so there would be no loop protection. Every iBGP design question is a consequence of this.</div>
+    </div>
+
+    <div class="term">
+      <h3>The three tables</h3>
+      <ul>
+        <li><strong>Adj-RIB-In</strong> &mdash; everything received from a peer, before inbound policy. Only kept if <code>soft-reconfiguration inbound</code> is configured, or reconstructed via route refresh.</li>
+        <li><strong>Loc-RIB</strong> &mdash; what survived inbound policy; the BGP table proper, where best-path runs. This is what <code>show bgp</code> displays.</li>
+        <li><strong>Adj-RIB-Out</strong> &mdash; per-peer, what is advertised after outbound policy.</li>
+      </ul>
+      <p>Only the <em>best</em> path for a prefix is installed in the routing table and advertised onward. BGP holds all the alternatives but shows the world one answer per prefix, which is why <code>show bgp &lt;prefix&gt;</code> often reveals several paths where <code>show ip route</code> shows one.</p>
+    </div>
+
+    <div class="term">
+      <h3>Transport</h3>
+      <p>BGP runs over <strong>TCP port 179</strong>. The speaker with the higher IP address usually ends up as the TCP client in a collision, though either side may initiate. TCP gives reliable, ordered delivery, so BGP has no retransmission logic of its own &mdash; and inherits TCP's behaviour, including the need for MSS and path MTU to work correctly.</p>
+      <p>Peers are <strong>statically configured</strong>, never discovered. That is deliberate: you should know exactly who you are exchanging routing information with. (BGP dynamic neighbors exist for listen ranges, but the range is still explicitly configured.)</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section class="block" id="topology">
+  <div class="sechead">
+    <h2><span class="num">02</span>Lab topology</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="topology"> Reviewed</label>
+  </div>
+  <p class="lede">Every configuration and scenario on this page uses this topology: an enterprise AS multihomed to two providers, with three internal routers.</p>
+
+  <div class="figure">
+    <div class="figscroll">
+      <svg viewBox="0 0 760 468" role="img" aria-label="AS 65001 multihomed to two providers through R1 and R2, with R3 as route reflector" font-size="13" font-family="var(--font-body)">
+        <defs>
+          <marker id="bgparrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="var(--line-strong)"></path>
+          </marker>
+        </defs>
+        <text x="24" y="28" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--font-display)">AS 65001 multihomed, with R3 as route reflector</text>
+        <text x="24" y="48" font-size="11.5" fill="var(--ink-3)">Solid lines are eBGP sessions. Dashed lines inside the box are iBGP.</text>
+
+        <rect x="110" y="150" width="540" height="252" rx="10" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="6 4"></rect>
+        <text x="130" y="174" font-size="11.5" font-weight="600" fill="var(--accent-ink)" letter-spacing="0.05em">AS 65001 &mdash; ENTERPRISE</text>
+        <text x="130" y="192" font-size="11" fill="var(--ink-3)" font-family="var(--font-mono)">192.0.2.0/24 advertised</text>
+
+        <g>
+          <rect x="24" y="76" width="200" height="54" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="124" y="99" text-anchor="middle" font-weight="600" fill="var(--ink)">ISP-A &middot; AS 65100</text>
+          <text x="124" y="117" text-anchor="middle" font-size="11.5" fill="var(--ink-2)" font-family="var(--font-mono)">203.0.113.1</text>
+        </g>
+        <g>
+          <rect x="536" y="76" width="200" height="54" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="636" y="99" text-anchor="middle" font-weight="600" fill="var(--ink)">ISP-B &middot; AS 65200</text>
+          <text x="636" y="117" text-anchor="middle" font-size="11.5" fill="var(--ink-2)" font-family="var(--font-mono)">198.51.100.1</text>
+        </g>
+
+        <g stroke="var(--line-strong)" stroke-width="1.5" fill="none">
+          <path d="M124 130V224"></path>
+          <path d="M636 130V224"></path>
+        </g>
+        <text x="132" y="180" font-size="11" fill="var(--ink-3)" font-family="var(--font-mono)">eBGP</text>
+        <text x="572" y="180" font-size="11" fill="var(--ink-3)" font-family="var(--font-mono)">eBGP</text>
+
+        <g stroke="var(--accent)" stroke-width="1.25" fill="none" stroke-dasharray="5 4">
+          <path d="M224 252H536"></path>
+          <path d="M160 280V330H600V280"></path>
+        </g>
+
+        <g>
+          <rect x="44" y="224" width="180" height="56" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"></rect>
+          <text x="134" y="247" text-anchor="middle" font-weight="600" fill="var(--ink)">R1 &mdash; edge</text>
+          <text x="134" y="265" text-anchor="middle" font-size="11.5" fill="var(--ink-2)" font-family="var(--font-mono)">lo0 10.0.0.1</text>
+        </g>
+        <g>
+          <rect x="536" y="224" width="180" height="56" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"></rect>
+          <text x="626" y="247" text-anchor="middle" font-weight="600" fill="var(--ink)">R2 &mdash; edge</text>
+          <text x="626" y="265" text-anchor="middle" font-size="11.5" fill="var(--ink-2)" font-family="var(--font-mono)">lo0 10.0.0.2</text>
+        </g>
+        <g>
+          <rect x="290" y="302" width="180" height="56" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="380" y="325" text-anchor="middle" font-weight="600" fill="var(--ink)">R3 &mdash; RR</text>
+          <text x="380" y="343" text-anchor="middle" font-size="11.5" fill="var(--ink-2)" font-family="var(--font-mono)">lo0 10.0.0.3</text>
+        </g>
+
+        <text x="380" y="246" text-anchor="middle" font-size="11" fill="var(--accent-ink)" font-family="var(--font-mono)">iBGP 10.1.12.0/30</text>
+        <text x="206" y="324" font-size="11" fill="var(--accent-ink)" font-family="var(--font-mono)">10.1.13.0/30</text>
+        <text x="482" y="324" font-size="11" fill="var(--accent-ink)" font-family="var(--font-mono)">10.1.23.0/30</text>
+
+        <text x="24" y="434" font-size="11.5" fill="var(--ink-3)">R1&ndash;ISP-A 203.0.113.0/30 &middot; R2&ndash;ISP-B 198.51.100.0/30 &middot; IGP: OSPF area 0 on all internal links and loopbacks</text>
+        <text x="24" y="452" font-size="11.5" fill="var(--ink-3)">R3 reflects between R1 and R2, so no R1&ndash;R2 iBGP session is strictly needed &mdash; it is shown for the full-mesh examples.</text>
+      </svg>
+    </div>
+    <p class="figcap">Lab topology &middot; 2 providers, 3 internal routers, 1 route reflector.</p>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Base configuration &mdash; R1</h3>
+<pre><code>hostname R1
+!
+interface Loopback0
+ ip address 10.0.0.1 255.255.255.255
+interface GigabitEthernet0/0
+ description to ISP-A
+ ip address 203.0.113.2 255.255.255.252
+interface GigabitEthernet0/1
+ description to R3
+ ip address 10.1.13.1 255.255.255.252
+!
+router ospf 1
+ router-id 10.0.0.1
+ network 10.0.0.0 0.255.255.255 area 0
+!
+router bgp 65001
+ bgp router-id 10.0.0.1
+ bgp log-neighbor-changes
+ no bgp default ipv4-unicast
+ !
+ neighbor 203.0.113.1 remote-as 65100
+ neighbor 203.0.113.1 description ISP-A
+ neighbor 203.0.113.1 password 7 &lt;key&gt;
+ !
+ neighbor 10.0.0.3 remote-as 65001
+ neighbor 10.0.0.3 description R3-RR
+ neighbor 10.0.0.3 update-source Loopback0
+ !
+ address-family ipv4 unicast
+  network 192.0.2.0 mask 255.255.255.0
+  neighbor 203.0.113.1 activate
+  neighbor 203.0.113.1 prefix-list OUR-PREFIXES out
+  neighbor 203.0.113.1 prefix-list FROM-ISP in
+  neighbor 203.0.113.1 route-map SET-LOCALPREF-A in
+  neighbor 203.0.113.1 maximum-prefix 500000 90 restart 15
+  neighbor 10.0.0.3 activate
+  neighbor 10.0.0.3 next-hop-self
+ exit-address-family</code></pre>
+      <div class="tip"><b>Two habits worth adopting</b><code>no bgp default ipv4-unicast</code> forces you to activate peers explicitly per address family &mdash; it prevents a new peer accidentally receiving the full table before policy is applied. And always attach an outbound prefix-list to an eBGP peer <em>before</em> the session comes up.</div>
+    </div>
+
+    <div class="term">
+      <h3>Base configuration &mdash; R3, the route reflector</h3>
+<pre><code>router bgp 65001
+ bgp router-id 10.0.0.3
+ bgp log-neighbor-changes
+ no bgp default ipv4-unicast
+ bgp cluster-id 10.0.0.3
+ !
+ neighbor IBGP-CLIENTS peer-group
+ neighbor IBGP-CLIENTS remote-as 65001
+ neighbor IBGP-CLIENTS update-source Loopback0
+ !
+ neighbor 10.0.0.1 peer-group IBGP-CLIENTS
+ neighbor 10.0.0.2 peer-group IBGP-CLIENTS
+ !
+ address-family ipv4 unicast
+  neighbor IBGP-CLIENTS activate
+  neighbor IBGP-CLIENTS route-reflector-client
+  neighbor IBGP-CLIENTS send-community both
+ exit-address-family</code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section class="block" id="messages">
+  <div class="sechead">
+    <h2><span class="num">03</span>Messages and the finite state machine</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="messages"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Message types</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th class="num-col">Type</th><th>Message</th><th>Carries</th></tr></thead>
+          <tbody>
+            <tr><td class="num-col">1</td><td><strong>OPEN</strong></td><td>Version, my ASN, hold time, BGP identifier (router ID), optional parameters including capabilities</td></tr>
+            <tr><td class="num-col">2</td><td><strong>UPDATE</strong></td><td>Withdrawn routes, path attributes, and NLRI. One UPDATE can withdraw many prefixes and advertise many that share one attribute set</td></tr>
+            <tr><td class="num-col">3</td><td><strong>NOTIFICATION</strong></td><td>An error, with code and subcode. Sending one always tears the session down</td></tr>
+            <tr><td class="num-col">4</td><td><strong>KEEPALIVE</strong></td><td>Nothing but the 19-byte header. Sent at one third of the hold time</td></tr>
+            <tr><td class="num-col">5</td><td><strong>ROUTE-REFRESH</strong></td><td>"Resend me everything" &mdash; the modern alternative to storing an Adj-RIB-In</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Every message starts with a 19-byte header: a 16-byte marker (all ones), a 2-byte length, and a 1-byte type. Maximum message size is 4096 bytes, extended to 65535 by RFC 8654 where both peers support it.</p>
+    </div>
+
+    <div class="term">
+      <h3>Capabilities</h3>
+      <p>Negotiated in the OPEN message. If a peer advertises a capability you do not support, you ignore it; if you require one it does not have, the session may fail. Common ones:</p>
+      <ul>
+        <li><strong>Multiprotocol (MP-BGP)</strong> &mdash; which AFI/SAFI pairs this session will carry.</li>
+        <li><strong>Route refresh</strong> &mdash; allows soft reconfiguration without storing the inbound RIB.</li>
+        <li><strong>4-byte ASN</strong> &mdash; without it, AS_TRANS (23456) substitution happens.</li>
+        <li><strong>Graceful restart</strong> &mdash; forwarding continues while the control plane restarts.</li>
+        <li><strong>Add-path</strong> &mdash; advertise more than one path per prefix.</li>
+      </ul>
+<pre><code>R1# show bgp neighbors 203.0.113.1 | section Neighbor capabilities
+  Neighbor capabilities:
+    Route refresh: advertised and received(new)
+    Four-octets ASN Capability: advertised and received
+    Address family IPv4 Unicast: advertised and received
+    Graceful Restart Capability: advertised and received</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>The finite state machine</h3>
+    </div>
+  </div>
+
+  <div class="figure">
+    <div class="figscroll">
+      <svg viewBox="0 0 760 548" role="img" aria-label="BGP finite state machine from Idle to Established" font-size="13" font-family="var(--font-body)">
+        <defs>
+          <marker id="fsmarrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="var(--line-strong)"></path>
+          </marker>
+          <marker id="fsmbad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="var(--crit)"></path>
+          </marker>
+        </defs>
+        <text x="24" y="28" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--font-display)">A session stuck below Established tells you where to look</text>
+        <text x="24" y="48" font-size="11.5" fill="var(--ink-3)">Any error at any state sends the session back to Idle and restarts the timer.</text>
+
+        <g fill="none" stroke="var(--line-strong)" stroke-width="1.25" marker-end="url(#fsmarrow)">
+          <path d="M160 128V158"></path>
+          <path d="M160 206V236"></path>
+          <path d="M160 284V314"></path>
+          <path d="M160 362V392"></path>
+          <path d="M160 440V470"></path>
+        </g>
+        <g fill="none" stroke="var(--crit)" stroke-width="1.25" stroke-dasharray="4 3" marker-end="url(#fsmbad)">
+          <path d="M40 470V110"></path>
+        </g>
+        <text x="24" y="300" font-size="11" fill="var(--crit)" transform="rotate(-90 24 300)" text-anchor="middle">error &rarr; Idle</text>
+
+        <g>
+          <rect x="60" y="84" width="200" height="44" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="160" y="111" text-anchor="middle" font-weight="600" fill="var(--ink)">Idle</text>
+          <text x="290" y="104" font-size="12.5" fill="var(--ink-2)">Refusing connections. Waiting out the restart timer.</text>
+          <text x="290" y="121" font-size="11.5" fill="var(--ink-3)">Stuck here: administratively shut, or no route to the peer.</text>
+        </g>
+
+        <g>
+          <rect x="60" y="158" width="200" height="44" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="160" y="185" text-anchor="middle" font-weight="600" fill="var(--ink)">Connect</text>
+          <text x="290" y="178" font-size="12.5" fill="var(--ink-2)">Waiting for the TCP three-way handshake to complete.</text>
+          <text x="290" y="195" font-size="11.5" fill="var(--ink-3)">Brief in a healthy session &mdash; you rarely catch it here.</text>
+        </g>
+
+        <g>
+          <rect x="60" y="236" width="200" height="44" rx="8" fill="var(--crit-soft)" stroke="var(--crit)" stroke-width="1.5"></rect>
+          <text x="160" y="263" text-anchor="middle" font-weight="600" fill="var(--ink)">Active</text>
+          <text x="290" y="256" font-size="12.5" fill="var(--ink-2)">TCP failed; retrying. The most informative stuck state.</text>
+          <text x="290" y="273" font-size="11.5" fill="var(--ink-3)">Stuck here: ACL, wrong peer IP, TTL, no return route, MD5.</text>
+        </g>
+
+        <g>
+          <rect x="60" y="314" width="200" height="44" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="160" y="341" text-anchor="middle" font-weight="600" fill="var(--ink)">OpenSent</text>
+          <text x="290" y="334" font-size="12.5" fill="var(--ink-2)">TCP is up, OPEN sent, waiting for theirs.</text>
+          <text x="290" y="351" font-size="11.5" fill="var(--ink-3)">Stuck here: ASN mismatch, bad version, duplicate router ID.</text>
+        </g>
+
+        <g>
+          <rect x="60" y="392" width="200" height="44" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="160" y="419" text-anchor="middle" font-weight="600" fill="var(--ink)">OpenConfirm</text>
+          <text x="290" y="412" font-size="12.5" fill="var(--ink-2)">Their OPEN accepted. Waiting for a KEEPALIVE.</text>
+          <text x="290" y="429" font-size="11.5" fill="var(--ink-3)">Stuck here: hold timer expiry, one-way packet loss.</text>
+        </g>
+
+        <g>
+          <rect x="60" y="470" width="200" height="44" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"></rect>
+          <text x="160" y="497" text-anchor="middle" font-weight="600" fill="var(--ink)">Established</text>
+          <text x="290" y="490" font-size="12.5" fill="var(--ink-2)">Peering up. UPDATEs flow; KEEPALIVEs maintain it.</text>
+          <text x="290" y="507" font-size="11.5" fill="var(--ink-3)">Only here do prefixes move.</text>
+        </g>
+      </svg>
+    </div>
+    <p class="figcap">BGP FSM &middot; 6 states, with the usual cause of a session stuck in each.</p>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Reading the state</h3>
+<pre><code>R1# show bgp ipv4 unicast summary
+Neighbor      V    AS  MsgRcvd  MsgSent  TblVer  InQ OutQ Up/Down  State/PfxRcd
+203.0.113.1   4 65100   184221    12044  904112    0    0 3w2d     <span class="hl">874231</span>
+10.0.0.3      4 65001     9821     9833  904112    0    0 3w2d     <span class="hl">12</span>
+198.51.100.1  4 65200        0        0       0    0    0 never    <span class="bad">Active</span></code></pre>
+      <p>A <strong>number</strong> in the last column means Established, and the number is prefixes received. A <strong>word</strong> means it is not up, and the word tells you where to look. <code>Idle (Admin)</code> means someone shut it down.</p>
+      <div class="tip"><b>The quickest diagnostic in BGP</b>Active means "TCP will not come up". Check reachability, the ACL, the source address and the TTL. OpenSent means "TCP is fine but we disagree about something in OPEN" &mdash; almost always the remote ASN. That one distinction saves enormous amounts of time.</div>
+    </div>
+
+    <div class="term">
+      <h3>Timers</h3>
+<pre><code>router bgp 65001
+ timers bgp 60 180                        <span class="cmt">! keepalive, holdtime — global default</span>
+ neighbor 203.0.113.1 timers 10 30        <span class="cmt">! per-neighbor override</span>
+ neighbor 203.0.113.1 fall-over bfd       <span class="cmt">! sub-second via BFD instead</span></code></pre>
+      <p>The hold time is <strong>negotiated down</strong> to the lower of the two peers' values. A hold time of 0 disables the timer entirely. Keepalive is sent at one third of the agreed hold time.</p>
+      <p>Aggressive timers detect failure faster but cost CPU and risk flapping on a loaded router. The better answer is <strong>BFD</strong>: it detects loss in milliseconds in a dedicated, lightweight process, and BGP simply subscribes to it. For a directly connected eBGP peer, <code>fall-over bfd</code> plus default BGP timers beats tuning the BGP timers down.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section class="block" id="neighbors">
+  <div class="sechead">
+    <h2><span class="num">04</span>Neighbor establishment</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="neighbors"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>eBGP: the TTL rule</h3>
+      <p>eBGP sends packets with <strong>TTL 1</strong> by default, expecting a directly connected peer. A multihop session fails silently unless you say otherwise.</p>
+<pre><code><span class="cmt">! peer two hops away</span>
+neighbor 203.0.113.9 ebgp-multihop 2
+
+<span class="cmt">! better: GTSM — accept only packets that arrived with TTL >= 254</span>
+neighbor 203.0.113.9 ttl-security hops 2</code></pre>
+      <p><code>ttl-security</code> is strictly better than <code>ebgp-multihop</code> where both ends support it. Multihop <em>raises</em> the outgoing TTL; TTL security <em>requires</em> a high incoming TTL, so a spoofed packet from further away is dropped in hardware before BGP sees it. The two are mutually exclusive on the same neighbor.</p>
+    </div>
+
+    <div class="term">
+      <h3>iBGP: peer with loopbacks</h3>
+<pre><code>neighbor 10.0.0.3 remote-as 65001
+neighbor 10.0.0.3 update-source Loopback0</code></pre>
+      <p>Always peer iBGP loopback to loopback, and carry the loopbacks in the IGP. The session then survives any single link failure as long as the IGP can find another path. Peering on physical interfaces means the BGP session dies whenever that interface does, even when connectivity still exists.</p>
+      <div class="gotcha"><b>update-source must be symmetric</b>If R1 peers to 10.0.0.3 but sources from its physical interface, R3 sees an incoming connection from an address it has no neighbor statement for, and refuses it. The session sits in Active or Idle. Both ends must agree on the addresses.</div>
+    </div>
+
+    <div class="term">
+      <h3>Authentication</h3>
+<pre><code>neighbor 203.0.113.1 password MySecret      <span class="cmt">! TCP MD5, RFC 2385</span></code></pre>
+      <p>TCP MD5 is still the near-universal mechanism for eBGP sessions with providers. TCP-AO (RFC 5925) is the modern replacement with better algorithm agility, but deployment remains thin.</p>
+      <p>A password mismatch produces a distinctive symptom: the session never establishes, and the log shows repeated MD5 failures rather than a BGP NOTIFICATION — because the failure is below BGP, in TCP.</p>
+<pre><code>%TCP-6-BADAUTH: Invalid MD5 digest from 203.0.113.1:179 to 203.0.113.2:179</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Peer groups and templates</h3>
+<pre><code><span class="cmt">! classic peer group — shared config AND shared update generation</span>
+neighbor IBGP peer-group
+neighbor IBGP remote-as 65001
+neighbor IBGP update-source Loopback0
+neighbor 10.0.0.2 peer-group IBGP
+
+<span class="cmt">! modern templates — separate session and policy concerns</span>
+template peer-session IBGP-SESSION
+ remote-as 65001
+ update-source Loopback0
+ exit-peer-session
+
+template peer-policy IBGP-POLICY
+ next-hop-self
+ send-community both
+ exit-peer-policy
+
+neighbor 10.0.0.2 inherit peer-session IBGP-SESSION
+address-family ipv4 unicast
+ neighbor 10.0.0.2 inherit peer-policy IBGP-POLICY</code></pre>
+      <p>The performance benefit is real: members of a peer group share one outbound update computation rather than one per neighbor. On a router with hundreds of peers that is the difference between a convergence time measured in seconds and one measured in minutes.</p>
+    </div>
+
+    <div class="term">
+      <h3>Other useful neighbor options</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Command</th><th>Effect</th></tr></thead>
+          <tbody>
+            <tr><td><code>neighbor X shutdown</code></td><td>Administratively down. Session shows <code>Idle (Admin)</code></td></tr>
+            <tr><td><code>neighbor X transport connection-mode passive</code></td><td>Never initiate; wait to be connected to</td></tr>
+            <tr><td><code>neighbor X description TEXT</code></td><td>Free text. Do this on every peer without exception</td></tr>
+            <tr><td><code>neighbor X maximum-prefix N [threshold] [warning-only | restart M]</code></td><td>Cap what the peer may send you</td></tr>
+            <tr><td><code>neighbor X fall-over</code></td><td>Tear the session down immediately when the route to the peer disappears, instead of waiting for the hold timer</td></tr>
+            <tr><td><code>neighbor X local-as N</code></td><td>Present a different ASN to this peer. Used during migrations and acquisitions</td></tr>
+            <tr><td><code>bgp listen range P/L peer-group G</code></td><td>Dynamic neighbors from a subnet, for route-reflector scale</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section class="block" id="attributes">
+  <div class="sechead">
+    <h2><span class="num">05</span>Path attributes</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="attributes"> Reviewed</label>
+  </div>
+  <p class="lede">Attributes are the policy surface. Knowing which are transitive and which are local decides what you can influence and where.</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>The attributes you will actually touch</caption>
+      <thead><tr><th>Attribute</th><th>Class</th><th>Scope</th><th>Prefer</th></tr></thead>
+      <tbody>
+        <tr><td><strong>ORIGIN</strong></td><td>Well-known mandatory</td><td>Travels everywhere</td><td>IGP (i) &lt; EGP (e) &lt; Incomplete (?)</td></tr>
+        <tr><td><strong>AS_PATH</strong></td><td>Well-known mandatory</td><td>Travels everywhere</td><td>Shortest</td></tr>
+        <tr><td><strong>NEXT_HOP</strong></td><td>Well-known mandatory</td><td>Travels everywhere</td><td>Must be reachable</td></tr>
+        <tr><td><strong>LOCAL_PREF</strong></td><td>Well-known discretionary</td><td>Inside the AS only</td><td>Highest</td></tr>
+        <tr><td><strong>ATOMIC_AGGREGATE</strong></td><td>Well-known discretionary</td><td>Travels</td><td>Informational flag</td></tr>
+        <tr><td><strong>AGGREGATOR</strong></td><td>Optional transitive</td><td>Travels</td><td>Informational</td></tr>
+        <tr><td><strong>COMMUNITY</strong></td><td>Optional transitive</td><td>Travels if you send it</td><td>Tag for policy</td></tr>
+        <tr><td><strong>MED</strong></td><td>Optional non-transitive</td><td>One AS hop only</td><td>Lowest</td></tr>
+        <tr><td><strong>ORIGINATOR_ID</strong></td><td>Optional non-transitive</td><td>Inside the AS</td><td>RR loop prevention</td></tr>
+        <tr><td><strong>CLUSTER_LIST</strong></td><td>Optional non-transitive</td><td>Inside the AS</td><td>Shortest; RR loop prevention</td></tr>
+        <tr><td><strong>WEIGHT</strong></td><td>Cisco proprietary</td><td>This router only</td><td>Highest</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>AS_PATH</h3>
+      <p>An ordered list of the ASes traversed, prepended on every eBGP advertisement. Segment types: <code>AS_SEQUENCE</code> (ordered, the normal case), <code>AS_SET</code> (unordered, produced by aggregation with <code>as-set</code>), and the confederation variants <code>AS_CONFED_SEQUENCE</code> and <code>AS_CONFED_SET</code>.</p>
+      <p>Loop prevention: if a router sees its own ASN in the received AS_PATH, it discards the route. Two commands override this, both of which should make you nervous:</p>
+<pre><code>neighbor X allowas-in 2            <span class="cmt">! accept my own ASN up to N times</span>
+neighbor X as-override             <span class="cmt">! replace customer ASN with mine (MPLS VPN)</span></code></pre>
+      <div class="gotcha"><b>allowas-in disables loop prevention</b>It is legitimate in MPLS L3VPN hub-and-spoke designs where the same ASN genuinely appears twice. Anywhere else it is a workaround for a design problem, and it can create a real routing loop. Document why it is there.</div>
+    </div>
+
+    <div class="term">
+      <h3>NEXT_HOP &mdash; the attribute that causes the most confusion</h3>
+      <p>The rules:</p>
+      <ul>
+        <li><strong>eBGP</strong> &mdash; the advertising router sets NEXT_HOP to itself.</li>
+        <li><strong>iBGP</strong> &mdash; NEXT_HOP is passed along <em>unchanged</em>. A route R1 learned from ISP-A keeps 203.0.113.1 as its next hop when R1 tells R3 about it.</li>
+        <li>On a shared multi-access segment, a router may advertise a third party's address as next hop if that is a better path. This is "third-party next hop".</li>
+      </ul>
+      <p>That second rule is why <code>next-hop-self</code> exists. R3 has no route to 203.0.113.1 unless you carry the provider link in the IGP &mdash; which you should not. So the route is received, held in the BGP table, and marked inaccessible.</p>
+<pre><code>R3# show bgp ipv4 unicast 8.8.8.0/24
+BGP routing table entry for 8.8.8.0/24, version 0
+Paths: (1 available, <span class="bad">no best path</span>)
+  65100 15169
+    <span class="bad">203.0.113.1 (inaccessible)</span> from 10.0.0.1 (10.0.0.1)
+      Origin IGP, localpref 100, valid, internal</code></pre>
+<pre><code><span class="cmt">! on R1, for every iBGP peer</span>
+address-family ipv4 unicast
+ neighbor 10.0.0.3 next-hop-self</code></pre>
+      <div class="tip"><b>Design rule</b>Every router that learns routes from eBGP and advertises them to iBGP peers needs <code>next-hop-self</code> toward those peers. The alternative &mdash; redistributing provider link subnets into your IGP &mdash; works but pollutes the IGP and is worse.</div>
+    </div>
+
+    <div class="term">
+      <h3>LOCAL_PREF &mdash; outbound policy</h3>
+      <p>Default 100. Highest wins. Sent to iBGP peers, never to eBGP peers, so it is the tool for telling your <em>own</em> AS which exit to use.</p>
+<pre><code>route-map PREFER-ISP-A permit 10
+ set local-preference 200
+!
+router bgp 65001
+ address-family ipv4 unicast
+  neighbor 203.0.113.1 route-map PREFER-ISP-A in</code></pre>
+      <p>Now every router in AS 65001 prefers routes learned via ISP-A, because R1 raises the LOCAL_PREF on ingress and floods that to the iBGP mesh. This controls <strong>outbound</strong> traffic.</p>
+    </div>
+
+    <div class="term">
+      <h3>MED &mdash; inbound hint</h3>
+      <p>Also called the external metric. Lowest wins. Sent <em>to</em> an eBGP peer to say "if you have two ways into my AS, prefer this one". It is non-transitive: the neighbouring AS may use it, but does not pass it on.</p>
+<pre><code>route-map SET-MED permit 10
+ set metric 50
+!
+neighbor 203.0.113.1 route-map SET-MED out</code></pre>
+      <p>By default MED is only compared between paths from the <strong>same neighbouring AS</strong>. Two modifiers change that:</p>
+<pre><code>bgp always-compare-med          <span class="cmt">! compare across different ASes — use with care</span>
+bgp deterministic-med           <span class="cmt">! group paths by AS before comparing — always set this</span>
+bgp bestpath med missing-as-worst</code></pre>
+      <div class="gotcha"><b>MED is advisory</b>Your provider is under no obligation to honour it, and many strip or ignore it. Before building an inbound traffic-engineering design on MED, confirm with the provider that they accept it. AS prepending and communities are usually more reliable levers.</div>
+    </div>
+
+    <div class="term">
+      <h3>WEIGHT &mdash; Cisco only, this router only</h3>
+      <p>Default 0 for learned routes, 32768 for locally originated. Highest wins, and it is checked <em>first</em> in best-path. It is never advertised anywhere.</p>
+<pre><code>neighbor 203.0.113.1 weight 100</code></pre>
+      <p>Because it is purely local, weight is excellent for a quick fix on one router and dangerous as a design tool &mdash; it creates an inconsistency the rest of the AS cannot see. Prefer LOCAL_PREF for anything intended to be a policy.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section class="block" id="bestpath">
+  <div class="sechead">
+    <h2><span class="num">06</span>Best path selection</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="bestpath"> Reviewed</label>
+  </div>
+  <p class="lede">The algorithm is a sequence of tie-breakers. It stops at the first step that distinguishes the candidates, which is why a change at step 2 makes everything below it irrelevant.</p>
+
+  <div class="figure">
+    <div class="figscroll">
+      <svg viewBox="0 0 760 668" role="img" aria-label="BGP best path selection, thirteen tie-breakers in order" font-size="13" font-family="var(--font-body)">
+        <defs>
+          <marker id="bparrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="var(--line-strong)"></path>
+          </marker>
+        </defs>
+        <text x="24" y="28" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--font-display)">The first step that breaks the tie decides, and the rest never run</text>
+        <text x="24" y="48" font-size="11.5" fill="var(--ink-3)">Cisco IOS order. Blue steps settle the overwhelming majority of real comparisons.</text>
+
+        <line x1="48" y1="86" x2="48" y2="636" stroke="var(--line-strong)" stroke-width="1.25" stroke-dasharray="3 3"></line>
+
+        <g>
+          <rect x="70" y="70" width="666" height="32" rx="6" fill="var(--amber-soft)" stroke="var(--amber)" stroke-width="1.25"></rect>
+          <text x="86" y="91" font-size="12.5" font-weight="600" fill="var(--ink)">0 &middot; Gate: is the NEXT_HOP reachable? If not, the path is not a candidate at all.</text>
+        </g>
+
+        <g>
+          <rect x="70" y="112" width="666" height="32" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"></rect>
+          <text x="86" y="133" font-size="12.5" font-weight="600" fill="var(--ink)">1 &middot; Highest WEIGHT</text>
+          <text x="470" y="133" font-size="11.5" fill="var(--ink-2)">Cisco only, local to this router</text>
+        </g>
+        <g>
+          <rect x="70" y="154" width="666" height="32" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"></rect>
+          <text x="86" y="175" font-size="12.5" font-weight="600" fill="var(--ink)">2 &middot; Highest LOCAL_PREF</text>
+          <text x="470" y="175" font-size="11.5" fill="var(--ink-2)">The main outbound policy lever</text>
+        </g>
+        <g>
+          <rect x="70" y="196" width="666" height="32" rx="6" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="86" y="217" font-size="12.5" fill="var(--ink)">3 &middot; Locally originated</text>
+          <text x="470" y="217" font-size="11.5" fill="var(--ink-2)">network, aggregate, redistribute</text>
+        </g>
+        <g>
+          <rect x="70" y="238" width="666" height="32" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"></rect>
+          <text x="86" y="259" font-size="12.5" font-weight="600" fill="var(--ink)">4 &middot; Shortest AS_PATH</text>
+          <text x="470" y="259" font-size="11.5" fill="var(--ink-2)">Where prepending acts</text>
+        </g>
+        <g>
+          <rect x="70" y="280" width="666" height="32" rx="6" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="86" y="301" font-size="12.5" fill="var(--ink)">5 &middot; Lowest ORIGIN</text>
+          <text x="470" y="301" font-size="11.5" fill="var(--ink-2)">IGP &lt; EGP &lt; Incomplete</text>
+        </g>
+        <g>
+          <rect x="70" y="322" width="666" height="32" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"></rect>
+          <text x="86" y="343" font-size="12.5" font-weight="600" fill="var(--ink)">6 &middot; Lowest MED</text>
+          <text x="470" y="343" font-size="11.5" fill="var(--ink-2)">Same neighbour AS only, by default</text>
+        </g>
+        <g>
+          <rect x="70" y="364" width="666" height="32" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"></rect>
+          <text x="86" y="385" font-size="12.5" font-weight="600" fill="var(--ink)">7 &middot; eBGP over iBGP</text>
+          <text x="470" y="385" font-size="11.5" fill="var(--ink-2)">External beats internal</text>
+        </g>
+        <g>
+          <rect x="70" y="406" width="666" height="32" rx="6" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="86" y="427" font-size="12.5" fill="var(--ink)">8 &middot; Lowest IGP metric to the NEXT_HOP</text>
+          <text x="470" y="427" font-size="11.5" fill="var(--ink-2)">"Hot potato" routing</text>
+        </g>
+        <g>
+          <rect x="70" y="448" width="666" height="32" rx="6" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="86" y="469" font-size="12.5" fill="var(--ink)">9 &middot; Install multipath, if enabled and eligible</text>
+          <text x="470" y="469" font-size="11.5" fill="var(--ink-2)">maximum-paths</text>
+        </g>
+        <g>
+          <rect x="70" y="490" width="666" height="32" rx="6" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="86" y="511" font-size="12.5" fill="var(--ink)">10 &middot; Oldest eBGP path</text>
+          <text x="470" y="511" font-size="11.5" fill="var(--ink-2)">Favours stability over churn</text>
+        </g>
+        <g>
+          <rect x="70" y="532" width="666" height="32" rx="6" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="86" y="553" font-size="12.5" fill="var(--ink)">11 &middot; Lowest router ID (or ORIGINATOR_ID)</text>
+          <text x="470" y="553" font-size="11.5" fill="var(--ink-2)">Deterministic, arbitrary</text>
+        </g>
+        <g>
+          <rect x="70" y="574" width="666" height="32" rx="6" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="86" y="595" font-size="12.5" fill="var(--ink)">12 &middot; Shortest CLUSTER_LIST</text>
+          <text x="470" y="595" font-size="11.5" fill="var(--ink-2)">Fewest reflector hops</text>
+        </g>
+        <g>
+          <rect x="70" y="616" width="666" height="32" rx="6" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="86" y="637" font-size="12.5" fill="var(--ink)">13 &middot; Lowest neighbour IP address</text>
+          <text x="470" y="637" font-size="11.5" fill="var(--ink-2)">The final backstop</text>
+        </g>
+      </svg>
+    </div>
+    <p class="figcap">Best path selection &middot; 13 tie-breakers plus a reachability gate.</p>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Reading a comparison</h3>
+<pre><code>R1# show bgp ipv4 unicast 8.8.8.0/24
+BGP routing table entry for 8.8.8.0/24, version 88213
+Paths: (2 available, best #1, table default)
+  Advertised to update-groups: 2
+  <span class="hl">65100 15169</span>
+    203.0.113.1 from 203.0.113.1 (198.18.0.1)
+      Origin IGP, metric 0, <span class="hl">localpref 200</span>, valid, external, <span class="hl">best</span>
+      Community: 65001:100
+  65200 3356 15169
+    10.0.0.2 (metric 20) from 10.0.0.3 (10.0.0.3)
+      Origin IGP, metric 0, <span class="hl">localpref 100</span>, valid, internal
+      Originator: 10.0.0.2, Cluster list: 10.0.0.3</code></pre>
+      <p>Two paths. LOCAL_PREF differs at step 2, so the comparison stops there &mdash; the shorter AS_PATH of the second path never gets considered. That is the most common surprise in BGP: a policy at step 2 silently overrides everything below it.</p>
+      <div class="tip"><b>Troubleshooting habit</b>When asked "why did BGP pick that path?", walk the list from the top and stop at the first difference. Do not start from AS_PATH just because it is the famous one.</div>
+    </div>
+
+    <div class="term">
+      <h3>Multipath</h3>
+<pre><code>router bgp 65001
+ address-family ipv4 unicast
+  maximum-paths 4                    <span class="cmt">! eBGP</span>
+  maximum-paths ibgp 4               <span class="cmt">! iBGP</span>
+  maximum-paths eibgp 4              <span class="cmt">! MPLS VPN only</span>
+  bgp bestpath as-path multipath-relax</code></pre>
+      <p>For paths to be bundled they must be equal through every step up to the multipath check &mdash; same weight, local-pref, AS_PATH <em>length</em>, origin and MED. By default they must also come from the <strong>same neighbouring AS</strong>; <code>multipath-relax</code> drops that requirement so you can load-share across two different providers.</p>
+      <p>Only one path is still the <em>best</em> path and only that one is advertised onward. Multipath affects forwarding, not advertisement.</p>
+    </div>
+
+    <div class="term">
+      <h3>Tuning the algorithm</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Command</th><th>Effect</th></tr></thead>
+          <tbody>
+            <tr><td><code>bgp deterministic-med</code></td><td>Group paths by neighbouring AS before comparing, so the result does not depend on arrival order. Set it everywhere</td></tr>
+            <tr><td><code>bgp always-compare-med</code></td><td>Compare MED across different ASes. Must be consistent AS-wide or you get routing loops</td></tr>
+            <tr><td><code>bgp bestpath compare-routerid</code></td><td>Compare router ID even between established paths, instead of preferring the oldest</td></tr>
+            <tr><td><code>bgp bestpath as-path ignore</code></td><td>Skip step 4 entirely. Very rarely appropriate</td></tr>
+            <tr><td><code>bgp bestpath med missing-as-worst</code></td><td>Treat a missing MED as infinity rather than 0</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="gotcha"><b>Consistency matters more than the setting</b>Best-path modifiers must be identical on every router in the AS. A mix of <code>always-compare-med</code> on some routers and not others can produce a persistent forwarding loop, because two routers reach different conclusions about the same prefix.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 7 ============ -->
+<section class="block" id="ibgp">
+  <div class="sechead">
+    <h2><span class="num">07</span>iBGP, route reflectors and confederations</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="ibgp"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The full-mesh problem</h3>
+      <p>Because iBGP never re-advertises between iBGP peers, every iBGP speaker must hear every route directly. That means a full mesh of <strong>n(n&minus;1)/2</strong> sessions. Ten routers is 45 sessions; fifty routers is 1,225. Adding one router means touching every other router.</p>
+      <p>Two solutions exist, and in practice everyone uses the first.</p>
+    </div>
+  </div>
+
+  <div class="figure">
+    <div class="figscroll">
+      <svg viewBox="0 0 760 372" role="img" aria-label="Full mesh versus route reflector session counts" font-size="13" font-family="var(--font-body)">
+        <defs>
+          <marker id="rrarrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="var(--accent)"></path>
+          </marker>
+        </defs>
+        <text x="24" y="28" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--font-display)">A reflector turns n(n&minus;1)/2 sessions into n&minus;1</text>
+        <text x="24" y="48" font-size="11.5" fill="var(--ink-3)">Six routers: fifteen full-mesh sessions, or five to a reflector.</text>
+
+        <text x="24" y="86" font-size="11.5" font-weight="600" fill="var(--ink-3)" letter-spacing="0.05em">FULL MESH &mdash; 15 SESSIONS</text>
+        <text x="420" y="86" font-size="11.5" font-weight="600" fill="var(--accent-ink)" letter-spacing="0.05em">ROUTE REFLECTOR &mdash; 5 SESSIONS</text>
+
+        <g stroke="var(--line-strong)" stroke-width="1" fill="none" opacity="0.65">
+          <path d="M100 130L190 130M100 130L215 196M100 130L190 262M100 130L75 262M100 130L10 196"></path>
+          <path d="M190 130L215 196M190 130L190 262M190 130L75 262M190 130L10 196"></path>
+          <path d="M215 196L190 262M215 196L75 262M215 196L10 196"></path>
+          <path d="M190 262L75 262M190 262L10 196"></path>
+          <path d="M75 262L10 196"></path>
+        </g>
+        <g fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.25">
+          <circle cx="100" cy="130" r="13"></circle>
+          <circle cx="190" cy="130" r="13"></circle>
+          <circle cx="215" cy="196" r="13"></circle>
+          <circle cx="190" cy="262" r="13"></circle>
+          <circle cx="75" cy="262" r="13"></circle>
+          <circle cx="10" cy="196" r="13"></circle>
+        </g>
+
+        <g stroke="var(--accent)" stroke-width="1.5" fill="none" marker-end="url(#rrarrow)">
+          <path d="M560 178L470 140"></path>
+          <path d="M560 178L650 140"></path>
+          <path d="M560 178L448 196"></path>
+          <path d="M560 178L672 196"></path>
+          <path d="M560 178L560 250"></path>
+        </g>
+        <g fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.25">
+          <circle cx="460" cy="134" r="13"></circle>
+          <circle cx="660" cy="134" r="13"></circle>
+          <circle cx="440" cy="196" r="13"></circle>
+          <circle cx="680" cy="196" r="13"></circle>
+          <circle cx="560" cy="262" r="13"></circle>
+        </g>
+        <g>
+          <circle cx="560" cy="178" r="19" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"></circle>
+          <text x="560" y="183" text-anchor="middle" font-size="11" font-weight="700" fill="var(--accent-ink)">RR</text>
+        </g>
+
+        <text x="24" y="320" font-size="12.5" fill="var(--ink-2)">Adding a seventh router: six new sessions on the left, one on the right.</text>
+        <text x="24" y="342" font-size="12.5" fill="var(--ink-2)">The cost is that the reflector decides one best path for everyone, so some path diversity is lost.</text>
+      </svg>
+    </div>
+    <p class="figcap">iBGP scaling &middot; full mesh against a single reflector, six routers.</p>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Route reflectors</h3>
+      <p>A route reflector is permitted to break the split-horizon rule. Its peers are either <strong>clients</strong> or <strong>non-clients</strong>, and the reflection rules are:</p>
+      <ul>
+        <li>Route learned from a <strong>client</strong> &rarr; reflect to all clients and all non-clients.</li>
+        <li>Route learned from a <strong>non-client</strong> &rarr; reflect to clients only.</li>
+        <li>Route learned from an <strong>eBGP</strong> peer &rarr; send to everyone, as normal.</li>
+      </ul>
+      <p>Non-clients must still be fully meshed among themselves.</p>
+<pre><code>router bgp 65001
+ bgp cluster-id 10.0.0.3
+ address-family ipv4 unicast
+  neighbor 10.0.0.1 route-reflector-client
+  neighbor 10.0.0.2 route-reflector-client</code></pre>
+      <p>Only the reflector is configured. Clients are ordinary iBGP speakers and need no special configuration &mdash; a frequent exam question.</p>
+    </div>
+
+    <div class="term">
+      <h3>Reflector loop prevention</h3>
+      <p>Since reflection breaks split horizon, two attributes replace it:</p>
+      <ul>
+        <li><strong>ORIGINATOR_ID</strong> &mdash; the router ID of the speaker that first injected the route into the AS. A router receiving a route with its own ORIGINATOR_ID discards it.</li>
+        <li><strong>CLUSTER_LIST</strong> &mdash; each reflector prepends its cluster ID. A reflector seeing its own cluster ID discards the route.</li>
+      </ul>
+      <div class="gotcha"><b>Cluster-id and redundant reflectors</b>Two reflectors serving the same clients should normally have <em>different</em> cluster IDs. Giving them the same cluster ID suppresses the second copy of each route (by cluster-list loop detection), which saves memory but removes the path diversity that the redundancy was for. Unless you are deliberately optimising memory, leave them distinct &mdash; the default is each router's own BGP router ID.</div>
+    </div>
+
+    <div class="term">
+      <h3>Reflector placement</h3>
+      <p>The reflector chooses one best path and reflects only that. If the reflector's view of the topology differs from a client's, the client can be sent a path that is not optimal from its own position &mdash; or, worse, a persistent loop in pathological designs.</p>
+      <p>Mitigations: place reflectors so their IGP view resembles their clients', use <strong>add-path</strong> to advertise more than one path per prefix, or deploy <strong>BGP ORR</strong> (Optimal Route Reflection) where supported, which lets the reflector compute best paths from the client's perspective.</p>
+    </div>
+
+    <div class="term">
+      <h3>Confederations</h3>
+      <p>Split the AS into sub-ASes. Within a sub-AS, normal iBGP rules apply; between sub-ASes you run confederation eBGP, which prepends to AS_CONFED_SEQUENCE. The outside world sees only the confederation ID.</p>
+<pre><code>router bgp 65501
+ bgp confederation identifier 65001
+ bgp confederation peers 65502 65503
+ neighbor 10.1.0.2 remote-as 65502</code></pre>
+      <p>Confederation eBGP preserves LOCAL_PREF and does not change NEXT_HOP by default, so it behaves more like iBGP than true eBGP.</p>
+      <p>In practice confederations are rare. They are harder to operate, harder to troubleshoot, and route reflectors solve the same problem with less ceremony. Know them for interviews and for the handful of large networks that adopted them early and never migrated.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 8 ============ -->
+<section class="block" id="originate">
+  <div class="sechead">
+    <h2><span class="num">08</span>Originating and aggregating routes</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="originate"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The network command</h3>
+<pre><code>router bgp 65001
+ address-family ipv4 unicast
+  network 192.0.2.0 mask 255.255.255.0</code></pre>
+      <p>This does not "advertise an interface". It says: <em>if an exactly matching prefix exists in the routing table, inject it into BGP.</em> The mask must match exactly. <code>network 192.0.2.0 mask 255.255.255.0</code> does nothing if the RIB only holds 192.0.2.0/25 and 192.0.2.128/25.</p>
+      <p>The usual fix is a pull-up static route to Null0, which guarantees the prefix exists:</p>
+<pre><code>ip route 192.0.2.0 255.255.255.0 Null0 250</code></pre>
+      <p>Origin code is set to IGP (<code>i</code>). The high administrative distance keeps it out of the way of real routes.</p>
+      <div class="tip"><b>Why network is preferred over redistribute</b>It is explicit. Every prefix you originate is one line you wrote deliberately. Redistribution injects whatever happens to be in the IGP, which is how organisations accidentally announce internal space to the internet.</div>
+    </div>
+
+    <div class="term">
+      <h3>Redistribution</h3>
+<pre><code>router bgp 65001
+ address-family ipv4 unicast
+  redistribute ospf 1 route-map OSPF-TO-BGP</code></pre>
+      <p>Origin becomes Incomplete (<code>?</code>), which loses at step 5 of best-path against an otherwise identical IGP-origin route. Always attach a route-map that explicitly permits only what you intend.</p>
+      <div class="gotcha"><b>Never redistribute BGP into your IGP</b>The full table is close to a million prefixes. Redistributing it into OSPF or EIGRP will take the network down, and it is a mistake that has caused real outages. If internal routers need internet reachability, give them a default route.</div>
+    </div>
+
+    <div class="term">
+      <h3>Aggregation</h3>
+<pre><code><span class="cmt">! advertise the aggregate AND the components</span>
+aggregate-address 192.0.0.0 255.252.0.0
+
+<span class="cmt">! advertise only the aggregate</span>
+aggregate-address 192.0.0.0 255.252.0.0 summary-only
+
+<span class="cmt">! aggregate, plus selected components via a suppress-map</span>
+aggregate-address 192.0.0.0 255.252.0.0 suppress-map ALLOW-SOME
+
+<span class="cmt">! keep AS_PATH information from the components</span>
+aggregate-address 192.0.0.0 255.252.0.0 summary-only as-set
+
+<span class="cmt">! set attributes on the aggregate itself</span>
+aggregate-address 192.0.0.0 255.252.0.0 summary-only attribute-map SET-COMM</code></pre>
+      <p>An aggregate is only generated if <strong>at least one more-specific component exists in the BGP table</strong>. If every component is withdrawn, the aggregate disappears too &mdash; which is usually the desired behaviour, but surprises people who expect it to be static.</p>
+      <p><code>as-set</code> builds an AS_SET from the component paths, preserving loop protection. Without it the aggregate carries only your own ASN, and a route you learned from AS 65100 could be advertised back to AS 65100 inside the aggregate. The downside is that any component flap changes the AS_SET and so re-advertises the aggregate, costing stability.</p>
+    </div>
+
+    <div class="term">
+      <h3>Default routes</h3>
+<pre><code><span class="cmt">! send a default to one neighbour, unconditionally</span>
+neighbor 10.0.0.3 default-originate
+
+<span class="cmt">! send it only if a condition is met</span>
+neighbor 10.0.0.3 default-originate route-map HAVE-INTERNET
+
+<span class="cmt">! inject 0.0.0.0/0 into BGP if it exists in the RIB</span>
+default-information originate</code></pre>
+      <p><code>default-originate</code> does not require 0.0.0.0/0 to exist locally; <code>default-information originate</code> does. The conditional form is the useful one &mdash; advertise a default only while you actually have a working path to the internet.</p>
+    </div>
+
+    <div class="term">
+      <h3>Conditional advertisement</h3>
+      <p>Advertise a prefix only when some other prefix is <em>absent</em> &mdash; the classic primary/backup pattern that avoids relying on the other provider to withdraw anything.</p>
+<pre><code>router bgp 65001
+ address-family ipv4 unicast
+  neighbor 198.51.100.1 advertise-map ADVERTISE-BACKUP non-exist-map CHECK-PRIMARY
+!
+route-map ADVERTISE-BACKUP permit 10
+ match ip address prefix-list OUR-PREFIX
+route-map CHECK-PRIMARY permit 10
+ match ip address prefix-list PRIMARY-LEARNED</code></pre>
+      <p>While the prefix matched by <code>CHECK-PRIMARY</code> is present in the BGP table, nothing is advertised to ISP-B. When it disappears, the backup advertisement starts. Verify with <code>show bgp ipv4 unicast neighbors 198.51.100.1 | include Condition</code>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 9 ============ -->
+<section class="block" id="filtering">
+  <div class="sechead">
+    <h2><span class="num">09</span>Filtering and route policy</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="filtering"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The four mechanisms</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Tool</th><th>Matches on</th><th>Use for</th></tr></thead>
+          <tbody>
+            <tr><td><code>prefix-list</code></td><td>Prefix and prefix length</td><td>The default choice for prefix filtering</td></tr>
+            <tr><td><code>filter-list</code></td><td>AS_PATH regular expression</td><td>Filtering by origin or transit AS</td></tr>
+            <tr><td><code>distribute-list</code></td><td>Standard or extended ACL</td><td>Legacy. Use prefix-lists instead</td></tr>
+            <tr><td><code>route-map</code></td><td>Anything, and can <em>set</em> attributes</td><td>Policy, not just filtering</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Only one of prefix-list, distribute-list and filter-list may be applied per direction per neighbor, but a route-map can be combined with them &mdash; and a route-map can match a prefix-list internally, which is the cleanest pattern.</p>
+    </div>
+
+    <div class="term">
+      <h3>Prefix lists</h3>
+<pre><code>ip prefix-list OUR-PREFIXES seq 5 permit 192.0.2.0/24
+ip prefix-list OUR-PREFIXES seq 10 deny 0.0.0.0/0 le 32
+
+ip prefix-list FROM-ISP seq 5 deny 0.0.0.0/0
+ip prefix-list FROM-ISP seq 10 deny 10.0.0.0/8 le 32
+ip prefix-list FROM-ISP seq 15 deny 172.16.0.0/12 le 32
+ip prefix-list FROM-ISP seq 20 deny 192.168.0.0/16 le 32
+ip prefix-list FROM-ISP seq 25 deny 0.0.0.0/0 ge 25     <span class="cmt">! no /25 or longer</span>
+ip prefix-list FROM-ISP seq 30 permit 0.0.0.0/0 le 24</code></pre>
+      <p><code>ge</code> and <code>le</code> operate on the <em>prefix length</em>, not the address. <code>0.0.0.0/0 le 24</code> means "any prefix with a mask of /24 or shorter". There is an implicit deny at the end.</p>
+      <div class="tip"><b>Minimum safe eBGP hygiene</b>Outbound: permit only your own prefixes, explicitly listed. Inbound: deny RFC 1918, deny your own prefixes coming back, deny the default unless you asked for it, deny anything longer than /24. These four lines prevent most self-inflicted incidents.</div>
+    </div>
+
+    <div class="term">
+      <h3>AS_PATH filtering and regex</h3>
+<pre><code>ip as-path access-list 1 permit ^$                 <span class="cmt">! locally originated only</span>
+ip as-path access-list 2 permit ^65100_            <span class="cmt">! learned directly from AS 65100</span>
+ip as-path access-list 3 permit _65200$            <span class="cmt">! originated by AS 65200</span>
+ip as-path access-list 4 permit ^65100(_65100)*$   <span class="cmt">! only 65100, any prepend count</span>
+ip as-path access-list 5 deny _65300_              <span class="cmt">! anything transiting 65300</span>
+!
+neighbor 203.0.113.1 filter-list 1 out</code></pre>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Token</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>^</code></td><td>Start of the path &mdash; the AS you learned it from</td></tr>
+            <tr><td><code>$</code></td><td>End of the path &mdash; the originating AS</td></tr>
+            <tr><td><code>_</code></td><td>Any delimiter: space, start, end, brace, comma</td></tr>
+            <tr><td><code>.</code></td><td>Any single character</td></tr>
+            <tr><td><code>*</code> / <code>+</code> / <code>?</code></td><td>Zero or more / one or more / zero or one</td></tr>
+            <tr><td><code>^$</code></td><td>Empty path: originated by this AS</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><code>^$</code> applied outbound to every eBGP peer is the single most valuable filter a multihomed enterprise can configure. It guarantees you advertise only your own prefixes and can never become accidental transit.</p>
+    </div>
+
+    <div class="term">
+      <h3>Route maps</h3>
+<pre><code>route-map FROM-ISP-A permit 10
+ description Customer routes get higher preference
+ match ip address prefix-list CUSTOMER-SPACE
+ set local-preference 300
+ set community 65001:100 additive
+!
+route-map FROM-ISP-A permit 20
+ description Everything else, normal preference
+ set local-preference 150
+ set community 65001:200
+!
+route-map FROM-ISP-A deny 30
+ description Explicit drop, documented
+ match ip address prefix-list BOGONS</code></pre>
+      <p>Sequences are evaluated in order and processing stops at the first match. A <code>permit</code> clause with no <code>match</code> matches everything. <strong>There is an implicit deny at the end</strong> &mdash; a route-map applied inbound that only matches your customer prefixes will discard every other route on the internet.</p>
+      <div class="gotcha"><b>The implicit deny catches everyone</b>Apply a route-map to a neighbor and your prefix count can drop to near zero instantly. Always end with an explicit <code>permit</code> clause unless you genuinely mean to filter everything else.</div>
+    </div>
+
+    <div class="term">
+      <h3>Applying policy without dropping the session</h3>
+<pre><code><span class="cmt">! modern: uses the route-refresh capability, no extra memory</span>
+clear bgp ipv4 unicast 203.0.113.1 soft in
+clear bgp ipv4 unicast 203.0.113.1 soft out
+clear bgp ipv4 unicast * soft
+
+<span class="cmt">! legacy: stores the unfiltered Adj-RIB-In locally</span>
+neighbor 203.0.113.1 soft-reconfiguration inbound</code></pre>
+      <p>If both peers support route refresh &mdash; essentially all modern code &mdash; you never need <code>soft-reconfiguration inbound</code>, and storing the full table twice on a router carrying several full feeds is a real memory cost.</p>
+      <p>The one thing it still gives you is <code>show bgp neighbors X received-routes</code>, which shows what arrived <em>before</em> inbound policy. Without it you only get <code>routes</code>, which is post-policy. On a lab or a troubleshooting-heavy edge router that visibility can be worth the memory.</p>
+      <div class="gotcha"><b>Never use a hard clear in production</b><code>clear ip bgp *</code> tears every session down and reconverges the whole table. On a router with full feeds that is minutes of outage. Always <code>soft</code>.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 10 ============ -->
+<section class="block" id="communities">
+  <div class="sechead">
+    <h2><span class="num">10</span>Communities</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="communities"> Reviewed</label>
+  </div>
+  <p class="lede">A 32-bit tag you attach to a route so that some other router &mdash; often in someone else's AS &mdash; can act on it without having to match prefixes.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Formats</h3>
+      <ul>
+        <li><strong>Standard</strong> &mdash; 32 bits, written <code>ASN:value</code>, e.g. <code>65001:100</code>.</li>
+        <li><strong>Extended</strong> &mdash; 64 bits, used for route targets in MPLS VPN and similar.</li>
+        <li><strong>Large</strong> (RFC 8092) &mdash; three 32-bit fields, <code>ASN:function:parameter</code>. Designed for 4-byte ASNs, which do not fit in the standard format.</li>
+      </ul>
+      <p>Well-known values:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Community</th><th>Effect</th></tr></thead>
+          <tbody>
+            <tr><td><code>no-export</code></td><td>Do not advertise outside this AS (confederation sub-ASes still receive it)</td></tr>
+            <tr><td><code>no-advertise</code></td><td>Do not advertise to any peer at all</td></tr>
+            <tr><td><code>local-AS</code> (no-export-subconfed)</td><td>Do not advertise outside this sub-AS</td></tr>
+            <tr><td><code>internet</code></td><td>Advertise to everyone. The default behaviour</td></tr>
+            <tr><td><code>gshut</code></td><td>Graceful shutdown signalling (RFC 8326)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="term">
+      <h3>Configuration</h3>
+<pre><code><span class="cmt">! communities are NOT sent by default — this line is mandatory</span>
+neighbor 10.0.0.3 send-community both
+
+route-map TAG-ROUTES permit 10
+ match ip address prefix-list CUSTOMER
+ set community 65001:100 65001:999 additive
+
+ip community-list standard CUST permit 65001:100
+ip community-list expanded TRANSIT permit 65001:[2-3]00
+
+route-map ACT-ON-TAG permit 10
+ match community CUST
+ set local-preference 300</code></pre>
+      <div class="gotcha"><b>send-community is off by default</b>You tag routes, verify the tag locally, and then wonder why the neighbour ignores it. <code>both</code> sends standard and extended; add <code>send-community large</code> where you use large communities. Without <code>additive</code>, <code>set community</code> replaces any existing values.</div>
+    </div>
+
+    <div class="term">
+      <h3>Provider communities &mdash; the practical use</h3>
+      <p>Most transit providers publish a community list letting you control their behaviour. Typical offerings:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Pattern</th><th>Typical meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>ASN:80</code> / <code>ASN:120</code></td><td>Set local-pref inside the provider &mdash; de-prefer or prefer this path</td></tr>
+            <tr><td><code>ASN:1xxxx</code></td><td>Prepend your ASN once/twice/three times toward a specific peer or region</td></tr>
+            <tr><td><code>ASN:0:peerASN</code></td><td>Do not announce to this specific peer</td></tr>
+            <tr><td><code>ASN:region</code></td><td>Announce only within a continent or region</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>This is far more precise than AS prepending, because it acts inside the provider's network where the decision actually matters, rather than hoping a longer AS_PATH wins somewhere downstream. Ask every transit provider for their community documentation on day one.</p>
+      <div class="tip"><b>Design your own scheme too</b>Internally, tag routes at the edge with where they came from &mdash; <code>65001:1001</code> for ISP-A, <code>65001:1002</code> for ISP-B, <code>65001:2000</code> for customer routes. Then write internal policy against communities instead of prefix lists. Adding a new provider becomes a tagging change, not a rewrite of every route-map.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section class="block" id="multihoming">
+  <div class="sechead">
+    <h2><span class="num">11</span>Multihoming and traffic engineering</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="multihoming"> Reviewed</label>
+  </div>
+  <p class="lede">Outbound is easy because you control it. Inbound is hard because you are asking the rest of the internet to cooperate.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Controlling outbound traffic</h3>
+      <p>Entirely within your control. Set LOCAL_PREF on ingress at the edge routers and the whole AS follows.</p>
+<pre><code>route-map FROM-ISP-A-IN permit 10
+ set local-preference 200
+route-map FROM-ISP-B-IN permit 10
+ set local-preference 100
+!
+<span class="cmt">! on R1</span>
+neighbor 203.0.113.1 route-map FROM-ISP-A-IN in
+<span class="cmt">! on R2</span>
+neighbor 198.51.100.1 route-map FROM-ISP-B-IN in</code></pre>
+      <p>Refinements: prefer whichever provider originates or is closest to a given destination by matching AS_PATH; accept a default from the cheaper provider and full routes from the better-connected one; or use per-prefix policy for the handful of destinations that actually matter.</p>
+    </div>
+
+    <div class="term">
+      <h3>How much table do you need?</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Option</th><th>Memory</th><th>Gives you</th></tr></thead>
+          <tbody>
+            <tr><td>Default route only from both</td><td>Minimal</td><td>Failover, no path selection. Fine for most enterprises</td></tr>
+            <tr><td>Default + customer routes</td><td>Modest</td><td>Direct path to each provider's own customers, default for the rest</td></tr>
+            <tr><td>Full tables from both</td><td>Large and growing</td><td>Genuine per-destination choice. Needed for transit or content networks</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The IPv4 table passed 900,000 prefixes and continues to grow, so "full tables" is a hardware commitment that must be reviewed against the platform's FIB scale, not just its RAM. For an enterprise whose goal is resilience rather than optimality, taking defaults from both providers is usually the right engineering answer and is often dismissed too quickly.</p>
+    </div>
+
+    <div class="term">
+      <h3>Controlling inbound traffic</h3>
+      <p>In rough order of reliability:</p>
+      <ol>
+        <li><strong>Provider communities</strong> &mdash; the most precise, because they act inside the provider's network. Always the first choice where offered.</li>
+        <li><strong>More-specific advertisements</strong> &mdash; the most forceful. A /24 always beats a /23 regardless of AS_PATH, because longest-prefix match happens before any BGP policy. Also the most antisocial: it adds entries to every table on the internet.</li>
+        <li><strong>AS prepending</strong> &mdash; blunt but universally supported. Only influences networks for which AS_PATH length is the deciding step.</li>
+        <li><strong>MED</strong> &mdash; only works between two links to the <em>same</em> provider, and only if they honour it.</li>
+      </ol>
+<pre><code>route-map PREPEND-TO-B permit 10
+ set as-path prepend 65001 65001 65001
+!
+neighbor 198.51.100.1 route-map PREPEND-TO-B out</code></pre>
+      <div class="gotcha"><b>Prepending has diminishing returns</b>Three prepends is usually enough. Beyond that you are only affecting networks whose decision reaches step 4 &mdash; and many large networks set LOCAL_PREF at step 2 based on their own commercial relationships, so your prepends never get evaluated. If ten prepends "do not work", that is why, and adding more will not help.</div>
+    </div>
+
+    <div class="term">
+      <h3>A worked split: primary and backup</h3>
+      <p>Goal: all traffic via ISP-A, ISP-B only on failure.</p>
+<pre><code><span class="cmt">! OUTBOUND — prefer ISP-A</span>
+<span class="cmt">! R1</span>
+route-map ISP-A-IN permit 10
+ set local-preference 200
+neighbor 203.0.113.1 route-map ISP-A-IN in
+
+<span class="cmt">! R2</span>
+route-map ISP-B-IN permit 10
+ set local-preference 100
+neighbor 198.51.100.1 route-map ISP-B-IN in
+
+<span class="cmt">! INBOUND — make the ISP-B path look worse</span>
+<span class="cmt">! R2</span>
+route-map ISP-B-OUT permit 10
+ match ip address prefix-list OUR-PREFIXES
+ set as-path prepend 65001 65001 65001
+neighbor 198.51.100.1 route-map ISP-B-OUT out</code></pre>
+      <p>Verify from outside your own network &mdash; a looking glass or a public route server &mdash; because from inside you cannot see how the internet views your prefixes.</p>
+<pre><code>R1# show bgp ipv4 unicast neighbors 203.0.113.1 advertised-routes
+R2# show bgp ipv4 unicast neighbors 198.51.100.1 advertised-routes</code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 12 ============ -->
+<section class="block" id="scaling">
+  <div class="sechead">
+    <h2><span class="num">12</span>Scaling and stability</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="scaling"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Maximum prefix</h3>
+<pre><code>neighbor 203.0.113.1 maximum-prefix 1000000 90 restart 15
+neighbor 10.0.0.5 maximum-prefix 100 80 warning-only</code></pre>
+      <p>Protects you from a peer leaking the full table. The threshold percentage triggers a warning log; exceeding the limit tears the session down. <code>restart N</code> brings it back automatically after N minutes; <code>warning-only</code> never drops it.</p>
+      <p>Set it on every eBGP peer. For a customer or partner expected to send a handful of prefixes, set it tight &mdash; a limit of 100 on a peer that should send five will catch a leak before it propagates.</p>
+    </div>
+
+    <div class="term">
+      <h3>Route dampening</h3>
+<pre><code>bgp dampening 15 750 2000 60
+<span class="cmt">!            |   |    |    +-- max suppress time, minutes</span>
+<span class="cmt">!            |   |    +------- suppress threshold</span>
+<span class="cmt">!            |   +------------ reuse threshold</span>
+<span class="cmt">!            +---------------- half-life, minutes</span>
+
+show bgp ipv4 unicast dampening dampened-paths
+show bgp ipv4 unicast dampening flap-statistics
+clear bgp ipv4 unicast dampening 192.0.2.0 255.255.255.0</code></pre>
+      <p>Each flap adds a penalty of 1000. Above the suppress threshold the route is withheld; the penalty decays exponentially and the route returns below the reuse threshold.</p>
+      <div class="gotcha"><b>Dampening is largely deprecated</b>RIPE recommended against the original aggressive parameters because they suppressed stable prefixes for far too long after brief flaps &mdash; sometimes an hour for a few seconds of instability. If you must use it, use the far gentler RIPE-recommended values, and apply it only to longer prefixes. Most networks simply do not run it any more.</div>
+    </div>
+
+    <div class="term">
+      <h3>Graceful restart and NSR</h3>
+      <ul>
+        <li><strong>Graceful restart</strong> &mdash; the restarting router asks peers to keep forwarding using the stale routes while its control plane recovers. Requires both ends to support it, and depends on the forwarding plane surviving the restart.</li>
+        <li><strong>NSR (Non-Stop Routing)</strong> &mdash; BGP state is replicated to a standby route processor, so a switchover is invisible to peers. No peer cooperation needed, but it requires dual-RP hardware.</li>
+      </ul>
+<pre><code>bgp graceful-restart
+bgp graceful-restart restart-time 120
+bgp graceful-restart stalepath-time 360</code></pre>
+      <p>There is a trade-off: graceful restart keeps traffic flowing through a router whose control plane has failed, which is right if the failure is transient and wrong if the router is genuinely broken.</p>
+    </div>
+
+    <div class="term">
+      <h3>Convergence: PIC and add-path</h3>
+      <ul>
+        <li><strong>BGP PIC (Prefix Independent Convergence)</strong> &mdash; pre-installs a backup next hop in the FIB so failover does not require reconverging each prefix individually. Convergence time stops scaling with prefix count, which matters enormously with a full table.</li>
+        <li><strong>Add-path</strong> &mdash; lets a speaker advertise several paths for the same prefix instead of only the best. Essential for making PIC effective behind a route reflector, which would otherwise hide the alternatives.</li>
+      </ul>
+<pre><code>address-family ipv4 unicast
+ bgp additional-paths select best 2
+ bgp additional-paths send receive
+ neighbor 10.0.0.1 additional-paths send
+ bgp recursion host</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Update groups</h3>
+<pre><code>show bgp ipv4 unicast update-group
+show bgp ipv4 unicast update-group summary</code></pre>
+      <p>IOS automatically groups neighbors with identical outbound policy and computes one update per group. Giving peers different outbound route-maps splits them into separate groups and multiplies CPU work at convergence. If you have hundreds of peers, check the group count &mdash; many groups with one member each means your policy is less uniform than it could be.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 13 ============ -->
+<section class="block" id="mpbgp">
+  <div class="sechead">
+    <h2><span class="num">13</span>MP-BGP and address families</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="mpbgp"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>AFI and SAFI</h3>
+      <p>Multiprotocol BGP (RFC 4760) carries reachability for things other than IPv4 unicast, using <code>MP_REACH_NLRI</code> and <code>MP_UNREACH_NLRI</code> attributes. One TCP session can carry many address families.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Address family</th><th>Carries</th></tr></thead>
+          <tbody>
+            <tr><td>IPv4 unicast</td><td>The classic internet table</td></tr>
+            <tr><td>IPv6 unicast</td><td>The IPv6 internet table</td></tr>
+            <tr><td>VPNv4 / VPNv6</td><td>MPLS L3VPN routes, prefixed with a route distinguisher</td></tr>
+            <tr><td>L2VPN EVPN</td><td>MAC and IP reachability for data centre fabrics and L2VPN</td></tr>
+            <tr><td>IPv4/IPv6 multicast</td><td>RPF information for multicast, separate from unicast</td></tr>
+            <tr><td>Flowspec</td><td>Traffic filtering rules, used for DDoS mitigation</td></tr>
+            <tr><td>Link-state (BGP-LS)</td><td>IGP topology exported to a controller for SR-TE</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="term">
+      <h3>IPv6</h3>
+<pre><code>router bgp 65001
+ neighbor 2001:db8:1::1 remote-as 65100
+ !
+ address-family ipv6 unicast
+  neighbor 2001:db8:1::1 activate
+  network 2001:db8:100::/48
+  neighbor 2001:db8:1::1 prefix-list V6-OUT out
+ exit-address-family</code></pre>
+      <p>IPv6 prefixes can be carried over an IPv4 session and vice versa, but the NEXT_HOP must then be in the right family &mdash; which usually needs a route-map. In practice, run IPv6 BGP over IPv6 transport and keep the two planes parallel; it is far easier to reason about and to troubleshoot.</p>
+    </div>
+
+    <div class="term">
+      <h3>MPLS L3VPN in brief</h3>
+      <ul>
+        <li><strong>RD (Route Distinguisher)</strong> &mdash; 64 bits prepended to an IPv4 prefix to make it unique across VRFs. Purely about uniqueness; it carries no policy meaning.</li>
+        <li><strong>RT (Route Target)</strong> &mdash; an extended community controlling which VRFs import and export the route. This is where the policy lives.</li>
+      </ul>
+<pre><code>vrf definition CUSTOMER-A
+ rd 65001:100
+ address-family ipv4
+  route-target export 65001:100
+  route-target import 65001:100
+
+router bgp 65001
+ address-family vpnv4
+  neighbor 10.0.0.3 activate
+  neighbor 10.0.0.3 send-community extended</code></pre>
+      <p>RD unique per VRF per PE, RT shared to define the VPN topology. Hub-and-spoke VPNs are built by asymmetric RT import and export, which is a common interview question.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 14 ============ -->
+<section class="block" id="security">
+  <div class="sechead">
+    <h2><span class="num">14</span>Security</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="security"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The threat model</h3>
+      <p>BGP has no built-in way to verify that an AS is entitled to originate a prefix, or that an advertised path was really traversed. Three consequences:</p>
+      <ul>
+        <li><strong>Prefix hijack</strong> &mdash; an AS announces someone else's space, usually by accident, occasionally not. A more specific announcement wins everywhere.</li>
+        <li><strong>Route leak</strong> &mdash; an AS re-advertises routes it should not, typically announcing one provider's routes to another and becoming unintended transit. Overwhelmingly the most common incident.</li>
+        <li><strong>Session attacks</strong> &mdash; spoofed packets against the TCP session, mitigated by MD5 and TTL security.</li>
+      </ul>
+    </div>
+
+    <div class="term">
+      <h3>What you configure</h3>
+<pre><code><span class="cmt">! 1. Session protection</span>
+neighbor 203.0.113.1 password &lt;key&gt;
+neighbor 203.0.113.1 ttl-security hops 1
+
+<span class="cmt">! 2. Never become transit — the single most valuable line</span>
+ip as-path access-list 1 permit ^$
+neighbor 203.0.113.1 filter-list 1 out
+
+<span class="cmt">! 3. Explicit outbound prefix list</span>
+neighbor 203.0.113.1 prefix-list OUR-PREFIXES out
+
+<span class="cmt">! 4. Inbound sanity filter</span>
+neighbor 203.0.113.1 prefix-list FROM-ISP in
+
+<span class="cmt">! 5. Cap the damage</span>
+neighbor 203.0.113.1 maximum-prefix 1000000 90 restart 15
+
+<span class="cmt">! 6. Control plane protection</span>
+ip access-list extended BGP-PEERS
+ permit tcp host 203.0.113.1 host 203.0.113.2 eq bgp
+ deny   tcp any any eq bgp</code></pre>
+      <div class="tip"><b>If you do only one thing</b>Apply <code>^$</code> outbound on every eBGP session. It makes accidental transit impossible, which is the failure mode most likely to take you &mdash; and possibly other people &mdash; off the air.</div>
+    </div>
+
+    <div class="term">
+      <h3>RPKI and origin validation</h3>
+      <p>RPKI lets a prefix holder publish a signed <strong>ROA (Route Origin Authorisation)</strong> stating which ASN may originate their prefix and at what maximum length. Routers fetch validated data from an RPKI cache over RTR and mark each received route:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>State</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Valid</strong></td><td>A ROA covers this prefix and the origin AS matches</td></tr>
+            <tr><td><strong>Invalid</strong></td><td>A ROA covers it but the origin AS or prefix length is wrong</td></tr>
+            <tr><td><strong>NotFound</strong></td><td>No ROA exists. Still a large share of the table</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code>router bgp 65001
+ bgp rpki server tcp 10.1.1.100 port 3323 refresh 600
+ address-family ipv4 unicast
+  bgp bestpath prefix-validate allow-invalid
+!
+route-map RPKI-IN permit 10
+ match rpki invalid
+ set local-preference 50
+route-map RPKI-IN permit 20
+
+show bgp ipv4 unicast rpki table
+show bgp ipv4 unicast rpki servers</code></pre>
+      <p>Two things to do regardless of whether you validate: <strong>publish ROAs for your own prefixes</strong>, and register your routing policy in an IRR so providers can build filters. Both are quick, both protect you, and neither requires any change on your routers.</p>
+      <p>RPKI validates the <em>origin</em> only. It does not prevent a route leak where the origin is correct but the path is not &mdash; that is what ASPA and BGPsec aim at, with ASPA the more likely to see real deployment.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 15 ============ -->
+<section class="block" id="troubleshooting">
+  <div class="sechead">
+    <h2><span class="num">15</span>Troubleshooting</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="troubleshooting"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The three questions</h3>
+      <p>Almost every BGP problem is one of these. Identify which before touching anything:</p>
+      <ol>
+        <li><strong>Is the session up?</strong> &rarr; FSM state, TCP, ASN, authentication.</li>
+        <li><strong>Is the prefix there?</strong> &rarr; advertised by them, accepted by my inbound policy, present in my BGP table.</li>
+        <li><strong>Is the right path chosen?</strong> &rarr; best-path algorithm, attributes, next-hop reachability.</li>
+      </ol>
+    </div>
+
+    <div class="term">
+      <h3>Session problems</h3>
+<pre><code>show bgp ipv4 unicast summary
+show bgp neighbors 203.0.113.1
+show bgp neighbors 203.0.113.1 | include state|Last reset|BGP state
+
+ping 203.0.113.1 source Loopback0
+show tcp brief | include 179
+show ip route 203.0.113.1
+debug ip tcp transactions</code></pre>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>State</th><th>Check</th></tr></thead>
+          <tbody>
+            <tr><td><code>Idle</code></td><td>Administratively shut, or no route to the peer at all</td></tr>
+            <tr><td><code>Idle (Admin)</code></td><td>Someone ran <code>neighbor X shutdown</code></td></tr>
+            <tr><td><code>Active</code></td><td>TCP will not establish: ACL, wrong IP, TTL, asymmetric source, MD5</td></tr>
+            <tr><td><code>OpenSent</code></td><td>ASN mismatch, duplicate router ID, capability disagreement</td></tr>
+            <tr><td><code>OpenConfirm</code></td><td>Hold timer expiring, one-way loss</td></tr>
+            <tr><td>Flapping</td><td>MTU, unidirectional loss, maximum-prefix, hold timer too aggressive</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="term">
+      <h3>Prefix problems</h3>
+<pre><code><span class="cmt">! what did they send me, before my inbound policy?</span>
+show bgp ipv4 unicast neighbors 203.0.113.1 received-routes
+<span class="cmt">! (needs soft-reconfiguration inbound, or use route refresh then check)</span>
+
+<span class="cmt">! what survived my inbound policy?</span>
+show bgp ipv4 unicast neighbors 203.0.113.1 routes
+
+<span class="cmt">! what am I sending them?</span>
+show bgp ipv4 unicast neighbors 203.0.113.1 advertised-routes
+
+<span class="cmt">! everything about one prefix</span>
+show bgp ipv4 unicast 8.8.8.0/24
+show bgp ipv4 unicast 8.8.8.0/24 bestpath
+show ip route 8.8.8.8
+
+<span class="cmt">! regex and community searches</span>
+show bgp ipv4 unicast regexp _65100$
+show bgp ipv4 unicast community 65001:100
+show bgp ipv4 unicast filter-list 1</code></pre>
+      <p>The three commands in order &mdash; received, routes, advertised &mdash; localise the problem precisely. Not in <em>received</em>: their problem. In received but not in <em>routes</em>: your inbound filter. In the table but not in <em>advertised</em>: your outbound filter or best-path.</p>
+    </div>
+
+    <div class="term">
+      <h3>Debugs, carefully</h3>
+<pre><code><span class="cmt">! ALWAYS scope first</span>
+debug bgp ipv4 unicast updates 203.0.113.1
+access-list 50 permit 192.0.2.0 0.0.0.255
+debug bgp ipv4 unicast updates 203.0.113.1 50
+
+debug bgp ipv4 unicast events
+debug ip bgp 203.0.113.1 keepalives
+
+undebug all</code></pre>
+      <div class="gotcha"><b>Unscoped BGP debugs can take a router down</b><code>debug ip bgp updates</code> on a router carrying a full table will flood the console and can wedge the CPU. Always scope to one neighbor and, ideally, one access-list. Log to buffer, never to console, and set <code>no logging console</code> first.</div>
+    </div>
+
+    <div class="term">
+      <h3>Useful log messages</h3>
+<pre><code>%BGP-5-ADJCHANGE: neighbor 203.0.113.1 Down BGP Notification sent
+%BGP-3-NOTIFICATION: sent to neighbor 203.0.113.1 2/2 (peer in wrong AS) 2 bytes
+%BGP-4-MAXPFX: No. of prefix received from 203.0.113.1 reaches 450000, max 500000
+%BGP-3-MAXPFXEXCEED: No. of prefix received from 203.0.113.1: 500001 exceed limit
+%TCP-6-BADAUTH: Invalid MD5 digest from 203.0.113.1:179
+%BGP-5-NBR_RESET: Neighbor 203.0.113.1 reset (Peer closed the session)</code></pre>
+      <p>NOTIFICATION codes are worth recognising: <strong>1</strong> message header error, <strong>2</strong> OPEN message error (subcode 2 is the classic wrong-AS), <strong>3</strong> UPDATE message error, <strong>4</strong> hold timer expired, <strong>5</strong> FSM error, <strong>6</strong> cease (which includes maximum-prefix and administrative shutdown).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 16 ============ -->
+<section class="block" id="scenarios">
+  <div class="sechead">
+    <h2><span class="num">16</span>Real-world scenarios</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="scenarios"> Reviewed</label>
+  </div>
+  <p class="lede">Ten incidents, each worked from the reported symptom through the diagnosis to the fix. Output is from the lab topology above. Try to reach the conclusion yourself before expanding the diagnosis.</p>
+
+  <details class="scn"><summary data-n="01">Session stuck in Active, and the link is fine</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>New eBGP session to ISP-B on R2 will not come up. The circuit tests clean, the interface is up, and the provider says their side is configured.</p>
+
+    <span class="step">What you see</span>
+<pre><code>R2# show bgp ipv4 unicast summary | include 198.51.100.1
+198.51.100.1  4 65200   0   0   0  0  0 never   <span class="bad">Active</span>
+
+R2# ping 198.51.100.1
+!!!!! Success rate is 100 percent (5/5)</code></pre>
+    <p>Ping works, so IP reachability is fine. Active means TCP 179 is not establishing &mdash; a different question entirely.</p>
+
+    <span class="step">Diagnosis</span>
+<pre><code>R2# show bgp neighbors 198.51.100.1 | include Last reset|state
+  BGP state = Active
+  Last reset never, no connection
+
+R2# debug ip tcp transactions
+TCP: sending SYN, seq 1234567, ack 0
+TCP: connection attempt to 198.51.100.1:179 <span class="bad">timed out</span></code></pre>
+    <p>SYNs leave, nothing returns. Ping succeeding while TCP 179 fails points at something filtering the port rather than a routing problem. Check, in order: an ACL on your own interface or control plane, an ACL on theirs, a firewall in the path, and &mdash; the one people forget &mdash; whether <em>they</em> have actually configured the neighbor. A router with no matching <code>neighbor</code> statement sends a TCP RST or simply drops the SYN.</p>
+<pre><code>R2# show access-lists | include 179|bgp
+    10 permit tcp host 203.0.113.1 any eq bgp
+    <span class="bad">20 deny tcp any any eq bgp</span></code></pre>
+
+    <span class="step">Root cause</span>
+    <p>The control-plane ACL was written for the existing ISP-A peer and never updated when ISP-B was added. The new peer's SYNs were being denied at line 20.</p>
+
+    <span class="step">Fix</span>
+<pre><code>ip access-list extended BGP-PEERS
+ 15 permit tcp host 198.51.100.1 host 198.51.100.2 eq bgp</code></pre>
+
+    <div class="verdict"><b>Takeaway</b>Active plus successful ping equals "something is blocking TCP 179", not "the link is broken". Ping and BGP test different things, and conflating them wastes hours. Build peer ACLs from a template that is updated whenever a peer is added.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="02">Session flaps every 90 seconds, carrying a full table</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>After enabling full routes from ISP-A, the session comes up, starts sending, then drops. It repeats roughly every 90 seconds and never finishes converging.</p>
+
+    <span class="step">What you see</span>
+<pre><code>R1# show log | include BGP
+%BGP-5-ADJCHANGE: neighbor 203.0.113.1 Up
+%BGP-5-NBR_RESET: Neighbor 203.0.113.1 reset (<span class="bad">BGP Notification sent</span>)
+%BGP-3-NOTIFICATION: sent to neighbor 203.0.113.1 <span class="bad">4/0 (hold time expired)</span>
+%BGP-5-ADJCHANGE: neighbor 203.0.113.1 Down BGP Notification sent
+
+R1# show bgp ipv4 unicast summary | include 203.0.113.1
+203.0.113.1   4 65100  412   18   0  0  0 00:01:12  <span class="bad">Idle</span></code></pre>
+    <p>Hold time expired, and it happens only once a large volume of updates starts. That combination is the signature of an MTU problem.</p>
+
+    <span class="step">Diagnosis</span>
+<pre><code>R1# ping 203.0.113.1 size 1500 df-bit
+Packet sent with the DF bit set
+<span class="bad">.....</span>
+Success rate is 0 percent (0/5)
+
+R1# ping 203.0.113.1 size 1476 df-bit
+!!!!!
+Success rate is 100 percent (5/5)</code></pre>
+    <p>Small packets pass, large ones do not. KEEPALIVEs are 19 bytes and always get through; UPDATE messages full of NLRI are large and get silently dropped. The session stays up until the hold timer expires with no keepalive &mdash; because the keepalives are stuck behind a blocked large segment in the TCP stream.</p>
+
+    <span class="step">Root cause</span>
+    <p>A carrier Ethernet segment in the path with a 1492-byte MTU, and path MTU discovery failing because ICMP fragmentation-needed messages were being filtered somewhere upstream.</p>
+
+    <span class="step">Fix</span>
+<pre><code>interface GigabitEthernet0/0
+ ip tcp adjust-mss 1400
+!
+router bgp 65001
+ neighbor 203.0.113.1 transport path-mtu-discovery disable</code></pre>
+    <p>Permanent fix is raising the MTU across the path or unblocking PMTUD. The MSS clamp is the immediate mitigation.</p>
+
+    <div class="verdict"><b>Takeaway</b>A BGP session that establishes and then dies <em>while exchanging a lot of prefixes</em> is an MTU problem until proven otherwise. Test with <code>ping size 1500 df-bit</code> before anything else. Sessions carrying few prefixes can hide this fault for months.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="03">Routes in the BGP table, nothing in the routing table</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>R3 shows thousands of prefixes in its BGP table but cannot reach any of them. R1 and R2, which hold the eBGP sessions, work fine.</p>
+
+    <span class="step">What you see</span>
+<pre><code>R3# show bgp ipv4 unicast | include 8.8.8.0
+ * i 8.8.8.0/24    203.0.113.1    0    100   0 65100 15169 i</code></pre>
+    <p>Note what is missing: there is <code>*</code> (valid) and <code>i</code> (internal) but no <code>&gt;</code> &mdash; no best path. A prefix with no best path is never installed and never advertised.</p>
+
+    <span class="step">Diagnosis</span>
+<pre><code>R3# show bgp ipv4 unicast 8.8.8.0/24
+BGP routing table entry for 8.8.8.0/24
+Paths: (1 available, <span class="bad">no best path</span>)
+  65100 15169
+    <span class="bad">203.0.113.1 (inaccessible)</span> from 10.0.0.1 (10.0.0.1)
+      Origin IGP, localpref 100, valid, internal
+
+R3# show ip route 203.0.113.1
+<span class="bad">% Network not in table</span></code></pre>
+    <p>The NEXT_HOP is the provider's address on the R1&ndash;ISP-A link. R1 passed it to R3 unchanged, because iBGP does not rewrite NEXT_HOP. R3 has no route to it, so the path fails the reachability gate before best-path even starts.</p>
+
+    <span class="step">Root cause</span>
+    <p><code>next-hop-self</code> missing on R1's iBGP sessions. The provider link subnet is not in the IGP &mdash; correctly so.</p>
+
+    <span class="step">Fix</span>
+<pre><code><span class="cmt">! on R1 and R2, toward every iBGP peer</span>
+router bgp 65001
+ address-family ipv4 unicast
+  neighbor 10.0.0.3 next-hop-self
+
+R1# clear bgp ipv4 unicast 10.0.0.3 soft out</code></pre>
+<pre><code>R3# show bgp ipv4 unicast 8.8.8.0/24
+  65100 15169
+    <span class="hl">10.0.0.1 (metric 20) from 10.0.0.1 (10.0.0.1)</span>
+      Origin IGP, localpref 100, valid, internal, <span class="hl">best</span></code></pre>
+
+    <div class="verdict"><b>Takeaway</b>"In the BGP table but not the routing table" is next-hop reachability in the overwhelming majority of cases. Look for <code>(inaccessible)</code> in <code>show bgp &lt;prefix&gt;</code>. Set <code>next-hop-self</code> on every router that feeds eBGP routes into iBGP &mdash; make it part of your iBGP peer template so it cannot be forgotten.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="04">One branch router never learns a prefix the others have</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>R2 has a prefix learned from ISP-B. R3 has it. R1 does not, and R1 and R3 are both iBGP peers of each other and of R2.</p>
+
+    <span class="step">What you see</span>
+<pre><code>R2# show bgp ipv4 unicast 172.16.9.0/24 | include best
+    198.51.100.1 from 198.51.100.1 (198.18.1.1), best
+
+R3# show bgp ipv4 unicast 172.16.9.0/24 | include best
+    10.0.0.2 (metric 20) from 10.0.0.2 (10.0.0.2), best
+
+R1# show bgp ipv4 unicast 172.16.9.0/24
+<span class="bad">% Network not in table</span></code></pre>
+
+    <span class="step">Diagnosis</span>
+<pre><code>R3# show bgp ipv4 unicast neighbors 10.0.0.1 advertised-routes | include 172.16.9
+<span class="cmt">! nothing</span>
+
+R3# show run | section router bgp
+ neighbor 10.0.0.1 remote-as 65001
+ neighbor 10.0.0.2 remote-as 65001
+ address-family ipv4 unicast
+  neighbor 10.0.0.1 activate
+  neighbor 10.0.0.2 activate
+  <span class="bad">! no route-reflector-client anywhere</span></code></pre>
+    <p>R3 learned the route from an iBGP peer (R2) and is therefore forbidden from passing it to another iBGP peer (R1). That is the split-horizon rule working exactly as designed.</p>
+
+    <span class="step">Root cause</span>
+    <p>The iBGP mesh was never completed, and R3 was assumed to be a route reflector but was never configured as one. R1 and R2 have no direct session in this state.</p>
+
+    <span class="step">Fix &mdash; option A, complete the mesh</span>
+<pre><code><span class="cmt">! R1</span>
+neighbor 10.0.0.2 remote-as 65001
+neighbor 10.0.0.2 update-source Loopback0
+address-family ipv4 unicast
+ neighbor 10.0.0.2 activate
+ neighbor 10.0.0.2 next-hop-self</code></pre>
+
+    <span class="step">Fix &mdash; option B, make R3 a reflector</span>
+<pre><code><span class="cmt">! R3 — scales, and is the right answer past a handful of routers</span>
+router bgp 65001
+ address-family ipv4 unicast
+  neighbor 10.0.0.1 route-reflector-client
+  neighbor 10.0.0.2 route-reflector-client</code></pre>
+
+    <div class="verdict"><b>Takeaway</b>A route visible on two routers but missing on a third, with all sessions up, is nearly always iBGP split horizon. Check whether the router in the middle is actually a reflector &mdash; "we have a route reflector" is frequently an assumption rather than a configuration.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="05">Prepending does nothing to inbound traffic</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>ISP-B is the backup link, prepended three times. Inbound traffic is still arriving over it, and adding more prepends has not helped.</p>
+
+    <span class="step">What you see</span>
+<pre><code>R2# show bgp ipv4 unicast neighbors 198.51.100.1 advertised-routes
+   Network          Next Hop         Metric LocPrf Weight Path
+*> 192.0.2.0/24     198.51.100.2          0             0 <span class="hl">65001 65001 65001 65001</span> i</code></pre>
+    <p>The prepend is being sent correctly &mdash; four instances of 65001 where ISP-A sees one. So the problem is not on your side.</p>
+
+    <span class="step">Diagnosis</span>
+    <p>Check how the outside world actually sees the prefix, using a public looking glass or route server:</p>
+<pre><code>route-server&gt; show bgp 192.0.2.0/24
+  65200 65001 65001 65001 65001
+    198.51.100.1 from 198.51.100.1
+      <span class="bad">Origin IGP, localpref 300</span>, valid, external, <span class="bad">best</span>
+  65100 65001
+    203.0.113.1 from 203.0.113.1
+      Origin IGP, <span class="bad">localpref 100</span>, valid, external</code></pre>
+    <p>There it is. The upstream network sets LOCAL_PREF 300 on routes from ISP-B and 100 on routes from ISP-A, presumably because ISP-B is a customer or a settlement-free peer while ISP-A is paid transit. LOCAL_PREF is step 2; AS_PATH is step 4. The comparison never reaches your prepends.</p>
+
+    <span class="step">Root cause</span>
+    <p>A commercial relationship upstream is overriding the path length. No amount of prepending can affect a decision made two steps earlier in the algorithm.</p>
+
+    <span class="step">Fix</span>
+<pre><code><span class="cmt">! Use ISP-B's community to de-preference inside THEIR network</span>
+route-map ISP-B-OUT permit 10
+ match ip address prefix-list OUR-PREFIXES
+ set community 65200:80 additive          <span class="cmt">! their "local-pref 80" community</span>
+ set as-path prepend 65001 65001
+!
+neighbor 198.51.100.1 route-map ISP-B-OUT out
+neighbor 198.51.100.1 send-community</code></pre>
+    <p>If the provider offers no suitable community, the remaining levers are announcing a more specific prefix via ISP-A only, or asking ISP-B to apply the policy on their side.</p>
+
+    <div class="verdict"><b>Takeaway</b>Prepending only acts at step 4, so it is invisible to anyone who decided at step 2. Always verify inbound policy from outside your network with a looking glass. Provider communities act where the decision is actually made, and are the proper tool for inbound engineering.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="06">Prefix count drops to almost nothing after a policy change</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>A route-map was added inbound on R1 to raise LOCAL_PREF for a particular customer range. Immediately afterwards, internet access failed for the whole site.</p>
+
+    <span class="step">What you see</span>
+<pre><code>R1# show bgp ipv4 unicast summary | include 203.0.113.1
+203.0.113.1   4 65100  412891  12044  904112  0  0 3w2d  <span class="bad">14</span>
+
+<span class="cmt">! was 874231 before the change</span></code></pre>
+
+    <span class="step">Diagnosis</span>
+<pre><code>R1# show run | section route-map PREFER-CUSTOMER
+route-map PREFER-CUSTOMER permit 10
+ match ip address prefix-list CUSTOMER-SPACE
+ set local-preference 300
+<span class="bad">! and nothing else — implicit deny for everything that does not match</span></code></pre>
+    <p>A route-map ends with an implicit deny. Only the fourteen prefixes matching <code>CUSTOMER-SPACE</code> survived; the other 874,217 were discarded on ingress.</p>
+
+    <span class="step">Fix</span>
+<pre><code>route-map PREFER-CUSTOMER permit 20
+ description Accept everything else unchanged
+
+R1# clear bgp ipv4 unicast 203.0.113.1 soft in</code></pre>
+<pre><code>R1# show bgp ipv4 unicast summary | include 203.0.113.1
+203.0.113.1   4 65100  412903  12051  904140  0  0 3w2d  <span class="hl">874231</span></code></pre>
+
+    <span class="step">Prevention</span>
+    <ul>
+      <li>Write the trailing <code>permit</code> clause first, then add the specific clauses above it.</li>
+      <li>Record the prefix count before and after every policy change.</li>
+      <li>Test inbound route-maps on a lab peer or with <code>show bgp ipv4 unicast neighbors X received-routes</code> plus a route-map simulation where the platform supports it.</li>
+    </ul>
+
+    <div class="verdict"><b>Takeaway</b>The implicit deny at the end of a route-map is the most expensive default in Cisco IOS. Any inbound route-map on a full-table peer without a catch-all permit will black-hole the internet, instantly and completely.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="07">Session drops nightly at the same time</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>The ISP-A session resets at roughly 02:10 every night. It recovers on its own after fifteen minutes. Nothing is scheduled on the router.</p>
+
+    <span class="step">What you see</span>
+<pre><code>R1# show log | include MAXPFX|ADJCHANGE
+Feb 11 02:09:48: %BGP-4-MAXPFX: No. of prefix received from 203.0.113.1
+   reaches 900000, max 1000000
+Feb 11 02:10:21: <span class="bad">%BGP-3-MAXPFXEXCEED</span>: No. of prefix received from
+   203.0.113.1: 1000001 exceed limit 1000000
+Feb 11 02:10:21: %BGP-5-ADJCHANGE: neighbor 203.0.113.1 Down
+   <span class="bad">BGP Notification sent</span>
+Feb 11 02:25:21: %BGP-5-ADJCHANGE: neighbor 203.0.113.1 Up</code></pre>
+
+    <span class="step">Diagnosis</span>
+    <p>Not a scheduled job &mdash; a maximum-prefix limit being crossed. The fifteen-minute recovery is the <code>restart 15</code> argument working as configured. The question is why the count crosses the limit at that time.</p>
+<pre><code>R1# show bgp ipv4 unicast summary | include 203.0.113.1
+203.0.113.1  4 65100  ... 00:34:12  <span class="hl">998412</span>
+
+R1# show bgp ipv4 unicast neighbors 203.0.113.1 | include maximum
+  Maximum prefixes allowed 1000000</code></pre>
+    <p>The steady-state count sits just under the limit. The table has grown organically, and a nightly burst &mdash; a peer of ISP-A deaggregating during a maintenance window, or routine churn &mdash; is enough to push it over.</p>
+
+    <span class="step">Root cause</span>
+    <p>A maximum-prefix limit set years ago when the table was far smaller, never revisited as the internet grew.</p>
+
+    <span class="step">Fix</span>
+<pre><code>neighbor 203.0.113.1 maximum-prefix 1500000 90 restart 15</code></pre>
+    <ul>
+      <li>Set the limit with real headroom &mdash; roughly 1.5&times; the current table, not 1.05&times;.</li>
+      <li>Alert on the <code>%BGP-4-MAXPFX</code> threshold warning, which fires long before the drop.</li>
+      <li>Review the figure annually. The IPv4 table grows by tens of thousands of prefixes a year.</li>
+    </ul>
+
+    <div class="verdict"><b>Takeaway</b>A session that drops and self-recovers on a timer is almost always maximum-prefix with <code>restart</code>. The warning log is the part to monitor &mdash; by the time the session drops you have already had an outage. Treat the limit as a value with a review date, not a one-time setting.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="08">You briefly became transit between two providers</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>A phone call from ISP-A: AS 65001 is announcing roughly 800,000 prefixes to them. Your links are saturated and latency is terrible.</p>
+
+    <span class="step">What you see</span>
+<pre><code>R1# show bgp ipv4 unicast neighbors 203.0.113.1 advertised-routes | count
+Number of lines which match regexp = <span class="bad">812447</span>
+
+<span class="cmt">! should be 1</span></code></pre>
+
+    <span class="step">Immediate action</span>
+<pre><code><span class="cmt">! stop the bleeding first, investigate second</span>
+R1(config)# router bgp 65001
+R1(config-router)# neighbor 203.0.113.1 shutdown</code></pre>
+    <p>Shutting the session is the right first move. A route leak damages other networks as well as your own, and the priority is to stop announcing.</p>
+
+    <span class="step">Diagnosis</span>
+<pre><code>R1# show run | section router bgp
+ neighbor 203.0.113.1 remote-as 65100
+ address-family ipv4 unicast
+  neighbor 203.0.113.1 activate
+  <span class="bad">! no prefix-list out</span>
+  <span class="bad">! no filter-list out</span>
+  neighbor 203.0.113.1 route-map SET-LOCALPREF in</code></pre>
+    <p>No outbound filter of any kind. Everything R1 learned from ISP-B via iBGP was being re-advertised to ISP-A &mdash; which is exactly what BGP is designed to do unless you tell it not to. The configuration had worked for years because R2's session to ISP-B was down; when it was restored, the leak began.</p>
+
+    <span class="step">Root cause</span>
+    <p>Missing outbound policy on an eBGP session. The absence was latent and only became visible when the second provider session came up.</p>
+
+    <span class="step">Fix</span>
+<pre><code>ip prefix-list OUR-PREFIXES seq 5 permit 192.0.2.0/24
+ip as-path access-list 1 permit ^$
+!
+router bgp 65001
+ address-family ipv4 unicast
+  neighbor 203.0.113.1 prefix-list OUR-PREFIXES out
+  neighbor 203.0.113.1 filter-list 1 out
+  neighbor 198.51.100.1 prefix-list OUR-PREFIXES out
+  neighbor 198.51.100.1 filter-list 1 out
+!
+R1(config-router)# no neighbor 203.0.113.1 shutdown</code></pre>
+<pre><code>R1# show bgp ipv4 unicast neighbors 203.0.113.1 advertised-routes
+   Network          Next Hop     Metric LocPrf Weight Path
+*> 192.0.2.0/24     0.0.0.0           0         32768 i
+
+Total number of prefixes <span class="hl">1</span></code></pre>
+
+    <span class="step">Prevention</span>
+    <ul>
+      <li>Both filters on every eBGP peer: prefix-list for what, <code>^$</code> for who.</li>
+      <li>Monitor advertised prefix count per peer and alert on any change.</li>
+      <li>Ask providers to filter your session by your IRR objects &mdash; defence in depth.</li>
+      <li>Publish ROAs so others can reject invalid announcements.</li>
+    </ul>
+
+    <div class="verdict"><b>Takeaway</b>Route leaks are the most common serious BGP incident, and they are almost always caused by a missing outbound filter rather than anything exotic. The defence costs two lines per peer. Note how the fault stayed hidden for years &mdash; configuration gaps that depend on another device being down are the dangerous ones.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="09">Traffic takes the wrong exit despite correct local-pref</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>Policy says prefer ISP-A. R3 obeys it. R2 keeps sending traffic out of ISP-B even for destinations where ISP-A should win.</p>
+
+    <span class="step">What you see</span>
+<pre><code>R3# show bgp ipv4 unicast 8.8.8.0/24 | include best|localpref
+      Origin IGP, localpref <span class="hl">200</span>, valid, internal, <span class="hl">best</span>
+
+R2# show bgp ipv4 unicast 8.8.8.0/24
+Paths: (2 available, best #2)
+  65100 15169
+    10.0.0.1 (metric 20) from 10.0.0.3 (10.0.0.3)
+      Origin IGP, localpref <span class="hl">200</span>, valid, internal
+  65200 3356 15169
+    198.51.100.1 from 198.51.100.1 (198.18.1.1)
+      Origin IGP, localpref <span class="bad">200</span>, valid, external, <span class="bad">best</span></code></pre>
+    <p>Both paths have LOCAL_PREF 200. The tie is therefore broken further down &mdash; and at step 7, eBGP beats iBGP. R2's own external path wins.</p>
+
+    <span class="step">Diagnosis</span>
+<pre><code>R2# show run | section route-map ISP-B-IN
+route-map ISP-B-IN permit 10
+ <span class="bad">set local-preference 200</span>
+<span class="cmt">! should be 100</span></code></pre>
+    <p>The inbound route-map on R2 was copied from R1 during a change and the value never adjusted. Both providers now arrive with LOCAL_PREF 200, so the intended preference disappeared and step 7 silently decided instead.</p>
+
+    <span class="step">Root cause</span>
+    <p>Copy-paste between edge routers without changing the preference value. The symptom is subtle because nothing is broken &mdash; traffic flows, just not where intended, and only on the router with the local eBGP session.</p>
+
+    <span class="step">Fix</span>
+<pre><code><span class="cmt">! R2</span>
+route-map ISP-B-IN permit 10
+ set local-preference 100
+!
+R2# clear bgp ipv4 unicast 198.51.100.1 soft in</code></pre>
+<pre><code>R2# show bgp ipv4 unicast 8.8.8.0/24 | include best
+    10.0.0.1 (metric 20) from 10.0.0.3 (10.0.0.3), <span class="hl">best</span></code></pre>
+
+    <div class="verdict"><b>Takeaway</b>"eBGP beats iBGP" at step 7 is what decides when LOCAL_PREF ties, and it means a router with its own external session will prefer it unless policy says otherwise. When traffic exits the wrong way, compare the attributes on the router making the decision &mdash; not on the router where the policy looks correct. Keep LOCAL_PREF values in a documented table rather than in each router's config alone.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="10">Aggregate disappears whenever a site goes down</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>R1 advertises an aggregate 192.0.0.0/14 covering four sites. Whenever a particular site's WAN link fails, the entire aggregate is withdrawn from both providers and everything becomes unreachable.</p>
+
+    <span class="step">What you see</span>
+<pre><code>R1# show bgp ipv4 unicast 192.0.0.0/14
+<span class="bad">% Network not in table</span>
+
+R1# show bgp ipv4 unicast | include 192\.
+<span class="cmt">! nothing — all four components gone</span></code></pre>
+
+    <span class="step">Diagnosis</span>
+<pre><code>R1# show run | section aggregate
+ aggregate-address 192.0.0.0 255.252.0.0 summary-only
+
+R1# show run | section network
+ <span class="cmt">! components come from redistributed OSPF, not network statements</span>
+ redistribute ospf 1 route-map OSPF-TO-BGP</code></pre>
+    <p>An aggregate exists only while at least one more-specific component is present in the BGP table. The components here are redistributed from OSPF. The failed site's link flapped, the OSPF routes for <em>all</em> sites briefly withdrew during an SPF recalculation, and with no components left the aggregate vanished.</p>
+
+    <span class="step">Root cause</span>
+    <p>The aggregate's existence depends on dynamic routes that can all disappear at once. There is no stable anchor.</p>
+
+    <span class="step">Fix</span>
+<pre><code><span class="cmt">! Anchor the aggregate with a discard route that never goes away</span>
+ip route 192.0.0.0 255.252.0.0 Null0 250
+!
+router bgp 65001
+ address-family ipv4 unicast
+  network 192.0.0.0 mask 255.252.0.0
+  aggregate-address 192.0.0.0 255.252.0.0 summary-only</code></pre>
+    <p>The static to Null0 guarantees the prefix exists in the RIB, so the <code>network</code> statement always injects it. The aggregate is then stable regardless of component state, and the Null0 route silently discards traffic for unallocated space inside the block.</p>
+
+    <div class="verdict"><b>Takeaway</b>Aggregates are conditional on their components by design. If an aggregate must always be announced, anchor it with a static route to Null0 and a <code>network</code> statement. The Null0 route is also what stops traffic for unused parts of your block from looping back out your default route &mdash; two problems, one line.</div>
+  </div></details>
+</section>
+
+<!-- ============ 17 ============ -->
+<section class="block" id="commands">
+  <div class="sechead">
+    <h2><span class="num">17</span>Command reference</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="commands"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Daily operations</h3>
+<pre><code>show bgp ipv4 unicast summary
+show bgp ipv4 unicast
+show bgp ipv4 unicast 8.8.8.0/24
+show bgp ipv4 unicast neighbors 203.0.113.1
+show bgp ipv4 unicast neighbors 203.0.113.1 routes
+show bgp ipv4 unicast neighbors 203.0.113.1 received-routes
+show bgp ipv4 unicast neighbors 203.0.113.1 advertised-routes
+show bgp ipv4 unicast neighbors 203.0.113.1 policy
+show bgp ipv4 unicast regexp _65100$
+show bgp ipv4 unicast community 65001:100
+show bgp ipv4 unicast dampening dampened-paths
+show bgp ipv4 unicast update-group
+show ip route bgp
+show bgp all summary                      <span class="cmt">! every address family</span></code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Changing things safely</h3>
+<pre><code>clear bgp ipv4 unicast 203.0.113.1 soft in
+clear bgp ipv4 unicast 203.0.113.1 soft out
+clear bgp ipv4 unicast * soft
+clear bgp ipv4 unicast 203.0.113.1 in prefix-filter    <span class="cmt">! ORF</span>
+
+<span class="cmt">! almost never</span>
+clear bgp ipv4 unicast 203.0.113.1</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Platform differences worth knowing</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Task</th><th>IOS / IOS-XE</th><th>NX-OS</th><th>IOS-XR</th></tr></thead>
+          <tbody>
+            <tr><td>Summary</td><td><code>show bgp ipv4 unicast summary</code></td><td><code>show bgp ipv4 unicast summary</code></td><td><code>show bgp summary</code></td></tr>
+            <tr><td>Soft clear</td><td><code>clear bgp ipv4 unicast X soft in</code></td><td><code>clear bgp ipv4 unicast X soft in</code></td><td><code>clear bgp ipv4 unicast X soft in</code></td></tr>
+            <tr><td>Policy language</td><td>route-map</td><td>route-map</td><td>RPL (<code>route-policy</code>)</td></tr>
+            <tr><td>Commit model</td><td>Immediate</td><td>Immediate</td><td>Two-stage, <code>commit</code> required</td></tr>
+            <tr><td>Next-hop-self</td><td>Per neighbor, in AF</td><td>Per neighbor, in AF</td><td>In the route-policy or per neighbor-AF</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>IOS-XR's two-stage commit is the biggest practical difference: your changes do nothing until <code>commit</code>, and <code>show configuration</code> previews them first. That is a safety feature worth missing when you go back to IOS.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 18 ============ -->
+<section class="block" id="checklist">
+  <div class="sechead">
+    <h2><span class="num">18</span>Design and turn-up checklist</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="checklist"> Reviewed</label>
+  </div>
+  <p class="lede">What to confirm before a new eBGP session carries production traffic.</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>Before the session comes up</caption>
+      <thead><tr><th>Check</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>Outbound prefix-list listing only your prefixes</td><td>Prevents announcing anything you should not</td></tr>
+        <tr><td>Outbound <code>filter-list</code> with <code>^$</code></td><td>Makes accidental transit impossible</td></tr>
+        <tr><td>Inbound prefix-list rejecting RFC 1918, your own space, default, and prefixes longer than /24</td><td>Basic hygiene against leaks and hijacks reaching you</td></tr>
+        <tr><td>Inbound route-map ends with an explicit <code>permit</code></td><td>The implicit deny will otherwise black-hole everything</td></tr>
+        <tr><td><code>maximum-prefix</code> with realistic headroom and a warning threshold</td><td>Caps the blast radius of a peer leaking</td></tr>
+        <tr><td><code>next-hop-self</code> toward every iBGP peer</td><td>Otherwise internal routers cannot resolve the next hop</td></tr>
+        <tr><td>iBGP sourced from loopbacks, loopbacks in the IGP</td><td>Session survives a link failure</td></tr>
+        <tr><td>MD5 password and <code>ttl-security</code></td><td>Session-level protection</td></tr>
+        <tr><td><code>bgp log-neighbor-changes</code> and syslog to a collector</td><td>You need the history when it flaps at 3am</td></tr>
+        <tr><td><code>bgp deterministic-med</code>, consistently AS-wide</td><td>Makes best-path independent of arrival order</td></tr>
+        <tr><td>Neighbor <code>description</code> on every peer</td><td>The next person will thank you</td></tr>
+        <tr><td>MTU tested with <code>ping size 1500 df-bit</code></td><td>Catches the flap-under-load fault before go-live</td></tr>
+        <tr><td>ROAs published for your prefixes, IRR objects registered</td><td>Lets others filter correctly on your behalf</td></tr>
+        <tr><td>Prefix counts recorded, alerting configured</td><td>Baseline to compare against after any change</td></tr>
+        <tr><td>Advertisement verified from an external looking glass</td><td>Inside your AS you cannot see what the internet sees</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+</main>
+</div>
+
+<footer>
+  <p>Command syntax and defaults vary across IOS, IOS-XE, NX-OS and IOS-XR releases. Verify against the configuration guide and command reference for the platform and version in front of you before applying anything here to production.</p>
+  <p>Examples use documentation address ranges (RFC 5737: 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24), the IPv6 documentation prefix 2001:db8::/32 (RFC 3849), and private ASNs from the RFC 6996 range. Key standards: RFC 4271 (BGP-4), RFC 4456 (route reflection), RFC 5065 (confederations), RFC 4760 (MP-BGP), RFC 1997 and RFC 8092 (communities), RFC 6793 (4-byte ASNs), RFC 6811 (origin validation).</p>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var q = document.getElementById('q');
+  var clearBtn = document.getElementById('clearq');
+  var countEl = document.getElementById('count');
+  var noResult = document.getElementById('noresult');
+  var sections = Array.prototype.slice.call(document.querySelectorAll('section.block'));
+  var navLinks = Array.prototype.slice.call(document.querySelectorAll('nav.index a'));
+
+  var items = [];
+  sections.forEach(function(sec){
+    Array.prototype.slice.call(sec.querySelectorAll('.term, .scn')).forEach(function(el){
+      items.push({el: el, sec: sec, text: (el.textContent || '').toLowerCase()});
+    });
+  });
+
+  var tables = [];
+  sections.forEach(function(sec){
+    Array.prototype.slice.call(sec.querySelectorAll('.tablewrap')).forEach(function(w){
+      if(w.closest('.term') || w.closest('.scn')){ return; }
+      var rows = Array.prototype.slice.call(w.querySelectorAll('tbody tr')).map(function(tr){
+        return {tr: tr, text: (tr.textContent || '').toLowerCase()};
+      });
+      tables.push({wrap: w, sec: sec, rows: rows});
+    });
+  });
+
+  var totalItems = items.length + tables.reduce(function(n, t){ return n + t.rows.length; }, 0);
+
+  function applyFilter(raw){
+    var term = (raw || '').trim().toLowerCase();
+    var filtering = term.length > 0;
+    document.body.classList.toggle('filtering', filtering);
+    clearBtn.hidden = !filtering;
+
+    if(!filtering){
+      items.forEach(function(it){ it.el.style.display = ''; });
+      tables.forEach(function(t){
+        t.wrap.style.display = '';
+        t.rows.forEach(function(r){ r.tr.style.display = ''; });
+      });
+      sections.forEach(function(s){ s.style.display = ''; });
+      noResult.style.display = 'none';
+      countEl.textContent = totalItems + ' entries';
+      return;
+    }
+
+    var shown = 0;
+    var live = {};
+
+    items.forEach(function(it){
+      var hit = it.text.indexOf(term) !== -1;
+      it.el.style.display = hit ? '' : 'none';
+      if(hit){
+        shown++; live[it.sec.id] = true;
+        if(it.el.tagName === 'DETAILS'){ it.el.open = true; }
+      }
+    });
+
+    tables.forEach(function(t){
+      var any = false;
+      t.rows.forEach(function(r){
+        var hit = r.text.indexOf(term) !== -1;
+        r.tr.style.display = hit ? '' : 'none';
+        if(hit){ any = true; shown++; }
+      });
+      t.wrap.style.display = any ? '' : 'none';
+      if(any){ live[t.sec.id] = true; }
+    });
+
+    sections.forEach(function(s){ s.style.display = live[s.id] ? '' : 'none'; });
+    noResult.style.display = shown ? 'none' : 'block';
+    countEl.textContent = shown + ' of ' + totalItems + ' entries';
+  }
+
+  q.addEventListener('input', function(){ applyFilter(q.value); });
+  clearBtn.addEventListener('click', function(){ q.value = ''; applyFilter(''); q.focus(); });
+  q.addEventListener('keydown', function(e){
+    if(e.key === 'Escape'){ q.value = ''; applyFilter(''); }
+  });
+  document.addEventListener('keydown', function(e){
+    if(e.key === '/' && document.activeElement !== q){
+      e.preventDefault(); q.focus(); q.select();
+    }
+  });
+
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('.reviewed input'));
+  var fill = document.getElementById('progfill');
+  var ptxt = document.getElementById('progtxt');
+  var KEY = 'bgp-ref-reviewed-v1';
+
+  function load(){
+    try{
+      var raw = window.localStorage.getItem(KEY);
+      return raw ? JSON.parse(raw) : {};
+    }catch(err){ return {}; }
+  }
+  function save(state){
+    try{ window.localStorage.setItem(KEY, JSON.stringify(state)); }catch(err){ /* storage unavailable */ }
+  }
+  function paint(){
+    var done = boxes.filter(function(b){ return b.checked; }).length;
+    ptxt.textContent = done + '/' + boxes.length;
+    fill.style.width = (boxes.length ? (done / boxes.length * 100) : 0) + '%';
+  }
+  var state = load();
+  boxes.forEach(function(b){
+    if(state[b.dataset.sec]){ b.checked = true; }
+    b.addEventListener('change', function(){
+      var s = load();
+      if(b.checked){ s[b.dataset.sec] = 1; } else { delete s[b.dataset.sec]; }
+      save(s);
+      paint();
+    });
+  });
+  paint();
+
+  var tbtn = document.getElementById('themebtn');
+  var TKEY = 'bgp-ref-theme-v1';
+  try{
+    var saved = window.localStorage.getItem(TKEY);
+    if(saved === 'dark' || saved === 'light'){ document.documentElement.setAttribute('data-theme', saved); }
+  }catch(err){ /* ignore */ }
+  tbtn.addEventListener('click', function(){
+    var cur = document.documentElement.getAttribute('data-theme');
+    var isDark;
+    if(cur){ isDark = cur === 'dark'; }
+    else { isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches; }
+    var next = isDark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try{ window.localStorage.setItem(TKEY, next); }catch(err){ /* ignore */ }
+  });
+
+  if('IntersectionObserver' in window){
+    var obs = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(!en.isIntersecting){ return; }
+        navLinks.forEach(function(a){
+          a.classList.toggle('on', a.getAttribute('href') === '#' + en.target.id);
+        });
+      });
+    }, {rootMargin: '-72px 0px -70% 0px', threshold: 0});
+    sections.forEach(function(s){ obs.observe(s); });
+  }
+
+  applyFilter('');
+})();
+</script>
+</body>
+</html>
