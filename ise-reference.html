@@ -1,0 +1,1550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ISE Interview Reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: fixed left index, scrolling reference column, live filter across every term card. */
+:root{
+  --bg:#f5f7f9;
+  --surface:#ffffff;
+  --surface-2:#eceff4;
+  --surface-3:#e3e8ee;
+  --ink:#141e28;
+  --ink-2:#4e6070;
+  --ink-3:#7c8d9b;
+  --line:#d9e0e7;
+  --line-strong:#c3cdd6;
+  --accent:#0d7a84;
+  --accent-ink:#0a5e66;
+  --accent-soft:rgba(13,122,132,.10);
+  --amber:#9a5c08;
+  --amber-soft:rgba(154,92,8,.10);
+  --good:#1a7347;
+  --crit:#a92a20;
+  --font-display:"IBM Plex Serif",Georgia,"Times New Roman",serif;
+  --font-body:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d141a;
+    --surface:#141d25;
+    --surface-2:#1a242d;
+    --surface-3:#212d37;
+    --ink:#e4ecf2;
+    --ink-2:#9db0be;
+    --ink-3:#6f8393;
+    --line:#253239;
+    --line-strong:#334450;
+    --accent:#3ab8c0;
+    --accent-ink:#5fd0d6;
+    --accent-soft:rgba(58,184,192,.14);
+    --amber:#dda550;
+    --amber-soft:rgba(221,165,80,.13);
+    --good:#48c184;
+    --crit:#ef7065;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d141a;
+  --surface:#141d25;
+  --surface-2:#1a242d;
+  --surface-3:#212d37;
+  --ink:#e4ecf2;
+  --ink-2:#9db0be;
+  --ink-3:#6f8393;
+  --line:#253239;
+  --line-strong:#334450;
+  --accent:#3ab8c0;
+  --accent-ink:#5fd0d6;
+  --accent-soft:rgba(58,184,192,.14);
+  --amber:#dda550;
+  --amber-soft:rgba(221,165,80,.13);
+  --good:#48c184;
+  --crit:#ef7065;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--font-body);
+  font-size:15px;
+  line-height:1.6;
+}
+h1,h2,h3{font-family:var(--font-display);text-wrap:balance;margin:0}
+a{color:var(--accent-ink)}
+code,kbd{font-family:var(--font-mono);font-size:.88em}
+code{background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:.08em .34em;white-space:nowrap}
+
+/* ---------- masthead ---------- */
+.masthead{
+  background:var(--surface);
+  border-bottom:1px solid var(--line);
+}
+.masthead-in{
+  max-width:1200px;margin:0 auto;padding:26px 20px 22px;
+  display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;justify-content:space-between;
+}
+.brand h1{font-size:27px;line-height:1.2;letter-spacing:-.01em}
+.brand p{margin:6px 0 0;color:var(--ink-2);font-size:14px;max-width:62ch}
+.eyebrow{
+  display:inline-block;font-size:11px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--accent-ink);background:var(--accent-soft);border-radius:3px;padding:3px 8px;margin-bottom:10px;
+}
+.themebtn{
+  font:inherit;font-size:13px;font-weight:500;color:var(--ink-2);
+  background:var(--surface-2);border:1px solid var(--line);border-radius:6px;
+  padding:7px 13px;cursor:pointer;white-space:nowrap;
+}
+.themebtn:hover{border-color:var(--line-strong);color:var(--ink)}
+
+/* ---------- toolbar ---------- */
+.toolbar{
+  position:sticky;top:0;z-index:30;
+  background:var(--bg);border-bottom:1px solid var(--line);
+}
+.toolbar-in{
+  max-width:1200px;margin:0 auto;padding:12px 20px;
+  display:flex;gap:12px;align-items:center;flex-wrap:wrap;
+}
+.searchwrap{position:relative;flex:1 1 300px;min-width:0}
+#q{
+  width:100%;font:inherit;font-size:14px;color:var(--ink);
+  background:var(--surface);border:1px solid var(--line-strong);border-radius:7px;
+  padding:9px 34px 9px 12px;
+}
+#q::placeholder{color:var(--ink-3)}
+#q:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+.clearq{
+  position:absolute;right:5px;top:50%;transform:translateY(-50%);
+  border:0;background:none;color:var(--ink-3);font-size:17px;line-height:1;cursor:pointer;padding:5px 7px;border-radius:4px;
+}
+.clearq:hover{color:var(--ink)}
+.count{font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.progwrap{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink-2);white-space:nowrap}
+.progbar{width:92px;height:6px;border-radius:3px;background:var(--surface-3);overflow:hidden}
+.progfill{height:100%;width:0;background:var(--accent);transition:width .25s ease}
+
+/* ---------- shell ---------- */
+.shell{max-width:1200px;margin:0 auto;padding:0 20px 80px;display:flex;gap:34px;align-items:flex-start}
+nav.index{
+  position:sticky;top:64px;flex:0 0 212px;width:212px;
+  max-height:calc(100vh - 84px);overflow-y:auto;padding:22px 0 20px;
+}
+nav.index h2{font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);font-family:var(--font-body);font-weight:600;margin:0 0 9px}
+nav.index ol{list-style:none;margin:0;padding:0;counter-reset:nav}
+nav.index li{counter-increment:nav}
+nav.index a{
+  display:flex;gap:9px;padding:5px 9px;border-radius:5px;
+  color:var(--ink-2);text-decoration:none;font-size:13.5px;line-height:1.35;
+}
+nav.index a::before{content:counter(nav,decimal-leading-zero);color:var(--ink-3);font-variant-numeric:tabular-nums;font-size:11.5px;padding-top:2px}
+nav.index a:hover{background:var(--surface-2);color:var(--ink)}
+nav.index a.on{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
+nav.index a.on::before{color:var(--accent-ink)}
+
+main{flex:1 1 auto;min-width:0;padding:22px 0 0}
+
+/* ---------- sections ---------- */
+section.block{margin-bottom:38px;scroll-margin-top:72px}
+.sechead{
+  display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap;
+  padding-bottom:9px;border-bottom:2px solid var(--line-strong);margin-bottom:16px;
+}
+.sechead h2{font-size:21px;letter-spacing:-.005em}
+.sechead .num{color:var(--ink-3);font-family:var(--font-mono);font-size:12.5px;margin-right:9px}
+.lede{color:var(--ink-2);font-size:14.5px;margin:0 0 16px;max-width:68ch}
+.reviewed{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-3);cursor:pointer;user-select:none}
+.reviewed input{accent-color:var(--accent);width:14px;height:14px;cursor:pointer}
+
+.terms{display:grid;gap:11px}
+.term{
+  background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--line-strong);
+  border-radius:7px;padding:13px 16px;
+}
+.term h3{
+  font-family:var(--font-body);font-size:14.5px;font-weight:700;letter-spacing:-.003em;
+  margin:0 0 5px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;
+}
+.term h3 .exp{font-weight:400;font-size:12.5px;color:var(--ink-3);font-family:var(--font-mono)}
+.term p{margin:0 0 7px;color:var(--ink-2);font-size:14px}
+.term p:last-child{margin-bottom:0}
+.term strong{color:var(--ink);font-weight:600}
+.term ul{margin:6px 0 0;padding-left:19px;color:var(--ink-2);font-size:14px}
+.term li{margin-bottom:3px}
+.term li::marker{color:var(--ink-3)}
+
+.tip{
+  margin-top:9px;padding:8px 11px;border-radius:5px;
+  background:var(--amber-soft);border-left:2px solid var(--amber);
+  font-size:13.3px;color:var(--ink-2);
+}
+.tip b{color:var(--amber);font-weight:600;letter-spacing:.02em;font-size:11px;text-transform:uppercase;display:block;margin-bottom:2px}
+
+/* ---------- tables ---------- */
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:7px;background:var(--surface);margin:0 0 11px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:480px}
+caption{
+  text-align:left;padding:11px 14px 0;font-size:12px;font-weight:600;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--ink-3);
+}
+th,td{text-align:left;padding:8px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+thead th{
+  font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:600;background:var(--surface-2);white-space:nowrap;
+}
+tbody tr:last-child td{border-bottom:0}
+td code{white-space:nowrap}
+.num-col{font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* ---------- Q&A ---------- */
+.qa{
+  background:var(--surface);border:1px solid var(--line);border-radius:7px;margin-bottom:9px;
+}
+.qa summary{
+  cursor:pointer;padding:12px 16px;font-weight:600;font-size:14.2px;color:var(--ink);
+  list-style:none;display:flex;gap:11px;align-items:flex-start;
+}
+.qa summary::-webkit-details-marker{display:none}
+.qa summary::before{
+  content:"?";flex:0 0 19px;height:19px;border-radius:50%;background:var(--accent-soft);color:var(--accent-ink);
+  font-size:11.5px;font-weight:700;display:grid;place-items:center;margin-top:1px;
+}
+.qa summary:hover{color:var(--accent-ink)}
+.qa[open] summary{border-bottom:1px solid var(--line)}
+.qa .ans{padding:12px 16px 14px 46px;color:var(--ink-2);font-size:14px}
+.qa .ans p{margin:0 0 7px}
+.qa .ans p:last-child{margin-bottom:0}
+.qa .ans strong{color:var(--ink);font-weight:600}
+
+.noresult{
+  display:none;padding:26px;text-align:center;color:var(--ink-2);
+  background:var(--surface);border:1px dashed var(--line-strong);border-radius:7px;
+}
+body.filtering .lede,
+body.filtering .reviewed,
+body.filtering .tablewrap{display:none}
+
+footer{
+  max-width:1200px;margin:0 auto;padding:22px 20px 40px;
+  border-top:1px solid var(--line);color:var(--ink-3);font-size:12.5px;
+}
+footer p{margin:0 0 5px;max-width:78ch}
+
+@media (max-width:900px){
+  .shell{flex-direction:column;gap:0;padding-bottom:56px}
+  nav.index{
+    position:sticky;top:57px;z-index:20;width:auto;flex:none;max-height:none;
+    padding:9px 0;background:var(--bg);border-bottom:1px solid var(--line);
+    overflow-x:auto;overflow-y:hidden;
+  }
+  nav.index h2{display:none}
+  nav.index ol{display:flex;gap:5px;white-space:nowrap}
+  nav.index a{border:1px solid var(--line);background:var(--surface);padding:5px 11px}
+  section.block{scroll-margin-top:118px}
+  .toolbar-in{padding:9px 20px}
+  .progwrap{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+@media print{
+  .toolbar,nav.index,.themebtn{display:none}
+  .shell{display:block}
+  .qa .ans{display:block !important}
+}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-in">
+    <div class="brand">
+      <span class="eyebrow">Interview preparation</span>
+      <h1>Cisco ISE Reference</h1>
+      <p>Every term a network engineer is asked about in an ISE interview, defined with the detail you need to answer a follow-up question. Filter by keyword, work section by section, then self-test at the end.</p>
+    </div>
+    <button class="themebtn" id="themebtn" type="button">Switch theme</button>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="toolbar-in">
+    <div class="searchwrap">
+      <input id="q" type="search" placeholder="Filter: try CoA, SGT, probe, posture, 12514, dACL&hellip;" autocomplete="off" aria-label="Filter terms">
+      <button class="clearq" id="clearq" type="button" aria-label="Clear filter" hidden>&times;</button>
+    </div>
+    <span class="count" id="count"></span>
+    <div class="progwrap">
+      <span>Reviewed</span>
+      <span class="progbar"><span class="progfill" id="progfill"></span></span>
+      <span class="num-col" id="progtxt">0/16</span>
+    </div>
+  </div>
+</div>
+
+<div class="shell">
+<nav class="index" aria-label="Sections">
+  <h2>Sections</h2>
+  <ol>
+    <li><a href="#architecture">Architecture &amp; personas</a></li>
+    <li><a href="#aaa">AAA protocols</a></li>
+    <li><a href="#dot1x">802.1X &amp; access methods</a></li>
+    <li><a href="#eap">EAP methods</a></li>
+    <li><a href="#policy">Policy model</a></li>
+    <li><a href="#identity">Identity stores</a></li>
+    <li><a href="#certs">Certificates &amp; PKI</a></li>
+    <li><a href="#profiling">Profiling</a></li>
+    <li><a href="#posture">Posture</a></li>
+    <li><a href="#byod">BYOD</a></li>
+    <li><a href="#guest">Guest access</a></li>
+    <li><a href="#trustsec">TrustSec</a></li>
+    <li><a href="#pxgrid">pxGrid &amp; integrations</a></li>
+    <li><a href="#deviceadmin">Device administration</a></li>
+    <li><a href="#licensing">Licensing &amp; scale</a></li>
+    <li><a href="#ops">Operations &amp; troubleshooting</a></li>
+    <li><a href="#quickfire">Self-test</a></li>
+  </ol>
+</nav>
+
+<main>
+<div class="noresult" id="noresult">No term matches that filter. Try a shorter word, or an acronym such as <code>CoA</code>, <code>SXP</code>, <code>MAB</code>.</div>
+
+<!-- ============ 1 ============ -->
+<section class="block" id="architecture">
+  <div class="sechead">
+    <h2><span class="num">01</span>Architecture and personas</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="architecture"> Reviewed</label>
+  </div>
+  <p class="lede">ISE is one product running several roles. Interviewers almost always open here, because how you describe the personas tells them whether you have run a real deployment or only read about one.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Persona <span class="exp">role a node plays</span></h3>
+      <p>A single ISE node runs one or more personas. The persona decides which services start and which traffic the node handles. A node can change persona, but only after it is registered into the deployment, and changing it restarts services.</p>
+    </div>
+
+    <div class="term">
+      <h3>PAN <span class="exp">Policy Administration Node</span></h3>
+      <p>The single configuration plane. Every policy, network device, certificate and identity-store change is made on the Primary PAN, which then replicates the configuration database to every other node. A deployment has at most two: <strong>Primary</strong> and <strong>Secondary</strong>.</p>
+      <p>If the Primary PAN is down you can still authenticate — PSNs keep serving from their local copy — but you cannot make configuration changes, and some functions that need a write to the central database (guest account creation, BYOD registration, internal endpoint updates) are affected.</p>
+      <div class="tip"><b>Interview angle</b>Be ready for &ldquo;what breaks when the PAN dies?&rdquo; The answer is configuration and anything requiring a central write, not authentication.</div>
+    </div>
+
+    <div class="term">
+      <h3>MnT <span class="exp">Monitoring and Troubleshooting Node</span></h3>
+      <p>The logging and reporting engine. PSNs send syslog to the MnT nodes, which populate Live Logs, Live Sessions, reports and alarms. Maximum of two, Primary and Secondary. In a deployment with two MnT nodes, PSNs log to both, so each holds a full copy.</p>
+      <p>MnT is the heaviest consumer of disk I/O in the deployment, which is why sizing and log-retention settings matter and why a busy deployment separates MnT onto dedicated nodes.</p>
+    </div>
+
+    <div class="term">
+      <h3>PSN <span class="exp">Policy Service Node</span></h3>
+      <p>Where the actual work happens. PSNs terminate RADIUS and TACACS+, run the EAP state machine, evaluate policy, host guest and client-provisioning portals, run the profiler, and issue CoA. These are the nodes your network devices point at. A large deployment supports up to 50.</p>
+    </div>
+
+    <div class="term">
+      <h3>pxGrid node <span class="exp">context-sharing controller</span></h3>
+      <p>Runs the pxGrid controller that publishers and subscribers connect to for context exchange. Up to four in a deployment, configured active/standby for high availability.</p>
+    </div>
+
+    <div class="term">
+      <h3>Deployment models</h3>
+      <ul>
+        <li><strong>Standalone</strong> &mdash; one node running all personas. Lab and very small sites.</li>
+        <li><strong>Basic two-node</strong> &mdash; two nodes, each running all personas, one primary and one secondary for each. Redundancy without separation.</li>
+        <li><strong>Hybrid / medium</strong> &mdash; PAN and MnT combined on two nodes, with dedicated PSNs behind them.</li>
+        <li><strong>Large / dedicated</strong> &mdash; PAN, MnT and PSN all on separate nodes, PSNs placed regionally, scaling to 50 PSNs.</li>
+      </ul>
+    </div>
+
+    <div class="term">
+      <h3>Node group</h3>
+      <p>A logical grouping of PSNs, usually those behind the same load balancer or in the same data centre. Members exchange heartbeats and session information, so if one PSN fails, a peer can issue the CoA to clear sessions that the failed node owned. Node group members must be able to reach each other, and the group is also how URL-redirect sessions survive a node failure.</p>
+    </div>
+
+    <div class="term">
+      <h3>PAN auto-failover</h3>
+      <p>An optional feature where designated health-check nodes monitor the Primary PAN and automatically promote the Secondary after a configured number of failed checks. Requires at least one non-PAN node acting as health checker on each side. Without it, promotion is a manual action.</p>
+    </div>
+
+    <div class="term">
+      <h3>Load balancing PSNs</h3>
+      <p>Common in large deployments, but with firm rules: the load balancer must send all packets of one session to the same PSN. Persistence is based on <code>Calling-Station-Id</code> or the RADIUS <code>State</code> attribute, never round-robin per packet, because EAP-TLS session state lives on one node. The source IP that ISE sees must also match the configured Network Device entry, so either preserve the source IP or define the load balancer itself as the NAD.</p>
+      <div class="tip"><b>Interview angle</b>A favourite trap. Explain why per-packet load balancing breaks EAP but not MAB &mdash; MAB is a single request-response, EAP is a stateful multi-round conversation.</div>
+    </div>
+
+    <div class="term">
+      <h3>ISE Messaging Service</h3>
+      <p>The internal transport used from ISE 2.6 onward for syslog between nodes and for several internal services, replacing plain syslog. It is secured by its own certificate, which is why an expired ISE Messaging certificate causes nodes to stop reporting even though the deployment looks healthy.</p>
+    </div>
+
+    <div class="term">
+      <h3>Secondary node registration</h3>
+      <p>Nodes join a deployment by being registered from the Primary PAN. The joining node's configuration is overwritten by the PAN's, its certificates must be trusted by the PAN, and the two must have matching time and resolvable DNS. &ldquo;Registration fails&rdquo; is nearly always one of: DNS, NTP, or a certificate the other side does not trust.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section class="block" id="aaa">
+  <div class="sechead">
+    <h2><span class="num">02</span>AAA protocols</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="aaa"> Reviewed</label>
+  </div>
+  <p class="lede">RADIUS for network access, TACACS+ for device administration. Knowing precisely how they differ, and the port numbers, is table stakes.</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>Ports worth memorising</caption>
+      <thead><tr><th>Service</th><th class="num-col">Port</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>RADIUS authentication</td><td class="num-col">UDP 1812</td><td>Legacy 1645 still widely configured</td></tr>
+        <tr><td>RADIUS accounting</td><td class="num-col">UDP 1813</td><td>Legacy 1646</td></tr>
+        <tr><td>RADIUS CoA</td><td class="num-col">UDP 1700</td><td>Cisco default; 3799 is the RFC 5176 default</td></tr>
+        <tr><td>TACACS+</td><td class="num-col">TCP 49</td><td>Single port for all three A's</td></tr>
+        <tr><td>RADIUS over DTLS / RadSec</td><td class="num-col">UDP 2083 / TCP 2083</td><td>Encrypts the whole RADIUS exchange</td></tr>
+        <tr><td>ISE admin GUI and API</td><td class="num-col">TCP 443</td><td>ERS API on 9060</td></tr>
+        <tr><td>Guest / sponsor / BYOD portals</td><td class="num-col">TCP 8443, 8445</td><td>Defaults; configurable per portal</td></tr>
+        <tr><td>Client provisioning portal</td><td class="num-col">TCP 8905</td><td>Posture agent discovery</td></tr>
+        <tr><td>pxGrid</td><td class="num-col">TCP 8910</td><td>pxGrid 2.0 also uses 443</td></tr>
+        <tr><td>SXP</td><td class="num-col">TCP 64999</td><td>SGT mapping exchange</td></tr>
+        <tr><td>Profiler probes</td><td class="num-col">UDP 67, 162, 9996</td><td>DHCP, SNMP trap, NetFlow</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>AAA <span class="exp">Authentication, Authorization, Accounting</span></h3>
+      <p><strong>Authentication</strong> proves who you are. <strong>Authorization</strong> decides what you may do. <strong>Accounting</strong> records what you did. Keep them separate in your answers &mdash; a very large share of real ISE problems are authorization problems misdiagnosed as authentication problems.</p>
+    </div>
+
+    <div class="term">
+      <h3>RADIUS <span class="exp">Remote Authentication Dial-In User Service</span></h3>
+      <p>UDP-based, defined in RFC 2865/2866. Combines authentication and authorization in a single exchange: the <code>Access-Accept</code> carries both the yes and the permissions. Only the password attribute is encrypted; everything else travels in clear text, protected only by the <code>Message-Authenticator</code> integrity check.</p>
+      <p>Packet codes: <code>Access-Request</code> (1), <code>Access-Accept</code> (2), <code>Access-Reject</code> (3), <code>Accounting-Request</code> (4), <code>Accounting-Response</code> (5), <code>Access-Challenge</code> (11), <code>CoA-Request</code> (43), <code>CoA-ACK</code> (44), <code>CoA-NAK</code> (45).</p>
+    </div>
+
+    <div class="term">
+      <h3>TACACS+ <span class="exp">Terminal Access Controller Access-Control System Plus</span></h3>
+      <p>TCP 49, Cisco proprietary, and the right choice for administering network devices. Encrypts the entire packet body, and separates authentication, authorization and accounting into independent exchanges. That separation is what makes <strong>per-command authorization</strong> possible: every command the admin types can be checked against ISE before it runs.</p>
+      <div class="tip"><b>Interview angle</b>&ldquo;Why TACACS+ instead of RADIUS for device admin?&rdquo; Three reasons: full payload encryption, separated AAA allowing per-command authorization, and TCP giving reliable delivery and immediate failure detection.</div>
+    </div>
+
+    <div class="term">
+      <h3>Shared secret</h3>
+      <p>The pre-shared key between NAD and ISE. It keys the <code>Message-Authenticator</code>, obscures the User-Password attribute, and encrypts the MPPE key attributes that carry session keys. A mismatch causes ISE to drop the packet silently &mdash; <strong>no authentication log is generated at all</strong>, which sends engineers hunting in the wrong place.</p>
+    </div>
+
+    <div class="term">
+      <h3>CoA <span class="exp">Change of Authorization, RFC 5176</span></h3>
+      <p>Lets ISE change or end an established session without the endpoint re-initiating. ISE acts as the CoA client, the NAD as the CoA server, on UDP 1700 for Cisco gear. The session is identified by <code>Audit-Session-Id</code> or <code>Calling-Station-Id</code>.</p>
+      <p>CoA types used by ISE:</p>
+      <ul>
+        <li><strong>Reauthenticate &mdash; rerun</strong>: re-evaluate policy with no new authentication. Fast, used by profiling.</li>
+        <li><strong>Reauthenticate &mdash; last</strong>: repeat the last authentication method in full.</li>
+        <li><strong>Port Bounce</strong>: shut/no-shut the port, forcing a DHCP renew. Used when a VLAN changes and the endpoint would otherwise keep a stale address.</li>
+        <li><strong>Session Terminate</strong>: kill the session.</li>
+        <li><strong>Port Shutdown</strong>: administratively disable the port.</li>
+      </ul>
+      <p>On the switch this requires <code>aaa server radius dynamic-author</code> with a client statement for every PSN. A missing PSN there means profiling and posture quietly never take effect.</p>
+    </div>
+
+    <div class="term">
+      <h3>Audit-Session-Id</h3>
+      <p>A unique session handle generated by the NAD and carried in a Cisco AV pair. It is the key that ties the switch's session table, ISE's Live Sessions, and any CoA together. In troubleshooting, capture it first.</p>
+    </div>
+
+    <div class="term">
+      <h3>RADIUS accounting</h3>
+      <p>Start, Interim-Update and Stop records. More important in ISE than people expect: accounting carries Device Sensor profiling data, keeps the session alive in Live Sessions, and supplies the framed IP address that ISE needs for SGT-to-IP mapping and for posture redirect. If accounting is not configured on the NAD, profiling and posture degrade in confusing ways.</p>
+    </div>
+
+    <div class="term">
+      <h3>RadSec / RADIUS-DTLS</h3>
+      <p>RADIUS carried inside TLS (TCP) or DTLS (UDP) on port 2083, using certificates instead of a shared secret. Solves the clear-text and weak-shared-secret problems, and is increasingly expected for traffic crossing untrusted networks or going to a cloud-hosted PSN.</p>
+    </div>
+
+    <div class="term">
+      <h3>NAD <span class="exp">Network Access Device</span></h3>
+      <p>Any switch, WLC, VPN headend or firewall that sends RADIUS to ISE. Must be defined in ISE under Network Devices with its IP address or range, shared secret, and optionally SNMP and TrustSec settings. An unknown NAD produces log message 11007 and the request is dropped.</p>
+    </div>
+
+    <div class="term">
+      <h3>NDG <span class="exp">Network Device Group</span></h3>
+      <p>Hierarchical grouping of NADs, by default <em>Device Type</em> and <em>Location</em>, with custom groups allowed. NDGs are the most common condition in policy set selection &mdash; for instance, one policy set for wireless, another for wired, another for VPN, each matched on Device Type.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section class="block" id="dot1x">
+  <div class="sechead">
+    <h2><span class="num">03</span>802.1X and access methods</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="dot1x"> Reviewed</label>
+  </div>
+  <p class="lede">The three access methods are 802.1X, MAB and WebAuth. Most designs use all three in a fallback chain, and interviewers like to probe the order and the failure behaviour.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>IEEE 802.1X</h3>
+      <p>Port-based network access control. Three roles: <strong>supplicant</strong> (endpoint software), <strong>authenticator</strong> (switch or WLC), <strong>authentication server</strong> (ISE). The authenticator relays EAP between the two without being able to read it.</p>
+    </div>
+
+    <div class="term">
+      <h3>EAPOL <span class="exp">EAP over LAN</span></h3>
+      <p>The L2 encapsulation on the access link. EtherType <code>0x888E</code>, destination MAC <code>01:80:C2:00:00:03</code> (the PAE group address). Packet types: EAP-Packet (0), EAPOL-Start (1), EAPOL-Logoff (2), EAPOL-Key (3). Version 3 is required for MACsec/MKA.</p>
+    </div>
+
+    <div class="term">
+      <h3>Port states</h3>
+      <p>Before authentication the port is <strong>unauthorized</strong>: only EAPOL, and control protocols such as CDP, LLDP and STP, are permitted. After a successful authorization it becomes <strong>authorized</strong> and normal traffic flows, subject to any dACL applied.</p>
+    </div>
+
+    <div class="term">
+      <h3>Host modes</h3>
+      <ul>
+        <li><strong>single-host</strong> &mdash; one MAC address allowed on the port. Any second MAC causes a security violation.</li>
+        <li><strong>multi-host</strong> &mdash; the first endpoint authenticates, every other MAC on the port rides on that authorization without authenticating. Weak; avoid.</li>
+        <li><strong>multi-domain (MDA)</strong> &mdash; exactly one data endpoint and one voice endpoint, each authenticated separately. The standard choice for an IP phone with a PC behind it.</li>
+        <li><strong>multi-auth</strong> &mdash; every MAC on the port authenticates independently and gets its own authorization. Needed behind an unmanaged hub or a virtualisation host.</li>
+      </ul>
+      <div class="tip"><b>Interview angle</b>Know that multi-auth and multi-host sound similar and behave completely differently. Multi-host is the insecure one.</div>
+    </div>
+
+    <div class="term">
+      <h3>MAB <span class="exp">MAC Authentication Bypass</span></h3>
+      <p>For endpoints with no supplicant: printers, cameras, badge readers, medical devices. The switch learns the source MAC and sends it to ISE as both username and password, with <code>Service-Type = Call-Check</code>. ISE matches it against the endpoint database or an identity group.</p>
+      <p>MAB is only as strong as your profiling, because a MAC address is trivially spoofed. Mitigate with profiling conditions in the authorization rule, anomalous behaviour detection, and restrictive dACLs or SGTs.</p>
+    </div>
+
+    <div class="term">
+      <h3>802.1X to MAB fallback</h3>
+      <p>The switch sends <code>EAP-Request/Identity</code> and waits <code>dot1x timeout tx-period</code> (default 30 s) for a reply, repeating up to <code>dot1x max-reauth-req</code> times. Only then does it fall through to MAB. With defaults that is roughly 90 seconds of no network for a printer &mdash; which is why production configs either lower the timers or put MAB first using IBNS 2.0 ordering.</p>
+    </div>
+
+    <div class="term">
+      <h3>Deployment modes</h3>
+      <ul>
+        <li><strong>Monitor mode</strong> &mdash; <code>authentication open</code>, everything is permitted regardless of result, failures are logged only. The mandatory first phase of every rollout.</li>
+        <li><strong>Low-impact mode</strong> &mdash; still open, but a small pre-authentication ACL on the port permits only essentials (DHCP, DNS, PXE), and a successful authorization adds a dACL on top. Lets you enforce without black-holing anything you have not profiled yet.</li>
+        <li><strong>Closed mode</strong> &mdash; no traffic at all before authorization. The end state.</li>
+      </ul>
+      <div class="tip"><b>Interview angle</b>Being able to describe this three-phase rollout is a strong signal of real deployment experience. Monitor to discover, low-impact to enforce safely, closed to finish.</div>
+    </div>
+
+    <div class="term">
+      <h3>IBNS 1.0 vs 2.0 <span class="exp">Identity-Based Networking Services</span></h3>
+      <p><strong>IBNS 1.0</strong> uses the legacy <code>authentication</code> interface commands with a fixed method order. <strong>IBNS 2.0</strong> uses Cisco Common Classification Policy Language: class maps and <code>policy-map type control subscriber</code>, with service templates and explicit event handling. It allows concurrent 802.1X and MAB, differentiated failure handling, and far more control. Convert with <code>authentication convert-to new-style</code>, which is one-way.</p>
+      <p>Verification commands differ too: <code>show authentication sessions</code> for 1.0, <code>show access-session</code> for 2.0.</p>
+    </div>
+
+    <div class="term">
+      <h3>WebAuth <span class="exp">web authentication</span></h3>
+      <p>Credential collection through a browser, used for guests and as a last-resort fallback.</p>
+      <ul>
+        <li><strong>LWA (Local WebAuth)</strong> &mdash; the switch or WLC hosts the login page and sends the credentials to ISE. Simpler, but limited customisation and no CoA-driven flow.</li>
+        <li><strong>CWA (Central WebAuth)</strong> &mdash; ISE hosts the portal. The endpoint first fails 802.1X or hits MAB, receives an authorization profile containing <code>url-redirect</code> and <code>url-redirect-acl</code>, is redirected to ISE, authenticates there, and ISE then sends a <strong>CoA</strong> that moves the session to its final authorization. This is the flow you should be able to narrate end to end.</li>
+      </ul>
+    </div>
+
+    <div class="term">
+      <h3>Redirect ACL</h3>
+      <p>An ACL configured locally on the NAD and referenced by name from the authorization profile. Its logic is often counter-intuitive: on IOS switches a <code>permit</code> entry means <em>redirect this traffic</em> and a <code>deny</code> means <em>do not redirect</em>. You must deny traffic to ISE itself and to DNS, or the redirect loops. On a WLC the semantics differ again.</p>
+      <div class="tip"><b>Interview angle</b>&ldquo;Why does the guest portal not load?&rdquo; is usually the redirect ACL, DNS, or the portal FQDN not resolving.</div>
+    </div>
+
+    <div class="term">
+      <h3>dACL <span class="exp">downloadable ACL</span></h3>
+      <p>An ACL defined centrally in ISE and pushed to the switch in the <code>Access-Accept</code>. The switch requests the ACL content by name in a separate RADIUS exchange, so you will see an extra <code>Access-Request</code> in a capture. Applies per session, so different endpoints on the same port get different ACLs. Requires an <code>ip access-list extended</code> placeholder and <code>ip device tracking</code> (or the IOS-XE equivalent) to resolve the source IP.</p>
+    </div>
+
+    <div class="term">
+      <h3>Dynamic VLAN assignment</h3>
+      <p>Carried by three attributes together: <code>Tunnel-Type = VLAN (13)</code>, <code>Tunnel-Medium-Type = 802 (6)</code>, and <code>Tunnel-Private-Group-ID</code> holding the VLAN name or number. All three must be present. A VLAN change usually also needs a port bounce or DHCP renew, which is why Port Bounce CoA exists.</p>
+    </div>
+
+    <div class="term">
+      <h3>MACsec and MKA</h3>
+      <p>IEEE 802.1AE encryption on the wire, keyed from the 802.1X session. The MSK produced by the EAP method becomes the CAK, which seeds MKA (802.1X-2010) to distribute SAKs. Requires EAPOL version 3 and switch hardware support. Downlink MACsec with EAP-TLS is the strongest wired access posture available.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section class="block" id="eap">
+  <div class="sechead">
+    <h2><span class="num">04</span>EAP methods</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="eap"> Reviewed</label>
+  </div>
+  <p class="lede">Know what credential each method uses, whether the client validates the server, and what identity store it needs. That matrix answers most EAP questions.</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>Method comparison</caption>
+      <thead><tr><th>Method</th><th class="num-col">Type</th><th>Client credential</th><th>Server validated</th><th>Typical identity store</th></tr></thead>
+      <tbody>
+        <tr><td>EAP-TLS</td><td class="num-col">13</td><td>X.509 certificate + private key</td><td>Yes, by certificate</td><td>Certificate Authentication Profile (+ AD lookup)</td></tr>
+        <tr><td>PEAP-MSCHAPv2</td><td class="num-col">25</td><td>Password in a TLS tunnel</td><td>Only if the supplicant is configured to</td><td>Active Directory</td></tr>
+        <tr><td>PEAP-EAP-TLS</td><td class="num-col">25</td><td>Certificate inside the tunnel</td><td>Yes</td><td>CAP + AD</td></tr>
+        <tr><td>EAP-FAST</td><td class="num-col">43</td><td>PAC, then an inner method</td><td>Via PAC provisioning</td><td>AD / internal users</td></tr>
+        <tr><td>TEAP</td><td class="num-col">55</td><td>Certificate and/or password, chained</td><td>Yes, by certificate</td><td>Both, in one session</td></tr>
+        <tr><td>EAP-TTLS</td><td class="num-col">21</td><td>Password or certificate in a tunnel</td><td>Yes</td><td>AD / LDAP / ODBC</td></tr>
+        <tr><td>EAP-MD5</td><td class="num-col">4</td><td>Password hash, no tunnel</td><td>No</td><td>Internal users only</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>EAP <span class="exp">Extensible Authentication Protocol, RFC 3748</span></h3>
+      <p>A framework, not an authentication method. Packet format is Code (Request 1, Response 2, Success 3, Failure 4), Identifier, Length, Type. Success and Failure are four bytes and carry no type, which is why a bare EAP-Success can never be trusted by itself.</p>
+    </div>
+
+    <div class="term">
+      <h3>EAP-TLS</h3>
+      <p>Mutual certificate authentication, RFC 5216. Both sides present a certificate and prove possession of the private key. No password exists to phish or replay. Produces a 64-byte MSK derived from the TLS master secret, which becomes the PMK for wireless or the CAK for MACsec.</p>
+      <p>Operational cost is PKI: enrolment, renewal, revocation and trust distribution. Handshake size also means many round trips, because EAP-TLS fragments and each fragment is acknowledged individually.</p>
+    </div>
+
+    <div class="term">
+      <h3>EAP-TLS flags byte</h3>
+      <p>The first byte of the EAP-TLS payload: <strong>L</strong> (0x80) length included, <strong>M</strong> (0x40) more fragments, <strong>S</strong> (0x20) start. The very first message from ISE is a bare <code>0x20</code>. A receiver that gets a fragment with M set must reply with an acknowledgement &mdash; flags <code>0x00</code>, no data &mdash; so each fragment costs a full round trip.</p>
+    </div>
+
+    <div class="term">
+      <h3>PEAP <span class="exp">Protected EAP</span></h3>
+      <p>Builds a TLS tunnel using a server certificate only, then runs an inner method &mdash; almost always MSCHAPv2 &mdash; inside it. Cheap to deploy because no client certificates are needed, but its security depends entirely on the supplicant actually validating the server certificate. If &ldquo;Validate server certificate&rdquo; is unticked, a rogue AP can harvest MSCHAPv2 challenge-response pairs.</p>
+      <div class="tip"><b>Interview angle</b>&ldquo;Is PEAP secure?&rdquo; The honest answer is: only if the supplicant is configured to validate the server certificate and pin the trusted CA and server name. That configuration dependency is PEAP's central weakness.</div>
+    </div>
+
+    <div class="term">
+      <h3>EAP-FAST and the PAC</h3>
+      <p>Cisco's method using a <strong>Protected Access Credential</strong> instead of a server certificate to establish the tunnel. PACs can be provisioned in-band (anonymous or authenticated) or out-of-band. Largely superseded by TEAP, but still seen, and it introduced EAP chaining.</p>
+    </div>
+
+    <div class="term">
+      <h3>TEAP <span class="exp">Tunnel EAP, RFC 7170</span></h3>
+      <p>The modern answer to machine-and-user authentication. Inside one TLS tunnel it can run two inner methods in sequence &mdash; typically EAP-TLS for the machine and EAP-TLS or MSCHAPv2 for the user &mdash; and report both results to ISE. ISE can then authorize on the combination.</p>
+      <p>This is <strong>EAP chaining</strong>, and it solves a real problem: with plain EAP-TLS you authenticate the machine or the user, never both, so you cannot write a rule meaning &ldquo;a corporate laptop with a corporate user logged in&rdquo;. TEAP can. Supported natively from Windows 10 1809 onward.</p>
+    </div>
+
+    <div class="term">
+      <h3>Allowed Protocols</h3>
+      <p>The ISE policy element that lists which EAP methods a policy set will accept, plus options such as EAP-TLS session resumption, the EAP fragment size (default 1002 bytes), and whether to allow weak or legacy methods. Referenced from the authentication policy. Narrowing it is a common hardening step &mdash; and a common cause of a device class suddenly failing.</p>
+    </div>
+
+    <div class="term">
+      <h3>Session resumption</h3>
+      <p>Lets a returning endpoint skip the certificate exchange by presenting a session ID or ticket. Dramatically faster. The caution: a resumed session does not re-validate the certificate, so a revoked certificate can keep working until the cache times out.</p>
+    </div>
+
+    <div class="term">
+      <h3>MSK and key material</h3>
+      <p>The TLS master secret is expanded into a 64-byte <strong>MSK</strong> and a 64-byte <strong>EMSK</strong>. ISE sends the MSK to the NAD inside the <code>Access-Accept</code> as <code>MS-MPPE-Recv-Key</code> and <code>MS-MPPE-Send-Key</code>, encrypted with the RADIUS shared secret. On wireless the first 32 bytes become the PMK, which the 4-way handshake turns into the PTK.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section class="block" id="policy">
+  <div class="sechead">
+    <h2><span class="num">05</span>Policy model</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="policy"> Reviewed</label>
+  </div>
+  <p class="lede">ISE policy is built from reusable elements assembled into policy sets. Describe the evaluation order correctly and most policy questions fall into place.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Policy Set</h3>
+      <p>The top-level container. Each has a condition (commonly a Network Device Group, SSID or <code>NAS-Port-Type</code>), an Allowed Protocols object, and inside it an Authentication policy and an Authorization policy. Evaluation is <strong>first match wins</strong>, top to bottom, with a <em>Default</em> policy set always last.</p>
+    </div>
+
+    <div class="term">
+      <h3>Authentication policy</h3>
+      <p>Inside a policy set. Rules match on attributes such as EAP method or <code>Service-Type</code>, and select an identity source &mdash; an identity store, a Certificate Authentication Profile, or an Identity Source Sequence. Also sets what to do if the user is not found, the process fails, or the store is unavailable: Reject, Continue, or Drop.</p>
+      <p><strong>Continue</strong> is important: it lets an authentication that failed identity lookup still reach the authorization policy, which is how you build a rule that gives unknown endpoints a restricted profile instead of rejecting them.</p>
+    </div>
+
+    <div class="term">
+      <h3>Authorization policy</h3>
+      <p>Evaluated after a successful authentication. Conditions can use certificate fields, AD group membership, endpoint profile, posture status, time and date, and the network device. Result is an Authorization Profile and optionally a Security Group. First match wins.</p>
+    </div>
+
+    <div class="term">
+      <h3>Authorization Profile</h3>
+      <p>The result object: VLAN, dACL or Filter-Id, SGT, URL redirect, Session-Timeout and Termination-Action, interface template, reauthentication timer, and any raw RADIUS attributes you add. This is what becomes the <code>Access-Accept</code>.</p>
+    </div>
+
+    <div class="term">
+      <h3>Identity Source Sequence</h3>
+      <p>An ordered list of identity stores tried in turn, with options for what to do if the user is not found in one. Used when the same policy must serve, for example, AD users, an LDAP directory and internal guest accounts.</p>
+    </div>
+
+    <div class="term">
+      <h3>Dictionaries and attributes</h3>
+      <p>ISE groups available attributes into dictionaries: <strong>RADIUS</strong> (IETF and vendor, including Cisco AV pairs), <strong>Network Access</strong>, <strong>Session</strong>, <strong>Endpoints</strong>, <strong>CERTIFICATE</strong>, <strong>InternalUser</strong>, <strong>IdentityGroup</strong>, and one per joined AD domain. Knowing which dictionary holds an attribute is half of building a condition.</p>
+    </div>
+
+    <div class="term">
+      <h3>Conditions</h3>
+      <p>Simple conditions test one attribute. Compound conditions join several with AND/OR. Saved conditions live in the Condition Studio library and are reusable &mdash; build them once rather than inline, so a change propagates. Time and Date conditions let you scope access to business hours.</p>
+    </div>
+
+    <div class="term">
+      <h3>Endpoint Identity Group</h3>
+      <p>A container for endpoints, either static (you add MACs) or dynamically populated by a profiling policy. Built-in groups include <em>Blocklist</em>, <em>RegisteredDevices</em>, <em>Profiled</em>, <em>Unknown</em>. Used heavily in authorization conditions, especially for MAB.</p>
+    </div>
+
+    <div class="term">
+      <h3>Exception policy</h3>
+      <p>A set of rules evaluated before the normal authorization rules, global or per policy set. Intended for temporary overrides &mdash; an incident response block, a short-term exemption &mdash; without disturbing the production rule order.</p>
+    </div>
+
+    <div class="term">
+      <h3>Policy evaluation order, end to end</h3>
+      <ul>
+        <li>Match the <strong>Policy Set</strong> by its condition.</li>
+        <li>Within it, match an <strong>Authentication</strong> rule; select Allowed Protocols and identity source.</li>
+        <li>Authenticate; retrieve identity attributes and group membership.</li>
+        <li>Evaluate <strong>Authorization Exception</strong> rules, then <strong>Authorization</strong> rules.</li>
+        <li>Return the matched <strong>Authorization Profile</strong> as the <code>Access-Accept</code>.</li>
+      </ul>
+      <div class="tip"><b>Interview angle</b>If asked why a user authenticated but got no access, walk this list and point at step four. Successful authentication plus default-deny authorization is the single most common &ldquo;ISE is broken&rdquo; ticket.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section class="block" id="identity">
+  <div class="sechead">
+    <h2><span class="num">06</span>Identity stores</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="identity"> Reviewed</label>
+  </div>
+  <p class="lede">Where ISE looks up the thing it just authenticated.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Internal Users and Internal Endpoints</h3>
+      <p>ISE's own database. Internal Users hold local accounts with password policies and user identity groups. Internal Endpoints hold MAC addresses and all their profiled attributes. Guest accounts live here too.</p>
+    </div>
+
+    <div class="term">
+      <h3>Active Directory integration</h3>
+      <p>ISE joins AD as a machine account. Key terms: a <strong>join point</strong> is one AD domain ISE is joined to (multiple join points are supported); a <strong>scope</strong> groups join points so policy can reference several domains together. ISE retrieves user and machine groups and attributes for use in authorization.</p>
+      <p>Requirements that trip people up: DNS must resolve the domain's SRV records, time must be within five minutes of the domain controllers, and the joining account needs rights to create a machine object. Troubleshoot with the AD test tools in the GUI and <code>ad_agent.log</code>.</p>
+    </div>
+
+    <div class="term">
+      <h3>Machine Access Restriction <span class="exp">MAR</span></h3>
+      <p>An older mechanism that caches a successful machine authentication for a period and requires a user authentication from the same MAC to match that cache. Fragile &mdash; it breaks with sleep, hibernation and wireless roaming &mdash; and is the reason TEAP and EAP chaining exist. Know it so you can explain why you would not choose it today.</p>
+    </div>
+
+    <div class="term">
+      <h3>LDAP, ODBC, RADIUS Token, RSA SecurID</h3>
+      <p>External stores for non-AD directories, SQL databases, and one-time-password systems. ODBC is notable because it can run stored procedures, which lets you authenticate against an arbitrary back-end such as an asset database.</p>
+    </div>
+
+    <div class="term">
+      <h3>SAML identity provider</h3>
+      <p>Used for portal logins &mdash; sponsor, guest, MyDevices &mdash; and for admin access, with ISE acting as service provider against an IdP such as Azure AD, Okta or ADFS. Enables single sign-on and MFA for those portals.</p>
+    </div>
+
+    <div class="term">
+      <h3>Certificate Authentication Profile <span class="exp">CAP</span></h3>
+      <p>Tells ISE which X.509 field becomes the username for a certificate-based authentication: Subject CN, Subject Alternative Name (DNS, Email or Other Name/UPN), or Subject Serial Number. Optionally performs a lookup against AD or LDAP, and optionally a <strong>binary comparison</strong> of the presented certificate against the one published on the AD object.</p>
+      <p>Picking the wrong field here produces a certificate that validates perfectly and then fails identity lookup, which logs as 22056 &mdash; a completely different signature from a TLS failure.</p>
+    </div>
+
+    <div class="term">
+      <h3>Identity rewrite</h3>
+      <p>A CAP option that transforms the extracted username before lookup, for example stripping a domain prefix or a suffix. Useful when certificate naming does not match directory naming.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 7 ============ -->
+<section class="block" id="certs">
+  <div class="sechead">
+    <h2><span class="num">07</span>Certificates and PKI</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="certs"> Reviewed</label>
+  </div>
+  <p class="lede">More ISE outages come from certificates than from policy. Expect detailed questions.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>System certificates and their roles</h3>
+      <p>Certificates ISE presents. Each is assigned one or more roles, per node:</p>
+      <ul>
+        <li><strong>Admin</strong> &mdash; the HTTPS GUI and API. Changing it restarts services on that node.</li>
+        <li><strong>EAP Authentication</strong> &mdash; presented to supplicants during PEAP, EAP-TLS and TEAP. Every endpoint must trust its issuer.</li>
+        <li><strong>Portal</strong> &mdash; guest, sponsor, BYOD, client provisioning. Needs a publicly trusted CA if guests use it.</li>
+        <li><strong>pxGrid</strong> &mdash; mutual authentication with pxGrid clients.</li>
+        <li><strong>RADIUS DTLS</strong> and <strong>SAML</strong> &mdash; for those specific services.</li>
+        <li><strong>ISE Messaging Service</strong> &mdash; internal node-to-node transport.</li>
+      </ul>
+      <div class="tip"><b>Interview angle</b>&ldquo;What happens when the EAP certificate expires?&rdquo; Every 802.1X authentication fails, because supplicants reject the server certificate. It is the highest-impact expiry in the deployment, and it tends to hit all nodes at once.</div>
+    </div>
+
+    <div class="term">
+      <h3>Trusted Certificates store and trust purposes</h3>
+      <p>The CAs ISE trusts. Each entry carries explicit purposes:</p>
+      <ul>
+        <li>Trust for authentication within ISE (node-to-node)</li>
+        <li>Trust for client authentication and Syslog</li>
+        <li>Trust for authentication of Cisco Services</li>
+        <li>Trust for certificate-based admin authentication</li>
+      </ul>
+      <p>A CA present but without the client-authentication purpose will fail EAP-TLS while appearing to be installed. Pruning this list also shrinks the <code>CertificateRequest</code> message and reduces fragmentation.</p>
+    </div>
+
+    <div class="term">
+      <h3>SAN <span class="exp">Subject Alternative Name</span></h3>
+      <p>Modern clients validate the name against SAN, not CN. An ISE certificate's SAN must contain every FQDN by which it is reached &mdash; node FQDN, any load-balancer VIP name, and any portal FQDN. A missing SAN entry is a very common cause of a supplicant rejecting the EAP certificate or a browser warning on a portal.</p>
+    </div>
+
+    <div class="term">
+      <h3>ISE Internal CA</h3>
+      <p>A built-in certificate authority used mainly for BYOD endpoint certificates. Hierarchy is a Root CA on the Primary PAN, a Node CA per PSN, and an Endpoint CA issuing to devices. It is not a general-purpose enterprise CA, and regenerating the root invalidates every certificate it issued.</p>
+    </div>
+
+    <div class="term">
+      <h3>SCEP and NDES</h3>
+      <p>Simple Certificate Enrollment Protocol, the mechanism BYOD onboarding uses to request a certificate automatically. With a Microsoft CA this runs through NDES (Network Device Enrollment Service). ISE can act as a SCEP proxy on behalf of the endpoint.</p>
+    </div>
+
+    <div class="term">
+      <h3>CRL and OCSP</h3>
+      <p>Revocation checking, configured per trust store entry. <strong>CRL</strong> downloads a list on a schedule. <strong>OCSP</strong> queries a responder per authentication, with a local cache. The key design decision is the <em>Reject the request if OCSP returns UNKNOWN status</em> setting &mdash; fail-closed or fail-open. A responder reachable from some PSNs but not others produces intermittent failures that follow the load-balancer hash.</p>
+    </div>
+
+    <div class="term">
+      <h3>EKU <span class="exp">Extended Key Usage</span></h3>
+      <p>The client certificate needs <code>clientAuth</code> (OID 1.3.6.1.5.5.7.3.2); the ISE EAP certificate needs <code>serverAuth</code> (1.3.6.1.5.5.7.3.1). A certificate issued from the wrong template often has neither, and fails in a way that looks like a trust problem.</p>
+    </div>
+
+    <div class="term">
+      <h3>Chain completeness</h3>
+      <p>If a supplicant sends only its leaf certificate and the intermediate is in neither the message nor the ISE trust store, path building fails with an unknown-CA error. ISE does not chase AIA URLs by default. Load every intermediate into the trust store.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 8 ============ -->
+<section class="block" id="profiling">
+  <div class="sechead">
+    <h2><span class="num">08</span>Profiling</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="profiling"> Reviewed</label>
+  </div>
+  <p class="lede">Profiling is how ISE works out what an endpoint is. It is the foundation of safe MAB and of any IoT segmentation story.</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>Profiler probes</caption>
+      <thead><tr><th>Probe</th><th>Collects</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>RADIUS</td><td>MAC, NAS attributes, and Device Sensor data</td><td>Always on; the cheapest and most valuable probe</td></tr>
+        <tr><td>DHCP</td><td>Option 55 fingerprint, hostname, class identifier</td><td>Needs an <code>ip helper-address</code> pointing at the PSN</td></tr>
+        <tr><td>DHCP SPAN</td><td>Same, from mirrored traffic</td><td>Use only where helper is impossible</td></tr>
+        <tr><td>HTTP</td><td>User-Agent string</td><td>From redirected traffic or SPAN; weaker now that traffic is encrypted</td></tr>
+        <tr><td>DNS</td><td>Reverse lookup of the endpoint's FQDN</td><td>Runs only after another probe supplies an IP</td></tr>
+        <tr><td>SNMPQUERY</td><td>Switch CAM, CDP, LLDP, ARP tables</td><td>Polls the NAD; set SNMP on the Network Device object</td></tr>
+        <tr><td>SNMPTRAP</td><td>Link-up, MAC notification traps</td><td>Triggers an on-demand query</td></tr>
+        <tr><td>NetFlow</td><td>Flow records</td><td>Heavy; use narrowly for specific device classes</td></tr>
+        <tr><td>NMAP</td><td>Active scan: open ports, OS fingerprint, SMB/SNMP detail</td><td>Triggered by a policy, or manual</td></tr>
+        <tr><td>Active Directory</td><td>OS version, machine attributes</td><td>Distinguishes domain-joined Windows</td></tr>
+        <tr><td>pxGrid</td><td>Attributes from other systems</td><td>Context in, as well as out</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Device Sensor</h3>
+      <p>A switch and WLC feature that collects CDP, LLDP and DHCP data locally and sends it to ISE inside RADIUS accounting. It removes the need for SPAN and helper-address plumbing, and is the recommended way to feed the profiler on Cisco access gear. Configure with <code>device-sensor</code> commands plus <code>device-sensor accounting</code>.</p>
+      <div class="tip"><b>Interview angle</b>Mentioning Device Sensor unprompted signals design maturity, because the alternative probes are operationally expensive.</div>
+    </div>
+
+    <div class="term">
+      <h3>Profiling policy and Certainty Factor</h3>
+      <p>Each profiling policy is a set of conditions, and each condition carries a <strong>Certainty Factor</strong> value. Matching conditions add their values together; when the total reaches the policy's <strong>Minimum Certainty Factor</strong>, the endpoint is assigned that profile. Policies are hierarchical &mdash; a generic parent such as <em>Workstation</em> with more specific children beneath it &mdash; and the most specific match with sufficient certainty wins.</p>
+    </div>
+
+    <div class="term">
+      <h3>Exception actions</h3>
+      <p>A profiling policy can trigger an action rather than just a classification: assign to an identity group, raise an alarm, or run an NMAP scan. Used to escalate when something looks wrong.</p>
+    </div>
+
+    <div class="term">
+      <h3>Profiler Feed Service</h3>
+      <p>Downloads new and updated device profiles from Cisco on a schedule, so newly released hardware is recognised without a software upgrade. Needs outbound internet access or an offline update file.</p>
+    </div>
+
+    <div class="term">
+      <h3>Context Visibility</h3>
+      <p>The dashboard view of every known endpoint with all collected attributes, filterable and exportable. Where you go to answer &ldquo;what is actually on my network?&rdquo; and the fastest way to find an endpoint by MAC, IP, user or profile.</p>
+    </div>
+
+    <div class="term">
+      <h3>Anomalous Behaviour Detection</h3>
+      <p>Detects a MAC address whose characteristics change in ways that suggest spoofing &mdash; for example, an endpoint profiled as a printer suddenly presenting a Windows DHCP fingerprint, or appearing on a different NAS port type. Can raise an alarm or trigger a CoA. The direct answer to &ldquo;how do you stop someone spoofing a printer MAC?&rdquo;</p>
+    </div>
+
+    <div class="term">
+      <h3>Endpoint attribute filter</h3>
+      <p>Limits which collected attributes are written to the database, reducing replication load in large deployments. A scaling control rather than a feature.</p>
+    </div>
+
+    <div class="term">
+      <h3>Logical profile</h3>
+      <p>A grouping of several endpoint profiles under one name, so a policy can reference, for example, <em>IP-Phones</em> covering every phone model rather than listing each. Keeps authorization rules short.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 9 ============ -->
+<section class="block" id="posture">
+  <div class="sechead">
+    <h2><span class="num">09</span>Posture</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="posture"> Reviewed</label>
+  </div>
+  <p class="lede">Checking that an endpoint meets a compliance standard before granting full access. The flow, with its CoA, is the part to know cold.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Posture states</h3>
+      <p><strong>Unknown</strong> (no assessment yet), <strong>Compliant</strong>, <strong>Non-Compliant</strong>. Authorization rules are written against these, typically: Unknown gets redirected to provisioning, Non-Compliant gets a remediation VLAN or ACL, Compliant gets full access.</p>
+    </div>
+
+    <div class="term">
+      <h3>The posture flow</h3>
+      <ul>
+        <li>Endpoint authenticates (802.1X or MAB). Posture status is Unknown.</li>
+        <li>Authorization profile returns a redirect to the Client Provisioning Portal plus a redirect ACL, or in redirect-less mode relies on agent discovery.</li>
+        <li>The agent is installed or launched, discovers the PSN, and downloads the posture policy.</li>
+        <li>The agent runs the checks and reports the result to ISE.</li>
+        <li>ISE issues a <strong>CoA</strong>, policy is re-evaluated with the new posture status, and a new authorization profile is applied.</li>
+      </ul>
+      <div class="tip"><b>Interview angle</b>The CoA is the hinge of the whole flow. If an interviewer asks how the endpoint gets off the quarantine ACL, the answer is CoA, not a new authentication.</div>
+    </div>
+
+    <div class="term">
+      <h3>Agents</h3>
+      <ul>
+        <li><strong>Cisco Secure Client ISE Posture Module</strong> (formerly AnyConnect) &mdash; the persistent agent, with the full check library.</li>
+        <li><strong>Temporal Agent</strong> &mdash; dissolvable, runs once and removes itself. For contractors and unmanaged machines; a reduced check set.</li>
+        <li><strong>Stealth mode</strong> &mdash; the agent runs as a service with no user interface, for environments where users should not see or interact with it.</li>
+      </ul>
+    </div>
+
+    <div class="term">
+      <h3>Compliance Module</h3>
+      <p>The OPSWAT-based library that knows about antivirus, antispyware, disk encryption, firewall and patch-management products. Versioned separately from the agent and updated far more often. A mismatched or outdated Compliance Module is a frequent cause of a check failing or a product not being detected.</p>
+    </div>
+
+    <div class="term">
+      <h3>Conditions, Requirements, Policies</h3>
+      <p>The three-layer structure. A <strong>Condition</strong> is a single check (file exists, registry value, service running, AV definitions newer than N days, disk encrypted, USB blocked). A <strong>Requirement</strong> binds one or more conditions to an operating system and a <strong>remediation action</strong>. A <strong>Posture Policy</strong> applies requirements to an identity group and OS.</p>
+    </div>
+
+    <div class="term">
+      <h3>Remediation</h3>
+      <p>What happens when a requirement fails: launch a program, update AV definitions, trigger a patch install, show a message with a link, or simply report. Can be automatic or user-initiated, mandatory, optional or audit-only.</p>
+    </div>
+
+    <div class="term">
+      <h3>Client Provisioning Policy</h3>
+      <p>Decides which agent package, profile and compliance module an endpoint receives, based on OS, identity group and other conditions. Separate from posture policy &mdash; provisioning delivers the agent, posture decides what it checks.</p>
+    </div>
+
+    <div class="term">
+      <h3>Redirect-less posture</h3>
+      <p>Posture without a URL redirect ACL, supported from ISE 2.2. The agent discovers its PSN through a configured <em>Call Home List</em> or via <code>enroll.cisco.com</code>. Valuable where the NAD cannot do URL redirection &mdash; third-party switches, some cloud and VPN topologies.</p>
+    </div>
+
+    <div class="term">
+      <h3>PRA, posture lease and grace period</h3>
+      <p><strong>Periodic Reassessment</strong> re-checks a compliant endpoint at an interval. <strong>Posture lease</strong> lets an endpoint skip reassessment for a set time after passing, reducing load. <strong>Grace period</strong> gives a newly non-compliant endpoint continued access for a window before enforcement, which is how you roll posture out without a flood of help-desk calls.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 10 ============ -->
+<section class="block" id="byod">
+  <div class="sechead">
+    <h2><span class="num">10</span>BYOD</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="byod"> Reviewed</label>
+  </div>
+  <p class="lede">Getting a personal device a certificate and a supplicant configuration, without an administrator touching it.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Native Supplicant Provisioning <span class="exp">NSP</span></h3>
+      <p>The onboarding wizard that configures the device's built-in supplicant and installs a certificate. On Windows and macOS this runs through the Cisco Network Setup Assistant; on iOS it uses the Apple over-the-air profile mechanism; on Android it uses the Network Setup Assistant app.</p>
+    </div>
+
+    <div class="term">
+      <h3>Dual-SSID vs single-SSID onboarding</h3>
+      <ul>
+        <li><strong>Dual-SSID</strong> &mdash; the user joins an open or guest SSID, is redirected to the BYOD portal, onboards, then moves to the secure SSID using the new certificate. Easiest for users to understand.</li>
+        <li><strong>Single-SSID</strong> &mdash; the user joins the secure SSID with PEAP and AD credentials, is redirected and onboarded, then reconnects to the same SSID with EAP-TLS. Fewer SSIDs, but the supplicant must support a mid-session change.</li>
+      </ul>
+    </div>
+
+    <div class="term">
+      <h3>My Devices Portal</h3>
+      <p>Self-service portal where users register devices, name them, and mark one lost or stolen, which moves it to the Blocklist identity group and revokes its certificate. Reduces help-desk load and is a good answer to &ldquo;how do you handle a lost BYOD device?&rdquo;</p>
+    </div>
+
+    <div class="term">
+      <h3>BYOD registration attributes</h3>
+      <p>Onboarded endpoints gain attributes such as <code>BYODRegistration</code> and membership of the <em>RegisteredDevices</em> identity group, plus a link to the owning user. Authorization rules use these to separate a registered personal device from an unknown one.</p>
+    </div>
+
+    <div class="term">
+      <h3>Certificate Provisioning Portal</h3>
+      <p>Issues a certificate to a device that cannot run the full onboarding flow &mdash; a user requests a certificate manually, or an administrator does a bulk request from a CSV. Useful for appliances and for platforms the wizard does not support.</p>
+    </div>
+
+    <div class="term">
+      <h3>MDM / UEM integration</h3>
+      <p>ISE can query an MDM such as Intune, Workspace ONE or MobileIron for device attributes &mdash; registration status, compliance, jailbreak status, disk encryption, PIN lock &mdash; and use them in authorization. It can also trigger a remote wipe or lock. Complements posture: MDM covers mobile, the posture agent covers desktop.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section class="block" id="guest">
+  <div class="sechead">
+    <h2><span class="num">11</span>Guest access</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="guest"> Reviewed</label>
+  </div>
+  <p class="lede">Three portal patterns, and the sponsor model behind them.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Hotspot portal</h3>
+      <p>No credentials. The user accepts an acceptable use policy, optionally enters an access code, and is granted access. Simplest pattern; used in retail and public spaces. Access is tied to the device MAC rather than to a person, so it gives you the weakest accountability.</p>
+    </div>
+
+    <div class="term">
+      <h3>Self-registered portal</h3>
+      <p>The guest creates their own account, optionally requiring sponsor approval, SMS or email verification before it activates. Balances convenience against traceability, and is the most common enterprise choice.</p>
+    </div>
+
+    <div class="term">
+      <h3>Sponsored portal</h3>
+      <p>An employee creates the guest account in advance through the Sponsor Portal and passes the credentials to the visitor. Strongest accountability, because every guest account has a named sponsor.</p>
+    </div>
+
+    <div class="term">
+      <h3>Guest Type</h3>
+      <p>Defines account lifetime, maximum simultaneous logins, allowed login hours, password policy and whether the account can be extended. Previously called guest roles. Authorization rules frequently match on guest type to give contractors more access than visitors.</p>
+    </div>
+
+    <div class="term">
+      <h3>Sponsor Group</h3>
+      <p>Controls which employees may create guest accounts, which guest types they may create, and whose accounts they may see and manage. Mapped to AD groups.</p>
+    </div>
+
+    <div class="term">
+      <h3>Guest flow and CoA</h3>
+      <p>The endpoint hits MAB, gets a redirect to the guest portal, the guest logs in, and ISE issues a <strong>CoA</strong> to re-evaluate the session with the guest identity now known. Identical in shape to the posture and CWA flows &mdash; one pattern, three uses.</p>
+    </div>
+
+    <div class="term">
+      <h3>AUP and account purge</h3>
+      <p>The <strong>Acceptable Use Policy</strong> page can be shown on first login or every login, and acceptance is logged. The <strong>purge policy</strong> deletes expired guest accounts on a schedule, which matters because guest accounts otherwise accumulate indefinitely and count against database size.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 12 ============ -->
+<section class="block" id="trustsec">
+  <div class="sechead">
+    <h2><span class="num">12</span>TrustSec and segmentation</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="trustsec"> Reviewed</label>
+  </div>
+  <p class="lede">Policy based on role rather than IP address. Increasingly the centre of gravity in ISE interviews.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>SGT <span class="exp">Security Group Tag</span></h3>
+      <p>A 16-bit value representing a role, assigned to traffic at its ingress point. Assigned dynamically by an ISE authorization rule, or statically mapped to an IP, subnet, VLAN or port. SGT 0 is <em>Unknown</em>; SGT 2 is conventionally <em>TrustSec Devices</em>.</p>
+      <p>The point is decoupling policy from addressing: a contractor is a contractor whether they are on 10.1.1.0/24 or 172.16.9.0/24, so the policy survives renumbering and does not need an ACL per subnet.</p>
+    </div>
+
+    <div class="term">
+      <h3>SGACL <span class="exp">Security Group ACL</span></h3>
+      <p>The enforcement object. Applied at <strong>egress</strong>, where the destination SGT is known, based on the source SGT and destination SGT pair. Defined centrally in ISE and downloaded by the enforcing device.</p>
+    </div>
+
+    <div class="term">
+      <h3>TrustSec policy matrix</h3>
+      <p>The grid in ISE with source SGTs down one axis and destination SGTs across the other, each cell holding the SGACL for that pair. Also holds a default policy for unmatched cells &mdash; which is where you decide whether your segmentation is default-permit or default-deny.</p>
+    </div>
+
+    <div class="term">
+      <h3>Inline tagging <span class="exp">CMD</span></h3>
+      <p>The SGT carried in a Cisco Meta Data field inserted into the L2 frame, hop by hop. The native method, but it requires hardware support on every link in the path.</p>
+    </div>
+
+    <div class="term">
+      <h3>SXP <span class="exp">SGT Exchange Protocol</span></h3>
+      <p>TCP 64999. Carries IP-to-SGT mappings to devices that cannot do inline tagging. Operates in <strong>speaker</strong> and <strong>listener</strong> roles; ISE can be either and often acts as a mapping aggregator and reflector. Scaling SXP peerings is a real design constraint in large networks.</p>
+      <div class="tip"><b>Interview angle</b>&ldquo;When do you use SXP instead of inline tagging?&rdquo; When the data path crosses equipment that cannot carry the CMD field &mdash; older switches, most WAN links, and many firewalls.</div>
+    </div>
+
+    <div class="term">
+      <h3>Environment data</h3>
+      <p>The SGT name-to-number table and the device's own SGT, downloaded from ISE by a TrustSec-enabled NAD. Without it, a device can enforce numbers but cannot display names, and policy downloads fail.</p>
+    </div>
+
+    <div class="term">
+      <h3>PAC for TrustSec</h3>
+      <p>Historically a TrustSec device authenticated to ISE using a PAC obtained over EAP-FAST before it could download environment data and policy. Newer releases support PAC-less operation using RADIUS with a shared secret, which simplifies deployment considerably.</p>
+    </div>
+
+    <div class="term">
+      <h3>Security Group Firewall</h3>
+      <p>SGT-aware rules on a firewall such as ASA or Secure Firewall, letting you write firewall policy in terms of roles. The firewall learns mappings through SXP or pxGrid.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 13 ============ -->
+<section class="block" id="pxgrid">
+  <div class="sechead">
+    <h2><span class="num">13</span>pxGrid and integrations</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="pxgrid"> Reviewed</label>
+  </div>
+  <p class="lede">How ISE shares what it knows, and acts on what others tell it.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>pxGrid <span class="exp">Platform Exchange Grid</span></h3>
+      <p>A publish-subscribe bus for security context. ISE publishes session information &mdash; user, device, IP, SGT, posture &mdash; and subscribers consume it. Clients authenticate with certificates and must be approved in ISE. <strong>pxGrid 1.0</strong> used XMPP; <strong>pxGrid 2.0</strong> uses WebSocket with STOMP and a REST API, on 8910 and 443.</p>
+    </div>
+
+    <div class="term">
+      <h3>Topics</h3>
+      <p>Named channels a client subscribes to: <em>SessionDirectory</em>, <em>TrustSecMetaData</em>, <em>EndpointProtectionService</em>, <em>ANCConfig</em>, <em>Radius failures</em>, and others. A client subscribes only to what it needs.</p>
+    </div>
+
+    <div class="term">
+      <h3>ANC <span class="exp">Adaptive Network Control</span></h3>
+      <p>The mechanism for acting on a session from outside ISE, formerly EPS (Endpoint Protection Service). An ANC policy applies <strong>Quarantine</strong>, <strong>Shut_Down</strong> or <strong>Port_Bounce</strong> to an endpoint, enforced by CoA. Triggered from the ISE GUI, the API, or by a pxGrid partner.</p>
+    </div>
+
+    <div class="term">
+      <h3>Rapid Threat Containment</h3>
+      <p>The umbrella name for the pattern: a security product detects a compromised host, calls ISE over pxGrid or the API, ISE applies an ANC policy, and the endpoint is quarantined within seconds without a human in the loop.</p>
+      <div class="tip"><b>Interview angle</b>A strong answer connects three things: detection in another product, pxGrid or ERS as the integration path, and CoA as the enforcement mechanism.</div>
+    </div>
+
+    <div class="term">
+      <h3>TC-NAC <span class="exp">Threat Centric NAC</span></h3>
+      <p>Brings vulnerability and threat data into authorization. Vulnerability adapters for Qualys, Rapid7 and Tenable supply CVSS scores; threat adapters supply indicators from Cisco Secure Endpoint and Cognitive Threat Analytics. You can then write a rule such as &ldquo;CVSS above 7 moves the endpoint to a remediation group&rdquo;.</p>
+    </div>
+
+    <div class="term">
+      <h3>ERS API <span class="exp">External RESTful Services</span></h3>
+      <p>REST API on TCP 9060 for configuration objects: endpoints, identity groups, network devices, guest accounts. Must be enabled explicitly and uses a dedicated admin role. The usual target for automation scripts. ISE also offers Open API and MnT APIs for operational data.</p>
+    </div>
+
+    <div class="term">
+      <h3>Common integrations</h3>
+      <ul>
+        <li><strong>Secure Firewall Management Center</strong> &mdash; user and SGT identity for firewall policy.</li>
+        <li><strong>Secure Network Analytics (Stealthwatch)</strong> &mdash; user context on flows, and quarantine actions back to ISE.</li>
+        <li><strong>Secure Web Appliance</strong> &mdash; transparent user identification for web policy.</li>
+        <li><strong>Catalyst Center</strong> &mdash; ISE as the policy engine for SD-Access group-based policy.</li>
+        <li><strong>SIEM platforms</strong> &mdash; syslog from MnT, or pxGrid for context enrichment.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 14 ============ -->
+<section class="block" id="deviceadmin">
+  <div class="sechead">
+    <h2><span class="num">14</span>Device administration</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="deviceadmin"> Reviewed</label>
+  </div>
+  <p class="lede">TACACS+ for controlling who can log into your switches and what they can type.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Device Admin Policy Sets</h3>
+      <p>Entirely separate from network access policy sets, with their own conditions, identity sources and results. The TACACS+ service must be enabled per PSN, and the deployment needs a Device Admin license.</p>
+    </div>
+
+    <div class="term">
+      <h3>TACACS Profile <span class="exp">shell profile</span></h3>
+      <p>The authorization result for a login session: privilege level (default and maximum), session timeout, and custom attributes. Privilege 15 for full administrators, privilege 1 for read-only, with custom levels in between.</p>
+    </div>
+
+    <div class="term">
+      <h3>Command Set</h3>
+      <p>A list of permitted or denied commands with their arguments, evaluated on every command the administrator enters. Supports wildcards and a default permit-or-deny. This is what enables a help-desk role that can run <code>show</code> commands and <code>clear counters</code> but nothing else.</p>
+    </div>
+
+    <div class="term">
+      <h3>Per-command authorization and accounting</h3>
+      <p>Because TACACS+ separates the three A's, the device asks ISE about each command before executing it, and logs each one afterwards. The accounting record is the audit trail auditors ask for. RADIUS cannot do this.</p>
+    </div>
+
+    <div class="term">
+      <h3>TACACS Live Logs</h3>
+      <p>A separate Live Log view for device administration, showing authentication, authorization and accounting events with the commands entered. First place to look when an admin reports being unable to run a command.</p>
+    </div>
+
+    <div class="term">
+      <h3>Device admin fallback</h3>
+      <p>Always configure a local fallback method, for example <code>aaa authentication login default group ISE-TACACS local</code>, and keep a local account. Otherwise losing ISE or the network path to it locks you out of every device simultaneously. Expect to be asked about this.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 15 ============ -->
+<section class="block" id="licensing">
+  <div class="sechead">
+    <h2><span class="num">15</span>Licensing and scale</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="licensing"> Reviewed</label>
+  </div>
+  <p class="lede">Licensing names change between releases, so state the capability and say which tier it sits in, rather than reciting a price list.</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>ISE 3.x tiers, at a high level</caption>
+      <thead><tr><th>Tier</th><th>Formerly</th><th>Broadly covers</th></tr></thead>
+      <tbody>
+        <tr><td>Essentials</td><td>Base</td><td>AAA, 802.1X, MAB, guest access, basic reporting, SGT assignment</td></tr>
+        <tr><td>Advantage</td><td>Plus</td><td>Profiling, BYOD, pxGrid context sharing, TrustSec policy, ANC</td></tr>
+        <tr><td>Premier</td><td>Apex</td><td>Posture, MDM integration, Threat Centric NAC</td></tr>
+        <tr><td>Device Admin</td><td>Device Admin</td><td>TACACS+, licensed per deployment rather than per endpoint</td></tr>
+        <tr><td>VM licenses</td><td>&mdash;</td><td>Small, Medium, Large, one per virtual ISE node</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Smart Licensing</h3>
+      <p>ISE 3.x uses Smart Licensing against a Smart Account and Virtual Account, either connected, through a Smart Software Manager On-Prem satellite, or offline using a reservation. Licenses are consumed by concurrent active endpoints, not by registered ones.</p>
+    </div>
+
+    <div class="term">
+      <h3>Tier consumption</h3>
+      <p>Tiers are cumulative in effect: an endpoint using posture consumes Premier, and also the Advantage and Essentials entitlements beneath it. Design the mix by what each endpoint class actually needs &mdash; printers do not need Premier.</p>
+    </div>
+
+    <div class="term">
+      <h3>Scale numbers</h3>
+      <p>Headline figures depend on release and platform, so quote them carefully. The shape to remember: a dedicated large deployment supports up to 50 PSNs and in the order of two million endpoints at the top of the range, while a two-node deployment is in the tens of thousands. Always confirm against the ISE Performance and Scalability Guide for the specific release.</p>
+      <div class="tip"><b>Interview angle</b>Saying &ldquo;it depends on the release, here is where I would check&rdquo; is a better answer than a confidently wrong number.</div>
+    </div>
+
+    <div class="term">
+      <h3>Node sizing</h3>
+      <p>SNS appliances and virtual equivalents come in small, medium and large, differing in CPU, memory and disk. Disk size matters most for MnT because it determines log retention. Undersizing MnT is the most common sizing mistake.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 16 ============ -->
+<section class="block" id="ops">
+  <div class="sechead">
+    <h2><span class="num">16</span>Operations and troubleshooting</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="ops"> Reviewed</label>
+  </div>
+  <p class="lede">The tools, and the failure codes that map to a cause. This is where escalation experience shows.</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>Failure codes you should recognise</caption>
+      <thead><tr><th class="num-col">Code</th><th>Message</th><th>Usual cause</th></tr></thead>
+      <tbody>
+        <tr><td class="num-col">5400</td><td>Authentication failed</td><td>Umbrella code; always open the detailed report</td></tr>
+        <tr><td class="num-col">5411</td><td>Supplicant stopped responding</td><td>Supplicant gave up mid-handshake; often fragmentation or trust</td></tr>
+        <tr><td class="num-col">5440</td><td>Endpoint abandoned EAP session</td><td>Most common EAP-TLS failure. Supplicant does not trust the ISE certificate, or fragments are dropped</td></tr>
+        <tr><td class="num-col">11001</td><td>Received RADIUS access request</td><td>Normal, shown as a step</td></tr>
+        <tr><td class="num-col">11007</td><td>Could not locate network device</td><td>NAD not defined, or source IP differs from the configured address</td></tr>
+        <tr><td class="num-col">12514</td><td>EAP-TLS failed, unknown CA in chain</td><td>Issuing CA or intermediate missing from the ISE trust store</td></tr>
+        <tr><td class="num-col">12516</td><td>EAP-TLS failed SSL/TLS handshake</td><td>Generic; read the surrounding steps, often cipher or TLS version</td></tr>
+        <tr><td class="num-col">12520</td><td>Client rejected the ISE local certificate</td><td>Supplicant does not trust ISE's EAP certificate, or the server-name check failed</td></tr>
+        <tr><td class="num-col">12566</td><td>SSL alert received</td><td>Read the alert code for the real reason</td></tr>
+        <tr><td class="num-col">22056</td><td>Subject not found in identity store</td><td>CAP extracted the wrong field, or the object does not exist in AD</td></tr>
+        <tr><td class="num-col">22049</td><td>Binary comparison of certificates failed</td><td>Certificate on the AD object differs, or none is published</td></tr>
+        <tr><td class="num-col">24408</td><td>User authentication against AD failed</td><td>Wrong password, locked account, or AD connectivity</td></tr>
+        <tr><td class="num-col">&mdash;</td><td>No log at all</td><td>Shared-secret mismatch, wrong port, or the packet never arrived</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Live Logs and Live Sessions</h3>
+      <p><strong>Live Logs</strong> shows authentication events as they happen. <strong>Live Sessions</strong> shows currently active sessions and is where you launch a CoA by hand. The <em>Steps</em> column inside a detailed authentication report lists every EAP message with its step code, so you can see exactly where a conversation died.</p>
+    </div>
+
+    <div class="term">
+      <h3>Diagnostic tools</h3>
+      <ul>
+        <li><strong>TCP Dump</strong> &mdash; packet capture on the node itself, filtered by MAC or NAD IP.</li>
+        <li><strong>Endpoint Debug</strong> &mdash; per-MAC debug logging without raising log levels globally.</li>
+        <li><strong>Evaluate Configuration Validator</strong> &mdash; logs into a NAD and compares its configuration against what ISE expects.</li>
+        <li><strong>RADIUS Authentication Troubleshooting</strong> &mdash; guided analysis of a failed authentication.</li>
+        <li><strong>Support Bundle</strong> &mdash; the full log collection to attach to a TAC case.</li>
+      </ul>
+    </div>
+
+    <div class="term">
+      <h3>Key log files</h3>
+      <ul>
+        <li><code>prrt-server.log</code> &mdash; the runtime AAA engine; where EAP state machine detail lives</li>
+        <li><code>ise-psc.log</code> &mdash; platform and application services</li>
+        <li><code>profiler.log</code> &mdash; profiling decisions</li>
+        <li><code>guest.log</code> &mdash; portal activity</li>
+        <li><code>ad_agent.log</code> &mdash; Active Directory connector</li>
+      </ul>
+    </div>
+
+    <div class="term">
+      <h3>Useful CLI</h3>
+      <p><code>show application status ise</code> for service state, <code>application start|stop ise</code> to restart services, <code>show logging application &lt;file&gt;</code> to tail a log, <code>show tech-support</code>, <code>show ports</code>, and <code>application configure ise</code> for the maintenance menu including the EAP fragment option and database tasks.</p>
+    </div>
+
+    <div class="term">
+      <h3>Backup and patching</h3>
+      <p>Two backup types: <strong>configuration</strong> (from the PAN, holds policy and certificates) and <strong>operational</strong> (from MnT, holds logs). Both go to a defined repository. Patches install on the PAN first and then roll to the other nodes, which restarts services on each &mdash; plan a window.</p>
+    </div>
+
+    <div class="term">
+      <h3>The diagnostic shortcut for EAP-TLS</h3>
+      <ul>
+        <li>Fails before any certificate appears &rarr; cipher or TLS version mismatch.</li>
+        <li>Fails right after the <em>ISE</em> certificate &rarr; supplicant trust problem.</li>
+        <li>Fails right after the <em>client</em> certificate &rarr; ISE trust store, chain or revocation problem.</li>
+        <li>Clean handshake then failure &rarr; identity resolution, not cryptography.</li>
+        <li>Clean authentication, wrong access &rarr; authorization policy.</li>
+      </ul>
+      <div class="tip"><b>Interview angle</b>If you remember one thing from this page for a troubleshooting question, make it this list. It turns a vague symptom into a specific place to look.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 17 ============ -->
+<section class="block" id="quickfire">
+  <div class="sechead">
+    <h2><span class="num">17</span>Self-test</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="quickfire"> Reviewed</label>
+  </div>
+  <p class="lede">Answer out loud before opening each one. Questions are phrased the way interviewers actually ask them.</p>
+
+  <details class="qa"><summary>Walk me through what happens from the moment a laptop is plugged into a 802.1X port.</summary>
+  <div class="ans"><p>Port is unauthorized, passing only EAPOL and control protocols. Switch sends EAP-Request/Identity, or the supplicant sends EAPOL-Start. The identity response is wrapped into a RADIUS Access-Request with the EAP-Message attribute and sent to the PSN. ISE selects a policy set, matches an authentication rule, and returns an Access-Challenge starting the EAP method. The method runs to completion with the switch relaying every message. ISE then evaluates authorization and returns an Access-Accept carrying the result attributes and, for key-generating methods, the MPPE key attributes. The switch authorizes the port and applies the dACL, VLAN or SGT.</p></div></details>
+
+  <details class="qa"><summary>What is the difference between authentication and authorization failing, and how do you tell from the logs?</summary>
+  <div class="ans"><p>An authentication failure means ISE could not verify the credential or resolve the identity &mdash; codes such as 12514, 22056 or 24408. An authorization failure means the identity was verified but no rule granted useful access, so the session lands on the default rule. In Live Logs the giveaway is a green successful authentication whose authorization profile is DenyAccess or a limited profile. The detailed report shows which rule matched.</p></div></details>
+
+  <details class="qa"><summary>Why does EAP-TLS need so many RADIUS round trips?</summary>
+  <div class="ans"><p>Because the TLS handshake is larger than one EAP packet, EAP-TLS fragments it, and each fragment with the More bit set must be acknowledged with a bare EAP-TLS Ack before the next is sent. Fragment count is driven by the ISE EAP fragment size, the Framed-MTU, the certificate chain sizes, and the length of the CA list in CertificateRequest. Shrinking the trust store and using ECDSA certificates both cut it down.</p></div></details>
+
+  <details class="qa"><summary>A printer stopped working after you enabled 802.1X. What happened and how do you fix it properly?</summary>
+  <div class="ans"><p>The printer has no supplicant, so the switch waits through the full dot1x timeout and retry cycle before falling back to MAB &mdash; roughly 90 seconds with defaults. Fix it properly by profiling the printer and writing a MAB authorization rule matched on the printer profile, not just the MAC, and by using IBNS 2.0 so MAB and dot1x can run concurrently rather than in a slow sequence. Tighten the result with a dACL or SGT, because MAB alone is spoofable.</p></div></details>
+
+  <details class="qa"><summary>How would you stop someone spoofing that printer's MAC address?</summary>
+  <div class="ans"><p>Layer defences: profile the endpoint and require the profile in the authorization condition, enable Anomalous Behaviour Detection so a change in fingerprint or port type raises an alarm or triggers CoA, restrict what the printer VLAN or SGT can reach so a spoofed session gains little, and where the device supports it move to certificate-based authentication instead of MAB.</p></div></details>
+
+  <details class="qa"><summary>Explain the Central WebAuth flow.</summary>
+  <div class="ans"><p>The endpoint fails 802.1X or matches MAB. ISE returns an authorization profile containing url-redirect and url-redirect-acl. The switch intercepts HTTP and redirects the user to the ISE guest portal. The user authenticates there. ISE then issues a CoA reauthenticate against the session, policy is re-evaluated with the guest identity known, and a new Access-Accept applies the final access. The same redirect-plus-CoA shape is used by posture and BYOD.</p></div></details>
+
+  <details class="qa"><summary>What does a node group give you?</summary>
+  <div class="ans"><p>PSNs in a node group share session state and heartbeats. If one PSN fails, a peer can issue the CoA for sessions the failed node owned, so redirect-based flows are not stranded. It is about session survivability, not load balancing.</p></div></details>
+
+  <details class="qa"><summary>Why can you not load-balance RADIUS per packet?</summary>
+  <div class="ans"><p>EAP is a stateful multi-round conversation and the TLS state lives on one PSN. A packet landing on a different node has no matching state and the handshake dies with no clear error. Persistence must be on Calling-Station-Id or the RADIUS State attribute. MAB, being a single request-response, does not have this problem.</p></div></details>
+
+  <details class="qa"><summary>What is EAP chaining and which method provides it?</summary>
+  <div class="ans"><p>Authenticating the machine and the user within a single EAP conversation and reporting both results, so authorization can require both. TEAP provides it natively, and EAP-FAST provided it earlier. Plain EAP-TLS cannot, which is why the older workaround was Machine Access Restriction &mdash; a cache-based approach that breaks with sleep and roaming.</p></div></details>
+
+  <details class="qa"><summary>How does posture know when to let the endpoint out of quarantine?</summary>
+  <div class="ans"><p>It does not decide locally. The agent reports the assessment result to ISE, ISE changes the session's posture status to Compliant, and ISE issues a CoA. Policy is re-evaluated with the new status and a new authorization profile is applied. The CoA is the hinge.</p></div></details>
+
+  <details class="qa"><summary>What is the difference between SXP and inline tagging?</summary>
+  <div class="ans"><p>Inline tagging carries the SGT inside the frame in a Cisco Meta Data field, hop by hop, and needs hardware support on every link. SXP is a TCP control-plane protocol on 64999 that distributes IP-to-SGT mappings to devices that cannot carry the tag inline. SXP tells a device what tag an address has; inline tagging puts the tag on the traffic itself.</p></div></details>
+
+  <details class="qa"><summary>Your guest portal shows a certificate warning. Where do you look?</summary>
+  <div class="ans"><p>The portal certificate, specifically whether its SAN includes the FQDN that guests actually resolve, and whether it is issued by a publicly trusted CA &mdash; guests will not have your internal root. Also confirm the portal FQDN resolves in the guest DNS and that the redirect ACL permits DNS and traffic to ISE.</p></div></details>
+
+  <details class="qa"><summary>What breaks if the Primary PAN is down for a day?</summary>
+  <div class="ans"><p>Authentication continues, because PSNs serve from their local copy of the configuration. What stops is configuration change, and anything needing a central database write &mdash; new guest accounts, BYOD registration, certain endpoint updates. Reporting continues through MnT. You promote the Secondary PAN manually unless auto-failover is configured.</p></div></details>
+
+  <details class="qa"><summary>How do you roll out 802.1X across a campus without breaking it?</summary>
+  <div class="ans"><p>Three phases. Monitor mode first, with open authentication and no enforcement, to discover every endpoint and build profiles. Then low-impact mode, with a small pre-auth ACL and dACLs applied on success, so enforcement starts without black-holing unknown devices. Finally closed mode once the exception list is empty. Pair it with Device Sensor for profiling data and a clear MAB strategy for the devices that will never have a supplicant.</p></div></details>
+
+  <details class="qa"><summary>Why TACACS+ rather than RADIUS for device administration?</summary>
+  <div class="ans"><p>TACACS+ encrypts the entire packet body rather than just the password, separates authentication from authorization so each command can be checked individually, and runs over TCP so failures are detected immediately. Per-command authorization and accounting is the capability auditors ask for, and RADIUS cannot provide it.</p></div></details>
+
+  <details class="qa"><summary>Describe Rapid Threat Containment.</summary>
+  <div class="ans"><p>Another security product detects a compromised endpoint, calls ISE through pxGrid or the ERS API, ISE applies an ANC policy such as Quarantine, and ISE enforces it with a CoA against the live session. The endpoint is isolated in seconds with no manual step.</p></div></details>
+
+  <details class="qa"><summary>What does Certainty Factor mean in profiling?</summary>
+  <div class="ans"><p>Each condition in a profiling policy carries a certainty value. Matching conditions accumulate, and when the total reaches the policy's Minimum Certainty Factor the endpoint is assigned that profile. Policies are hierarchical, so a general profile can be refined by a more specific child with a higher threshold.</p></div></details>
+
+  <details class="qa"><summary>An authentication shows 5440, endpoint abandoned EAP session. What are your first three checks?</summary>
+  <div class="ans"><p>One, does the supplicant trust the ISE EAP certificate &mdash; check the trusted root in the profile and whether the SAN matches. Two, fragmentation &mdash; take captures on both legs and see whether it always dies at the same fragment, which points at MTU or a path dropping fragmented UDP. Three, timers and load balancing &mdash; confirm the session is not being moved between PSNs mid-handshake.</p></div></details>
+
+  <details class="qa"><summary>What is the difference between a dACL and an SGT-based policy?</summary>
+  <div class="ans"><p>A dACL is an IP-based access list applied to one session at the access port. An SGT tags the traffic with a role and enforcement happens at egress through SGACLs, based on the source and destination group pair. The dACL scales with the number of subnets you must enumerate; the SGT approach scales with the number of roles, which is usually far smaller and survives renumbering.</p></div></details>
+
+  <details class="qa"><summary>Where does ISE get the endpoint IP address, and why does it matter?</summary>
+  <div class="ans"><p>Usually from the Framed-IP-Address in RADIUS accounting, or from DHCP and SNMP probes, or from the device tracking table via the NAD. It matters because posture redirect, SGT-to-IP mapping for SXP, and dACL source resolution all depend on it. This is why missing RADIUS accounting causes problems that look unrelated to accounting.</p></div></details>
+</section>
+
+</main>
+</div>
+
+<footer>
+  <p>Built as a study aid. Port numbers, licence tier names and scale figures move between ISE releases &mdash; confirm anything you intend to state as fact against the release notes, the Compatibility Guide, and the Performance and Scalability Guide for the exact version you are discussing.</p>
+  <p>Covers ISE 3.x behaviour unless a term is explicitly marked as legacy.</p>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var q = document.getElementById('q');
+  var clearBtn = document.getElementById('clearq');
+  var countEl = document.getElementById('count');
+  var noResult = document.getElementById('noresult');
+  var sections = Array.prototype.slice.call(document.querySelectorAll('section.block'));
+  var navLinks = Array.prototype.slice.call(document.querySelectorAll('nav.index a'));
+
+  // cache searchable items
+  var items = [];
+  sections.forEach(function(sec){
+    Array.prototype.slice.call(sec.querySelectorAll('.term, .qa')).forEach(function(el){
+      items.push({el: el, sec: sec, text: (el.textContent || '').toLowerCase()});
+    });
+  });
+  var totalItems = items.length;
+
+  function applyFilter(raw){
+    var term = (raw || '').trim().toLowerCase();
+    var filtering = term.length > 0;
+    document.body.classList.toggle('filtering', filtering);
+    clearBtn.hidden = !filtering;
+
+    if(!filtering){
+      items.forEach(function(it){ it.el.style.display = ''; });
+      sections.forEach(function(s){ s.style.display = ''; });
+      noResult.style.display = 'none';
+      countEl.textContent = totalItems + ' terms';
+      return;
+    }
+
+    var shown = 0;
+    var perSection = {};
+    items.forEach(function(it){
+      var hit = it.text.indexOf(term) !== -1;
+      it.el.style.display = hit ? '' : 'none';
+      if(hit){
+        shown++;
+        perSection[it.sec.id] = true;
+        if(it.el.tagName === 'DETAILS'){ it.el.open = true; }
+      }
+    });
+    sections.forEach(function(s){ s.style.display = perSection[s.id] ? '' : 'none'; });
+    noResult.style.display = shown ? 'none' : 'block';
+    countEl.textContent = shown + ' of ' + totalItems + ' terms';
+  }
+
+  q.addEventListener('input', function(){ applyFilter(q.value); });
+  clearBtn.addEventListener('click', function(){ q.value = ''; applyFilter(''); q.focus(); });
+  q.addEventListener('keydown', function(e){
+    if(e.key === 'Escape'){ q.value = ''; applyFilter(''); }
+  });
+  document.addEventListener('keydown', function(e){
+    if(e.key === '/' && document.activeElement !== q){
+      e.preventDefault(); q.focus(); q.select();
+    }
+  });
+
+  // ---- reviewed checkboxes + progress ----
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('.reviewed input'));
+  var fill = document.getElementById('progfill');
+  var ptxt = document.getElementById('progtxt');
+  var KEY = 'ise-ref-reviewed-v1';
+
+  function load(){
+    try{
+      var raw = window.localStorage.getItem(KEY);
+      return raw ? JSON.parse(raw) : {};
+    }catch(err){ return {}; }
+  }
+  function save(state){
+    try{ window.localStorage.setItem(KEY, JSON.stringify(state)); }catch(err){ /* storage unavailable */ }
+  }
+  function paint(){
+    var done = boxes.filter(function(b){ return b.checked; }).length;
+    ptxt.textContent = done + '/' + boxes.length;
+    fill.style.width = (boxes.length ? (done / boxes.length * 100) : 0) + '%';
+  }
+  var state = load();
+  boxes.forEach(function(b){
+    if(state[b.dataset.sec]){ b.checked = true; }
+    b.addEventListener('change', function(){
+      var s = load();
+      if(b.checked){ s[b.dataset.sec] = 1; } else { delete s[b.dataset.sec]; }
+      save(s);
+      paint();
+    });
+  });
+  paint();
+
+  // ---- theme toggle ----
+  var tbtn = document.getElementById('themebtn');
+  var TKEY = 'ise-ref-theme-v1';
+  try{
+    var saved = window.localStorage.getItem(TKEY);
+    if(saved === 'dark' || saved === 'light'){ document.documentElement.setAttribute('data-theme', saved); }
+  }catch(err){ /* ignore */ }
+  tbtn.addEventListener('click', function(){
+    var cur = document.documentElement.getAttribute('data-theme');
+    var isDark;
+    if(cur){ isDark = cur === 'dark'; }
+    else { isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches; }
+    var next = isDark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try{ window.localStorage.setItem(TKEY, next); }catch(err){ /* ignore */ }
+  });
+
+  // ---- active section in nav ----
+  if('IntersectionObserver' in window){
+    var obs = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(!en.isIntersecting){ return; }
+        navLinks.forEach(function(a){
+          a.classList.toggle('on', a.getAttribute('href') === '#' + en.target.id);
+        });
+      });
+    }, {rootMargin: '-72px 0px -70% 0px', threshold: 0});
+    sections.forEach(function(s){ obs.observe(s); });
+  }
+
+  applyFilter('');
+})();
+</script>
+</body>
+</html>

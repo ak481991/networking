@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EAP-TLS on Cisco ISE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: fixed left index, scrolling reference column, live filter across terms and table rows. */
+:root{
+  --bg:#f5f7f9;
+  --surface:#ffffff;
+  --surface-2:#eceff4;
+  --surface-3:#e3e8ee;
+  --ink:#141e28;
+  --ink-2:#4e6070;
+  --ink-3:#7c8d9b;
+  --line:#d9e0e7;
+  --line-strong:#c3cdd6;
+  --accent:#0d7a84;
+  --accent-ink:#0a5e66;
+  --accent-soft:rgba(13,122,132,.10);
+  --amber:#9a5c08;
+  --amber-soft:rgba(154,92,8,.10);
+  --good:#1a7347;
+  --crit:#a92a20;
+  --font-display:"IBM Plex Serif",Georgia,"Times New Roman",serif;
+  --font-body:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d141a; --surface:#141d25; --surface-2:#1a242d; --surface-3:#212d37;
+    --ink:#e4ecf2; --ink-2:#9db0be; --ink-3:#6f8393;
+    --line:#253239; --line-strong:#334450;
+    --accent:#3ab8c0; --accent-ink:#5fd0d6; --accent-soft:rgba(58,184,192,.14);
+    --amber:#dda550; --amber-soft:rgba(221,165,80,.13);
+    --good:#48c184; --crit:#ef7065;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d141a; --surface:#141d25; --surface-2:#1a242d; --surface-3:#212d37;
+  --ink:#e4ecf2; --ink-2:#9db0be; --ink-3:#6f8393;
+  --line:#253239; --line-strong:#334450;
+  --accent:#3ab8c0; --accent-ink:#5fd0d6; --accent-soft:rgba(58,184,192,.14);
+  --amber:#dda550; --amber-soft:rgba(221,165,80,.13);
+  --good:#48c184; --crit:#ef7065;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.6}
+h1,h2,h3{font-family:var(--font-display);text-wrap:balance;margin:0}
+a{color:var(--accent-ink)}
+code,kbd{font-family:var(--font-mono);font-size:.88em}
+code{background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:.08em .34em;white-space:nowrap}
+pre{
+  background:var(--surface-2);border:1px solid var(--line);border-radius:7px;
+  padding:13px 15px;overflow-x:auto;margin:0 0 11px;
+  font-family:var(--font-mono);font-size:12.7px;line-height:1.65;color:var(--ink);
+}
+pre code{background:none;border:0;padding:0;white-space:pre;font-size:inherit}
+.cmt{color:var(--ink-3)}
+
+/* ---------- masthead ---------- */
+.masthead{background:var(--surface);border-bottom:1px solid var(--line)}
+.masthead-in{max-width:1200px;margin:0 auto;padding:26px 20px 22px;display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;justify-content:space-between}
+.brand h1{font-size:27px;line-height:1.2;letter-spacing:-.01em}
+.brand p{margin:6px 0 0;color:var(--ink-2);font-size:14px;max-width:64ch}
+.eyebrow{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--accent-ink);background:var(--accent-soft);border-radius:3px;padding:3px 8px;margin-bottom:10px}
+.themebtn{font:inherit;font-size:13px;font-weight:500;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:7px 13px;cursor:pointer;white-space:nowrap}
+.themebtn:hover{border-color:var(--line-strong);color:var(--ink)}
+
+/* ---------- toolbar ---------- */
+.toolbar{position:sticky;top:0;z-index:30;background:var(--bg);border-bottom:1px solid var(--line)}
+.toolbar-in{max-width:1200px;margin:0 auto;padding:12px 20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.searchwrap{position:relative;flex:1 1 300px;min-width:0}
+#q{width:100%;font:inherit;font-size:14px;color:var(--ink);background:var(--surface);border:1px solid var(--line-strong);border-radius:7px;padding:9px 34px 9px 12px}
+#q::placeholder{color:var(--ink-3)}
+#q:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+.clearq{position:absolute;right:5px;top:50%;transform:translateY(-50%);border:0;background:none;color:var(--ink-3);font-size:17px;line-height:1;cursor:pointer;padding:5px 7px;border-radius:4px}
+.clearq:hover{color:var(--ink)}
+.count{font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.progwrap{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink-2);white-space:nowrap}
+.progbar{width:92px;height:6px;border-radius:3px;background:var(--surface-3);overflow:hidden}
+.progfill{height:100%;width:0;background:var(--accent);transition:width .25s ease}
+
+/* ---------- shell ---------- */
+.shell{max-width:1200px;margin:0 auto;padding:0 20px 80px;display:flex;gap:34px;align-items:flex-start}
+nav.index{position:sticky;top:64px;flex:0 0 218px;width:218px;max-height:calc(100vh - 84px);overflow-y:auto;padding:22px 0 20px}
+nav.index h2{font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);font-family:var(--font-body);font-weight:600;margin:0 0 9px}
+nav.index ol{list-style:none;margin:0;padding:0;counter-reset:nav}
+nav.index li{counter-increment:nav}
+nav.index a{display:flex;gap:9px;padding:5px 9px;border-radius:5px;color:var(--ink-2);text-decoration:none;font-size:13.5px;line-height:1.35}
+nav.index a::before{content:counter(nav,decimal-leading-zero);color:var(--ink-3);font-variant-numeric:tabular-nums;font-size:11.5px;padding-top:2px}
+nav.index a:hover{background:var(--surface-2);color:var(--ink)}
+nav.index a.on{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
+nav.index a.on::before{color:var(--accent-ink)}
+main{flex:1 1 auto;min-width:0;padding:22px 0 0}
+
+/* ---------- sections ---------- */
+section.block{margin-bottom:38px;scroll-margin-top:72px}
+.sechead{display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap;padding-bottom:9px;border-bottom:2px solid var(--line-strong);margin-bottom:16px}
+.sechead h2{font-size:21px;letter-spacing:-.005em}
+.sechead .num{color:var(--ink-3);font-family:var(--font-mono);font-size:12.5px;margin-right:9px}
+.lede{color:var(--ink-2);font-size:14.5px;margin:0 0 16px;max-width:68ch}
+.reviewed{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-3);cursor:pointer;user-select:none}
+.reviewed input{accent-color:var(--accent);width:14px;height:14px;cursor:pointer}
+
+.terms{display:grid;gap:11px}
+.term{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--line-strong);border-radius:7px;padding:13px 16px}
+.term h3{font-family:var(--font-body);font-size:14.5px;font-weight:700;letter-spacing:-.003em;margin:0 0 5px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+.term h3 .exp{font-weight:400;font-size:12.5px;color:var(--ink-3);font-family:var(--font-mono)}
+.term p{margin:0 0 7px;color:var(--ink-2);font-size:14px}
+.term p:last-child{margin-bottom:0}
+.term strong{color:var(--ink);font-weight:600}
+.term ul,.term ol{margin:6px 0 0;padding-left:20px;color:var(--ink-2);font-size:14px}
+.term li{margin-bottom:4px}
+.term li::marker{color:var(--ink-3)}
+.term .tablewrap{margin-top:10px}
+
+.tip{margin-top:9px;padding:8px 11px;border-radius:5px;background:var(--amber-soft);border-left:2px solid var(--amber);font-size:13.3px;color:var(--ink-2)}
+.tip b{color:var(--amber);font-weight:600;letter-spacing:.02em;font-size:11px;text-transform:uppercase;display:block;margin-bottom:2px}
+
+/* ---------- tables ---------- */
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:7px;background:var(--surface);margin:0 0 11px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:520px}
+caption{text-align:left;padding:11px 14px 0;font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+th,td{text-align:left;padding:8px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+thead th{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:600;background:var(--surface-2);white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+td code{white-space:nowrap}
+.num-col{font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* ---------- diagram ---------- */
+.figure{background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:6px 6px 0;margin:0 0 11px}
+.figscroll{overflow-x:auto}
+.figscroll svg{display:block;width:100%;min-width:660px;height:auto}
+.figcap{padding:6px 12px 11px;font-size:12.5px;color:var(--ink-3)}
+
+.noresult{display:none;padding:26px;text-align:center;color:var(--ink-2);background:var(--surface);border:1px dashed var(--line-strong);border-radius:7px}
+body.filtering .lede,
+body.filtering .reviewed,
+body.filtering .figure{display:none}
+
+footer{max-width:1200px;margin:0 auto;padding:22px 20px 40px;border-top:1px solid var(--line);color:var(--ink-3);font-size:12.5px}
+footer p{margin:0 0 5px;max-width:78ch}
+footer a{color:var(--accent-ink)}
+
+@media (max-width:900px){
+  .shell{flex-direction:column;gap:0;padding-bottom:56px}
+  nav.index{position:sticky;top:57px;z-index:20;width:auto;flex:none;max-height:none;padding:9px 0;background:var(--bg);border-bottom:1px solid var(--line);overflow-x:auto;overflow-y:hidden}
+  nav.index h2{display:none}
+  nav.index ol{display:flex;gap:5px;white-space:nowrap}
+  nav.index a{border:1px solid var(--line);background:var(--surface);padding:5px 11px}
+  section.block{scroll-margin-top:118px}
+  .toolbar-in{padding:9px 20px}
+  .progwrap{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+@media print{.toolbar,nav.index,.themebtn{display:none}.shell{display:block}}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-in">
+    <div class="brand">
+      <span class="eyebrow">Engineer's deep dive</span>
+      <h1>EAP-TLS on Cisco ISE</h1>
+      <p>The full handshake at frame level: what each message proves, how fragmentation drives round trips, what ISE does with the certificate afterwards, and which failure signature points where. Written to be demonstrated, with a lab runbook at the end.</p>
+    </div>
+    <button class="themebtn" id="themebtn" type="button">Switch theme</button>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="toolbar-in">
+    <div class="searchwrap">
+      <input id="q" type="search" placeholder="Filter: try fragment, 12514, MSK, CertificateVerify, OCSP&hellip;" autocomplete="off" aria-label="Filter content">
+      <button class="clearq" id="clearq" type="button" aria-label="Clear filter" hidden>&times;</button>
+    </div>
+    <span class="count" id="count"></span>
+    <div class="progwrap">
+      <span>Reviewed</span>
+      <span class="progbar"><span class="progfill" id="progfill"></span></span>
+      <span class="num-col" id="progtxt">0/12</span>
+    </div>
+  </div>
+</div>
+
+<div class="shell">
+<nav class="index" aria-label="Sections">
+  <h2>Sections</h2>
+  <ol>
+    <li><a href="#model">Three-party model</a></li>
+    <li><a href="#anatomy">Wire anatomy</a></li>
+    <li><a href="#flow">End-to-end flow</a></li>
+    <li><a href="#handshake">TLS 1.2 handshake</a></li>
+    <li><a href="#fragmentation">Fragmentation</a></li>
+    <li><a href="#keys">Key derivation</a></li>
+    <li><a href="#validation">Certificate validation</a></li>
+    <li><a href="#authz">Authorisation &amp; CoA</a></li>
+    <li><a href="#tls13">TLS 1.3 (RFC 9190)</a></li>
+    <li><a href="#failures">Failure signatures</a></li>
+    <li><a href="#tools">Troubleshooting</a></li>
+    <li><a href="#demo">Demo runbook</a></li>
+  </ol>
+</nav>
+
+<main>
+<div class="noresult" id="noresult">Nothing matches that filter. Try a shorter word, or a term such as <code>flags</code>, <code>MSK</code>, <code>5440</code>.</div>
+
+<!-- ============ 1 ============ -->
+<section class="block" id="model">
+  <div class="sechead">
+    <h2><span class="num">01</span>The three-party model</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="model"> Reviewed</label>
+  </div>
+  <p class="lede">EAP-TLS is a mutual-certificate TLS handshake between the endpoint and ISE. The switch or WLC between them never sees inside it, and that single fact explains most of what follows.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The three roles <span class="exp">IEEE 802.1X</span></h3>
+      <ul>
+        <li><strong>Supplicant</strong> &mdash; software on the endpoint (Windows native, Cisco Secure Client NAM, wpa_supplicant, an iOS or macOS profile). Holds the client certificate and, critically, the matching private key.</li>
+        <li><strong>Authenticator / NAD</strong> &mdash; the access switch or WLC. Owns the port state machine, holds the RADIUS shared secret, translates between two encapsulations. Nothing more.</li>
+        <li><strong>Authentication server</strong> &mdash; the ISE Policy Service Node. Terminates TLS, validates the client certificate, resolves an identity, runs the policy sets.</li>
+      </ul>
+    </div>
+
+    <div class="term">
+      <h3>Two transport domains</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Leg</th><th>Encapsulation</th><th>Layer</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>Supplicant &harr; NAD</td><td>EAPOL (EAP over LAN)</td><td>L2 frame, EtherType 0x888E</td><td>Wireless carries EAPOL inside 802.11 data frames after association</td></tr>
+            <tr><td>NAD &harr; ISE</td><td>EAP over RADIUS (RFC 3579)</td><td>UDP 1812, legacy 1645</td><td>EAP packet carried in the EAP-Message attribute, often split across several</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="term">
+      <h3>The pass-through insight</h3>
+      <p>The NAD lifts the EAP packet out of the EAPOL frame, drops it verbatim into <code>EAP-Message</code>, and does the reverse on the way back. It has no EAP certificate, no trust store, and no part in validating anything. Three consequences worth saying out loud to your team:</p>
+      <ol>
+        <li>If the TLS handshake fails, switch configuration is almost never the cause. Look at supplicant trust and ISE certificates instead.</li>
+        <li>The NAD <em>does</em> own timers, retransmissions and the port state machine &mdash; so timeout-shaped failures <em>are</em> switch-side, even when the handshake itself is fine.</li>
+        <li>The only identity the NAD ever sees is the clear-text <code>EAP-Response/Identity</code>. It cannot read the certificate, so it cannot make decisions on it.</li>
+      </ol>
+    </div>
+
+    <div class="term">
+      <h3>Why EAP-TLS rather than the alternatives</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Method</th><th>Client credential</th><th>Server validated by client</th><th>Typical ISE identity store</th></tr></thead>
+          <tbody>
+            <tr><td>EAP-TLS</td><td>X.509 cert + private key</td><td>Yes, by certificate</td><td>Certificate Authentication Profile, optional AD/LDAP lookup</td></tr>
+            <tr><td>PEAP-MSCHAPv2</td><td>Password inside a TLS tunnel</td><td>Only if the supplicant is configured to</td><td>Active Directory</td></tr>
+            <tr><td>EAP-FAST</td><td>PAC, then an inner method</td><td>Via PAC provisioning</td><td>AD / internal users</td></tr>
+            <tr><td>TEAP (RFC 7170)</td><td>Cert and/or password, chained</td><td>Yes, by certificate</td><td>Both, in one session</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>EAP-TLS is the only one of these where the client credential is a private key that never leaves the endpoint &mdash; ideally never leaves the TPM. There is no password to phish, replay or stuff, and the handshake produces strong keying material for MACsec and WPA3-Enterprise as a by-product.</p>
+      <p>The trade-off is PKI operations: enrolment, renewal, revocation and trust distribution become your problem. Plain EAP-TLS also authenticates one identity per session, which is why TEAP exists for machine-and-user chaining.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section class="block" id="anatomy">
+  <div class="sechead">
+    <h2><span class="num">02</span>Wire anatomy: three nested headers</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="anatomy"> Reviewed</label>
+  </div>
+  <p class="lede">Every EAP-TLS message on the access leg is a TLS record inside an EAP packet inside an EAPOL frame. Being able to point at each header in Wireshark is the single most convincing thing you can do in a demo.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>1. The EAPOL frame <span class="exp">supplicant &harr; NAD</span></h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Field</th><th class="num-col">Size</th><th>Value / meaning</th></tr></thead>
+          <tbody>
+            <tr><td>Destination MAC</td><td class="num-col">6 bytes</td><td><code>01:80:C2:00:00:03</code> &mdash; the PAE group address. Reserved, never forwarded by a bridge</td></tr>
+            <tr><td>Source MAC</td><td class="num-col">6 bytes</td><td>Endpoint NIC, or switch port MAC on downstream frames</td></tr>
+            <tr><td>EtherType</td><td class="num-col">2 bytes</td><td><code>0x888E</code> &mdash; EAPOL</td></tr>
+            <tr><td>Protocol version</td><td class="num-col">1 byte</td><td>1 (802.1X-2001), 2 (-2004), 3 (-2010, required for MACsec/MKA)</td></tr>
+            <tr><td>Packet type</td><td class="num-col">1 byte</td><td>0 = EAP-Packet, 1 = EAPOL-Start, 2 = EAPOL-Logoff, 3 = EAPOL-Key, 4 = ASF-Alert</td></tr>
+            <tr><td>Packet body length</td><td class="num-col">2 bytes</td><td>Length of the EAP packet that follows</td></tr>
+            <tr><td>Packet body</td><td class="num-col">variable</td><td>The EAP packet, present only for types 0 and 3</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Wireshark filter for the whole access-leg conversation: <code>eapol</code>. For one endpoint, <code>eapol &amp;&amp; eth.src == aa:bb:cc:dd:ee:ff</code>.</p>
+    </div>
+
+    <div class="term">
+      <h3>2. The EAP packet <span class="exp">RFC 3748</span></h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Field</th><th class="num-col">Size</th><th>Value / meaning</th></tr></thead>
+          <tbody>
+            <tr><td>Code</td><td class="num-col">1 byte</td><td>1 = Request, 2 = Response, 3 = Success, 4 = Failure</td></tr>
+            <tr><td>Identifier</td><td class="num-col">1 byte</td><td>Matches a Response to its Request. Increments per exchange, wraps at 255</td></tr>
+            <tr><td>Length</td><td class="num-col">2 bytes</td><td>Whole EAP packet including this header</td></tr>
+            <tr><td>Type</td><td class="num-col">1 byte</td><td>Request/Response only. 1 = Identity, 2 = Notification, 3 = Legacy NAK, <strong>13 = EAP-TLS</strong>, 21 = EAP-TTLS, 25 = PEAP, 43 = EAP-FAST, 55 = TEAP</td></tr>
+            <tr><td>Type-Data</td><td class="num-col">variable</td><td>For type 13: a flags byte, an optional length, then TLS record bytes</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Success and Failure packets are four bytes total and carry no Type field &mdash; which is exactly why a bare <code>EAP-Success</code> can never be trusted on its own, and why 802.11i added the 4-way handshake.</p>
+    </div>
+
+    <div class="term">
+      <h3>3. The RADIUS carriage <span class="exp">NAD &harr; ISE</span></h3>
+      <p>The NAD builds an <code>Access-Request</code> (code 1) and keeps re-sending it with the same <code>State</code> attribute as the conversation progresses. Attributes that matter when reading a capture:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Attribute</th><th class="num-col">#</th><th>What it tells you</th></tr></thead>
+          <tbody>
+            <tr><td><code>User-Name</code></td><td class="num-col">1</td><td>The clear-text outer identity from EAP-Response/Identity &mdash; <strong>not</strong> the certificate subject</td></tr>
+            <tr><td><code>NAS-IP-Address</code></td><td class="num-col">4</td><td>Which NAD; must match the Network Device object in ISE or the request is dropped</td></tr>
+            <tr><td><code>Service-Type</code></td><td class="num-col">6</td><td>2 = Framed for 802.1X; Call-Check for MAB</td></tr>
+            <tr><td><code>Framed-MTU</code></td><td class="num-col">12</td><td>Usually 1500. Hints at the fragment size the NAD will tolerate</td></tr>
+            <tr><td><code>State</code></td><td class="num-col">24</td><td>ISE-generated session cookie, echoed back on every subsequent request</td></tr>
+            <tr><td><code>Called-Station-Id</code></td><td class="num-col">30</td><td>NAD MAC, and SSID on wireless (<code>mac:SSID</code>)</td></tr>
+            <tr><td><code>Calling-Station-Id</code></td><td class="num-col">31</td><td>Endpoint MAC &mdash; your correlation key across every log</td></tr>
+            <tr><td><code>NAS-Port-Type</code></td><td class="num-col">61</td><td>15 = Ethernet, 19 = Wireless-802.11</td></tr>
+            <tr><td><code>EAP-Message</code></td><td class="num-col">79</td><td>The EAP packet. Capped at 253 bytes, so one EAP packet is often split across several, concatenated in order</td></tr>
+            <tr><td><code>Message-Authenticator</code></td><td class="num-col">80</td><td>HMAC-MD5 over the whole packet keyed with the shared secret. Mandatory whenever EAP-Message is present</td></tr>
+            <tr><td><code>Cisco-AVPair</code></td><td class="num-col">26/9/1</td><td>Carries <code>audit-session-id</code>, <code>method</code>, and on IBNS 2.0 much more</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Two points to stress. First, <code>EAP-Message</code> fragmentation across attributes is a RADIUS-layer mechanic, entirely separate from EAP-TLS fragmentation &mdash; a frequent source of confusion. Second, <code>Message-Authenticator</code> is what proves the NAD knows the shared secret; a mismatch shows up in ISE as a dropped request with no authentication log at all, which sends people hunting in the wrong place.</p>
+      <p>Wireshark filter for the ISE leg: <code>radius</code>, and <code>radius.Calling_Station_Id contains "aabb.ccdd"</code> to pin one endpoint.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section class="block" id="flow">
+  <div class="sechead">
+    <h2><span class="num">03</span>The end-to-end flow</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="flow"> Reviewed</label>
+  </div>
+
+  <div class="figure">
+    <div class="figscroll">
+      <svg viewBox="0 0 760 574" role="img" aria-label="The switch relays every EAP message without reading it" font-size="13" font-family="var(--font-body)">
+        <defs>
+          <marker id="ladarrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="var(--line-strong)"></path>
+          </marker>
+        </defs>
+        <text x="24" y="28" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--font-display)">The switch relays every EAP message without reading it</text>
+        <text x="24" y="48" font-size="11.5" fill="var(--ink-3)">EAP-TLS message flow, wired 802.1X with TLS 1.2</text>
+
+        <g>
+          <rect x="24" y="100" width="712" height="110" rx="8" fill="var(--surface-2)"></rect>
+          <rect x="24" y="220" width="712" height="222" rx="8" fill="var(--surface-2)"></rect>
+          <rect x="24" y="452" width="712" height="96" rx="8" fill="var(--surface-2)"></rect>
+        </g>
+
+        <g stroke="var(--line-strong)">
+          <line x1="200" x2="200" y1="92" y2="550"></line>
+          <line x1="450" x2="450" y1="92" y2="550"></line>
+          <line x1="680" x2="680" y1="92" y2="550"></line>
+        </g>
+
+        <text x="200" y="84" text-anchor="middle" font-weight="600" fill="var(--ink)">Supplicant</text>
+        <text x="450" y="84" text-anchor="middle" font-weight="600" fill="var(--ink)">Switch / WLC</text>
+        <text x="680" y="84" text-anchor="middle" font-weight="600" fill="var(--ink)">ISE PSN</text>
+
+        <text x="24" y="120" font-size="11.5" font-weight="600" fill="var(--ink-3)">1. Identity, in clear</text>
+        <text x="24" y="240" font-size="11.5" font-weight="600" fill="var(--ink-3)">2. TLS handshake</text>
+        <text x="24" y="472" font-size="11.5" font-weight="600" fill="var(--ink-3)">3. Result</text>
+
+        <g fill="none" stroke="var(--line-strong)" stroke-width="1.25" marker-end="url(#ladarrow)">
+          <path d="M200 112H450"></path>
+          <path d="M450 140H200"></path>
+          <path d="M200 168H450"></path>
+          <path d="M450 196H680"></path>
+          <path d="M680 232H200"></path>
+          <path d="M200 260H680"></path>
+          <path d="M680 288H200"></path>
+          <path d="M680 316H200"></path>
+          <path d="M200 344H680" stroke-dasharray="4 4"></path>
+          <path d="M200 372H680"></path>
+          <path d="M200 400H680"></path>
+          <path d="M680 428H200"></path>
+          <path d="M680 460H450"></path>
+          <path d="M450 488H200"></path>
+        </g>
+
+        <g fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.25">
+          <rect x="445" y="227" width="10" height="10"></rect>
+          <rect x="445" y="255" width="10" height="10"></rect>
+          <rect x="445" y="283" width="10" height="10"></rect>
+          <rect x="445" y="311" width="10" height="10"></rect>
+          <rect x="445" y="339" width="10" height="10"></rect>
+          <rect x="445" y="367" width="10" height="10"></rect>
+          <rect x="445" y="395" width="10" height="10"></rect>
+          <rect x="445" y="423" width="10" height="10"></rect>
+        </g>
+
+        <text x="325" y="105" text-anchor="middle" font-size="11.5" fill="var(--ink)">EAPOL-Start</text>
+        <text x="325" y="133" text-anchor="middle" font-size="11.5" fill="var(--ink)">EAP-Request / Identity</text>
+        <text x="325" y="161" text-anchor="middle" font-size="11.5" fill="var(--ink)">EAP-Response / Identity</text>
+        <text x="565" y="189" text-anchor="middle" font-size="11.5" fill="var(--ink)">Access-Request &middot; EAP-Message</text>
+        <text x="440" y="225" text-anchor="middle" font-size="11.5" fill="var(--ink)">EAP-TLS Start &middot; flags 0x20</text>
+        <text x="440" y="253" text-anchor="middle" font-size="11.5" fill="var(--ink)">ClientHello</text>
+        <text x="440" y="281" text-anchor="middle" font-size="11.5" fill="var(--ink)">ServerHello &middot; Certificate &middot; ServerKeyExchange</text>
+        <text x="440" y="309" text-anchor="middle" font-size="11.5" fill="var(--ink)">CertificateRequest &middot; ServerHelloDone</text>
+        <text x="440" y="337" text-anchor="middle" font-size="11.5" fill="var(--ink-3)">EAP-TLS Ack (0x00) &middot; one round trip per fragment</text>
+        <text x="440" y="365" text-anchor="middle" font-size="11.5" fill="var(--ink)">Certificate &middot; ClientKeyExchange &middot; CertificateVerify</text>
+        <text x="440" y="393" text-anchor="middle" font-size="11.5" fill="var(--ink)">ChangeCipherSpec &middot; Finished</text>
+        <text x="440" y="421" text-anchor="middle" font-size="11.5" fill="var(--ink)">ChangeCipherSpec &middot; Finished</text>
+        <text x="565" y="453" text-anchor="middle" font-size="11.5" fill="var(--ink)">Access-Accept &middot; keys + authz</text>
+        <text x="325" y="481" text-anchor="middle" font-size="11.5" fill="var(--ink)">EAP-Success</text>
+
+        <g>
+          <rect x="370" y="510" width="160" height="28" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"></rect>
+          <text x="450" y="528" text-anchor="middle" font-size="11.5" font-weight="600" fill="var(--ink)">Port authorized</text>
+        </g>
+      </svg>
+    </div>
+    <p class="figcap">EAP-TLS message flow &middot; 3 parties, 14 messages. Squares on the middle lifeline mark a relayed message.</p>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Reading the ladder</h3>
+      <p>The small squares on the middle lifeline mark where the switch relays a message it cannot read: it moves the EAP packet between the EAPOL frame and the <code>EAP-Message</code> attribute and nothing else. Only the first phase and the last are the switch's own business.</p>
+      <p>Two details that are easy to miss. The dashed row is not one message &mdash; it stands for an acknowledgement after <em>every</em> fragment, so a handshake split into six fragments costs six extra round trips. And the <code>Access-Accept</code> carries three separate things at once: the <code>EAP-Success</code> the supplicant is waiting for, the session keys the switch will use, and the authorisation attributes that decide what the endpoint can reach.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section class="block" id="handshake">
+  <div class="sechead">
+    <h2><span class="num">04</span>Inside the tunnel: the TLS 1.2 handshake</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="handshake"> Reviewed</label>
+  </div>
+  <p class="lede">This is the part your colleagues will care about, because in TLS 1.2 almost all of it is visible in clear text on the wire. You can literally point at both certificates in Wireshark.</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>Message by message</caption>
+      <thead><tr><th class="num-col">#</th><th>Direction</th><th>TLS message</th><th>What it establishes</th></tr></thead>
+      <tbody>
+        <tr><td class="num-col">1</td><td>Client &rarr; ISE</td><td><code>ClientHello</code></td><td>Highest TLS version offered, 32-byte client random, cipher suite list, extensions: supported_groups, signature_algorithms, ec_point_formats, optionally a session ticket</td></tr>
+        <tr><td class="num-col">2</td><td>ISE &rarr; Client</td><td><code>ServerHello</code></td><td>Chosen version and one cipher suite, 32-byte server random, session ID</td></tr>
+        <tr><td class="num-col">3</td><td>ISE &rarr; Client</td><td><code>Certificate</code></td><td>ISE's EAP certificate plus intermediates. <strong>Visible in the clear</strong> &mdash; what the supplicant evaluates for trust</td></tr>
+        <tr><td class="num-col">4</td><td>ISE &rarr; Client</td><td><code>ServerKeyExchange</code></td><td>ECDHE/DHE parameters signed with the EAP cert's private key. Proves ISE holds the key, gives forward secrecy</td></tr>
+        <tr><td class="num-col">5</td><td>ISE &rarr; Client</td><td><code>CertificateRequest</code></td><td>The demand for a client cert, plus the list of CA distinguished names ISE accepts. <strong>The field that bloats and causes fragmentation pain</strong></td></tr>
+        <tr><td class="num-col">6</td><td>ISE &rarr; Client</td><td><code>ServerHelloDone</code></td><td>End of the server's first flight</td></tr>
+        <tr><td class="num-col">7</td><td>Client &rarr; ISE</td><td><code>Certificate</code></td><td>Client cert and chain, also in the clear. If the endpoint sends a leaf with no intermediate, this is where you see it</td></tr>
+        <tr><td class="num-col">8</td><td>Client &rarr; ISE</td><td><code>ClientKeyExchange</code></td><td>Client's ECDHE public value. Both sides can now compute the pre-master secret</td></tr>
+        <tr><td class="num-col">9</td><td>Client &rarr; ISE</td><td><code>CertificateVerify</code></td><td>A signature over every handshake message so far, made with the client's <strong>private key</strong>. The actual proof of possession</td></tr>
+        <tr><td class="num-col">10</td><td>Client &rarr; ISE</td><td><code>ChangeCipherSpec</code></td><td>Switch to the negotiated keys</td></tr>
+        <tr><td class="num-col">11</td><td>Client &rarr; ISE</td><td><code>Finished</code></td><td>Encrypted MAC over the handshake transcript. Detects tampering</td></tr>
+        <tr><td class="num-col">12</td><td>ISE &rarr; Client</td><td><code>ChangeCipherSpec</code>, <code>Finished</code></td><td>Server does the same. Handshake complete</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>What each half actually proves</h3>
+      <p>Worth separating explicitly, because people conflate them:</p>
+      <ul>
+        <li><strong>ISE proves its identity</strong> with messages 3 and 4. The certificate asserts a name; the signature in ServerKeyExchange proves ISE holds the private key for it.</li>
+        <li><strong>The client proves its identity</strong> with messages 7 and 9. Same split: the certificate asserts, CertificateVerify proves.</li>
+        <li><strong>Neither side has authorised anything yet.</strong> Authorisation happens after the handshake, when ISE maps the certificate to an identity and runs policy.</li>
+      </ul>
+      <div class="tip"><b>Demo moment</b>Ask the room: if an attacker copies a client certificate off a laptop, can they authenticate? No &mdash; without the private key they cannot produce a valid CertificateVerify. That is the whole argument for non-exportable keys in the TPM.</div>
+    </div>
+
+    <div class="term">
+      <h3>Cipher and version negotiation in ISE</h3>
+      <p>ISE constrains what it accepts under <em>Administration &rarr; System &rarr; Settings &rarr; Security Settings</em>:</p>
+      <ul>
+        <li><strong>Allowed TLS versions</strong> &mdash; disabling TLS 1.0/1.1 is a common hardening step that breaks older printers, phones and medical devices. Expect this when a specific device class stops authenticating after a hardening change.</li>
+        <li><strong>Allow SHA-1 ciphers</strong> and <strong>Allow ECDHE-RSA ciphers</strong> &mdash; both gate EAP authentication specifically; the ECDHE-RSA option covers the workflow where ISE acts as an EAP server.</li>
+        <li><strong>FIPS mode</strong> narrows the suite list further and forbids several key sizes.</li>
+      </ul>
+      <p>ISE supports both RSA and ECDSA server certificates, with secp256r1 and secp384r1 among the supported curves. A cipher-suite mismatch fails very early &mdash; <code>ClientHello</code>, then an immediate alert, with no certificates exchanged at all. That early-alert signature is how you tell a cipher problem from a trust problem.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section class="block" id="fragmentation">
+  <div class="sechead">
+    <h2><span class="num">05</span>Fragmentation and round trips</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="fragmentation"> Reviewed</label>
+  </div>
+  <p class="lede">A TLS handshake with two certificate chains is several kilobytes. EAP has no fragmentation of its own, so EAP-TLS (RFC 5216) adds its own scheme in the first byte of Type-Data.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The flags byte</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th class="num-col">Bit</th><th>Name</th><th>Meaning when set</th></tr></thead>
+          <tbody>
+            <tr><td class="num-col">7 (0x80)</td><td><strong>L</strong> &mdash; Length included</td><td>A 4-byte TLS Message Length follows, giving the total size of the reassembled TLS message</td></tr>
+            <tr><td class="num-col">6 (0x40)</td><td><strong>M</strong> &mdash; More fragments</td><td>More fragments follow this one</td></tr>
+            <tr><td class="num-col">5 (0x20)</td><td><strong>S</strong> &mdash; EAP-TLS Start</td><td>Set only on the first EAP-Request/EAP-TLS from ISE. Carries no TLS data</td></tr>
+            <tr><td class="num-col">4&ndash;0</td><td>Reserved</td><td>Must be zero; TLS 1.3 reuses bit 0 as the version flag</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>So the opening message from ISE is just <code>0x20</code> &mdash; a single flags byte, no payload. A first fragment of a large server flight looks like <code>0xC0</code> plus a length plus data. Middle fragments are <code>0x40</code>. The last is <code>0x00</code>.</p>
+    </div>
+
+    <div class="term">
+      <h3>The acknowledgement pattern</h3>
+      <p>This is the mechanic people miss. When one side receives a fragment with M set, it must reply with an <strong>EAP-TLS Acknowledgement</strong> &mdash; an EAP packet of type 13 with a flags byte of <code>0x00</code> and no data at all. Its only job is to say <em>send the next one</em>.</p>
+      <p>Each fragment therefore costs a full round trip: NAD to ISE, ISE back to NAD, NAD to supplicant, supplicant back. A server flight split into six fragments is six RADIUS round trips before the client has even started its own flight. This is why EAP-TLS authentication latency scales with certificate chain size, and why it is the method most sensitive to WAN latency between a branch switch and a central PSN.</p>
+    </div>
+
+    <div class="term">
+      <h3>What drives the fragment count</h3>
+      <ol>
+        <li><strong>ISE's EAP fragment size.</strong> On the Allowed Protocols object (<em>Policy &rarr; Policy Elements &rarr; Results &rarr; Authentication &rarr; Allowed Protocols</em>), default 1002 bytes. Raising it reduces round trips but risks IP fragmentation of the RADIUS datagram; lowering it is the workaround for a path that drops fragmented UDP.</li>
+        <li><strong>Framed-MTU from the NAD.</strong> ISE respects a smaller value if the NAD advertises one.</li>
+        <li><strong>Certificate chain length and key size.</strong> A 4096-bit RSA leaf with two intermediates on both sides is the worst case. ECDSA certificates are dramatically smaller and are the cleanest fix.</li>
+        <li><strong>The CertificateRequest CA list.</strong> ISE includes the DNs of every CA it trusts for client authentication. A trust store with dozens of enabled client-auth CAs makes this message enormous. Pruning <em>Trust for client authentication</em> to only the CAs that actually issue your endpoint certificates is the highest-value tuning knob here, and it is routinely overlooked.</li>
+      </ol>
+    </div>
+
+    <div class="term">
+      <h3>Timer interaction</h3>
+      <p>Fragmentation turns into timeouts when the timers do not allow for the round trips:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Where</th><th>Setting</th><th>Guidance</th></tr></thead>
+          <tbody>
+            <tr><td>Switch</td><td><code>dot1x timeout tx-period</code></td><td>Default 30 s. Governs Identity request retries, not the handshake</td></tr>
+            <tr><td>Switch</td><td><code>dot1x timeout supp-timeout</code></td><td>How long to wait for a supplicant EAP response. Raise for slow endpoints</td></tr>
+            <tr><td>Switch</td><td><code>dot1x max-reauth-req</code></td><td>How many Identity requests before falling through to MAB</td></tr>
+            <tr><td>Switch</td><td><code>radius-server timeout</code> / <code>retransmit</code></td><td>Defaults of 5 s / 3 tries are often too tight for a high-latency PSN path</td></tr>
+            <tr><td>Switch</td><td><code>radius-server deadtime</code>, <code>dead-criteria</code></td><td>Controls premature failover to a secondary PSN mid-handshake</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tip"><b>Design rule</b>TLS state is per-PSN. If RADIUS load balancing or a dead-server detection event moves a mid-handshake session to a different PSN, the handshake dies with no useful error. Use stickiness on the RADIUS State attribute or Calling-Station-Id, never round-robin per packet.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section class="block" id="keys">
+  <div class="sechead">
+    <h2><span class="num">06</span>Key derivation</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="keys"> Reviewed</label>
+  </div>
+  <p class="lede">Authentication is only half the output. The handshake also yields keying material, and that is what makes EAP-TLS usable for WPA2/WPA3-Enterprise and MACsec rather than just a gate.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The derivation chain <span class="exp">TLS 1.2</span></h3>
+      <ol>
+        <li>ECDHE exchange produces the <strong>pre-master secret</strong>.</li>
+        <li>Pre-master secret plus both randoms produce the <strong>master secret</strong> (48 bytes).</li>
+        <li>RFC 5216 runs the TLS PRF over the master secret with the ASCII label <code>client EAP encryption</code> and the two randoms, requesting 128 bytes: bytes 0&ndash;63 are the <strong>MSK</strong>, bytes 64&ndash;127 the <strong>EMSK</strong>.</li>
+      </ol>
+      <p>The MSK is the deliverable. Both the supplicant and ISE compute it independently from the handshake they just completed &mdash; it is never transmitted between them.</p>
+    </div>
+
+    <div class="term">
+      <h3>How the MSK reaches the NAD</h3>
+      <p>ISE must hand the MSK to the authenticator, because the authenticator is the device that will actually encrypt traffic. It travels in the <code>Access-Accept</code> as two Microsoft vendor-specific attributes (vendor 311):</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Attribute</th><th>Contents</th></tr></thead>
+          <tbody>
+            <tr><td><code>MS-MPPE-Recv-Key</code></td><td>First 32 bytes of the MSK</td></tr>
+            <tr><td><code>MS-MPPE-Send-Key</code></td><td>Second 32 bytes of the MSK</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Both are encrypted using the RADIUS shared secret and the Request-Authenticator. Two consequences:</p>
+      <ul>
+        <li><strong>The RADIUS shared secret still matters cryptographically</strong>, even with a TLS-based EAP method. A weak shared secret exposes session keys. It is also the strongest argument for RadSec / RADIUS-DTLS.</li>
+        <li>The NAD can read these keys, so the NAD <em>is</em> in your trust boundary for data-plane confidentiality, even though it was blind during the handshake.</li>
+      </ul>
+    </div>
+
+    <div class="term">
+      <h3>Wireless: MSK &rarr; PMK &rarr; PTK</h3>
+      <ol>
+        <li>The first 32 bytes of the MSK become the <strong>PMK</strong>.</li>
+        <li>The WLC installs the PMK and runs the 802.11 <strong>4-way handshake</strong> (EAPOL-Key frames) with the client.</li>
+        <li>The 4-way handshake mixes the PMK with both MAC addresses and two nonces to produce the <strong>PTK</strong>, split into KCK, KEK and TK.</li>
+        <li>The GTK for broadcast and multicast is delivered encrypted inside message 3.</li>
+      </ol>
+      <p>In a wireless capture you will see four EAPOL-Key frames immediately after EAP-Success. If authentication succeeds but the client never passes traffic, the 4-way handshake is where to look &mdash; commonly a PMK mismatch after a WLC failover, or a PMKID caching problem.</p>
+    </div>
+
+    <div class="term">
+      <h3>Wired: MACsec and MKA</h3>
+      <p>For MACsec the MSK becomes the <strong>CAK</strong> (Connectivity Association Key), which seeds MKA (802.1X-2010). MKA elects a key server and distributes SAKs for the actual frame encryption. Requires EAPOL protocol version 3 and switch support for <code>macsec</code> on the interface. Downlink MACsec with EAP-TLS is the strongest wired posture available, and a natural extension to demo after the basic flow lands.</p>
+    </div>
+
+    <div class="term">
+      <h3>Session resumption</h3>
+      <p>ISE supports TLS session resumption for EAP-TLS, configured on the Allowed Protocols object with a timeout (often two hours by default). On resumption the client presents a session ticket or session ID, both sides skip the certificate exchange entirely, and the handshake collapses to a few messages.</p>
+      <p>A genuinely dramatic demo: capture a full authentication, then bounce the port and capture the resumed one. Round-trip count drops sharply and no certificates appear on the wire. It is also an operational caution &mdash; a resumed session does not re-validate the certificate, so a revoked certificate can keep working until the resumption cache expires.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 7 ============ -->
+<section class="block" id="validation">
+  <div class="sechead">
+    <h2><span class="num">07</span>What ISE does with the certificate</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="validation"> Reviewed</label>
+  </div>
+  <p class="lede">A valid handshake is not an authentication. Once the TLS tunnel completes, ISE has a certificate and must turn it into an identity. This is where most real escalations live.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Step 1 &mdash; Chain validation</h3>
+      <p>ISE builds a path from the presented leaf to a root in its <strong>Trusted Certificates</strong> store (<em>Administration &rarr; System &rarr; Certificates &rarr; Trusted Certificates</em>). Each entry has explicit <strong>trust purposes</strong>, and the relevant one is <em>Trust for client authentication and Syslog</em>. A CA present in the store but without that purpose enabled will fail client authentication while quietly working for other functions &mdash; a classic misconfiguration.</p>
+      <p>ISE also checks:</p>
+      <ul>
+        <li>Signature validity up the chain, and <code>basicConstraints</code> CA:TRUE on every issuer</li>
+        <li><code>notBefore</code> / <code>notAfter</code> on every certificate in the path (clock skew on either side breaks this)</li>
+        <li>Extended Key Usage: <code>clientAuth</code> (1.3.6.1.5.5.7.3.2) on the endpoint certificate, <code>serverAuth</code> (1.3.6.1.5.5.7.3.1) on the ISE EAP certificate</li>
+        <li>Key Usage &mdash; <code>digitalSignature</code> at minimum on the client leaf</li>
+      </ul>
+      <p>If the supplicant sends only its leaf and the intermediate is absent from both the chain and the ISE trust store, path building fails. ISE does not fetch intermediates from AIA by default. This is the single most common cause of an unknown-CA failure.</p>
+    </div>
+
+    <div class="term">
+      <h3>Step 2 &mdash; Revocation checking</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Mechanism</th><th>How it behaves</th><th>Watch for</th></tr></thead>
+          <tbody>
+            <tr><td>CRL</td><td>Scheduled download from an HTTP or LDAP distribution point, cached locally</td><td>Stale CRL if the download fails; the <em>ignore expired CRL</em> option masks real problems</td></tr>
+            <tr><td>OCSP</td><td>Per-authentication query to an OCSP Services responder, with a local cache</td><td>Responder reachability from <em>every</em> PSN; the <em>reject if OCSP returns UNKNOWN</em> setting decides fail-open vs fail-closed</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>An OCSP responder unreachable from one PSN but fine from the others produces intermittent failures that follow the load-balancer hash &mdash; maddening to diagnose unless you check per-node.</p>
+    </div>
+
+    <div class="term">
+      <h3>Step 3 &mdash; Deriving the identity</h3>
+      <p>The <strong>Certificate Authentication Profile</strong> (<em>Administration &rarr; Identity Management &rarr; External Identity Sources</em>) decides which X.509 field becomes the principal username:</p>
+      <ul>
+        <li>Subject &mdash; Common Name</li>
+        <li>Subject Alternative Name (and which type: DNS, Email, Other Name / UPN)</li>
+        <li>Subject Serial Number</li>
+        <li>Subject, or SAN, as a whole</li>
+      </ul>
+      <p>Machine certificates from Microsoft CA templates typically carry the FQDN in SAN-DNS; user certificates carry the UPN in SAN-Other Name. Choosing the wrong field produces a certificate that validates perfectly and then fails identity lookup &mdash; a completely different failure signature from a TLS problem, and important that your team can tell them apart.</p>
+    </div>
+
+    <div class="term">
+      <h3>Step 4 &mdash; Optional identity store lookup</h3>
+      <ul>
+        <li><strong>Lookup only</strong> &mdash; confirm the object exists and retrieve group membership for authorisation conditions. The common case: you want <code>Domain Computers</code> or a specific group in your rule.</li>
+        <li><strong>Binary comparison</strong> &mdash; ISE retrieves the certificate stored on the AD object and compares it byte-for-byte with the one presented. Much stronger, because a certificate issued by your CA to a decommissioned or non-domain object will fail. Requires the certificate to actually be published to AD, which many environments do not do.</li>
+      </ul>
+      <p>Skip the lookup entirely and your authorisation policy can only match on certificate attributes, not AD groups. That constraint surprises people designing their first EAP-TLS policy.</p>
+    </div>
+
+    <div class="term">
+      <h3>Step 5 &mdash; Authentication result</h3>
+      <p>ISE sends EAP-Success and moves to the authorisation policy. Note the ordering: identity resolution and group retrieval happen in authentication; the decision about VLAN, dACL and SGT happens afterwards, in authorisation, and can fail independently. A session showing a successful authentication but landing in a default-deny authorisation profile is a policy problem, not a certificate problem.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 8 ============ -->
+<section class="block" id="authz">
+  <div class="sechead">
+    <h2><span class="num">08</span>Authorisation and CoA</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="authz"> Reviewed</label>
+  </div>
+  <p class="lede">Authentication answers <em>who</em>. Authorisation answers <em>what they get</em>, carried entirely in RADIUS attributes on the Access-Accept.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Policy evaluation order</h3>
+      <ol>
+        <li><strong>Policy set selection</strong> &mdash; first matching condition wins, usually on device type, location or NAS-Port-Type.</li>
+        <li><strong>Authentication policy</strong> &mdash; matches on protocol and attributes, selects an Allowed Protocols object and an identity source.</li>
+        <li><strong>Authorisation policy</strong> &mdash; evaluated top-down after a successful authentication. Conditions can use certificate attributes, AD groups retrieved in step 2, endpoint profile, posture status and time.</li>
+        <li><strong>Authorisation profile</strong> &mdash; the result, which becomes the attribute set below.</li>
+      </ol>
+    </div>
+
+    <div class="term">
+      <h3>Attributes worth recognising in a capture</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Attribute</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>Tunnel-Type</code> (64), <code>Tunnel-Medium-Type</code> (65), <code>Tunnel-Private-Group-ID</code> (81)</td><td>Dynamic VLAN assignment. All three must be present &mdash; a missing one is a quiet failure</td></tr>
+            <tr><td><code>Cisco-AVPair = ip:inacl#</code> or <code>ACS:CiscoSecure-Defined-ACL</code></td><td>Downloadable ACL. The named form makes the switch fetch the ACL in a separate RADIUS exchange, visible as an extra Access-Request</td></tr>
+            <tr><td><code>Filter-Id</code> (11)</td><td>References an ACL already on the switch. Simpler, but requires pre-provisioning</td></tr>
+            <tr><td><code>Cisco-AVPair = cts:security-group-tag</code></td><td>TrustSec SGT assignment</td></tr>
+            <tr><td><code>url-redirect</code> and <code>url-redirect-acl</code></td><td>Posture or guest redirection</td></tr>
+            <tr><td><code>Session-Timeout</code> (27) + <code>Termination-Action</code> (29)</td><td>Termination-Action = RADIUS-Request triggers re-authentication at timeout rather than tearing the session down. Getting this wrong causes periodic connectivity drops</td></tr>
+            <tr><td><code>Cisco-AVPair = interface-template</code></td><td>IBNS 2.0 template assignment</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>A useful demo moment: show the same endpoint receiving two different authorisation profiles by changing one condition, with the capture showing exactly which attributes changed. It makes the authentication/authorisation split concrete.</p>
+    </div>
+
+    <div class="term">
+      <h3>Change of Authorisation <span class="exp">RFC 5176</span></h3>
+      <p>The session does not end at Access-Accept. ISE can reach back into an established session using CoA, which is how posture, profiling and quarantine work.</p>
+      <ul>
+        <li>ISE is the CoA client, the NAD is the CoA server, on <strong>UDP 1700</strong> for Cisco devices (3799 is the RFC default and is also seen).</li>
+        <li><code>CoA-Request</code> (43) identifies the session by <code>Audit-Session-Id</code> or <code>Calling-Station-Id</code>; the NAD replies <code>CoA-ACK</code> (44) or <code>CoA-NAK</code> (45).</li>
+        <li>Types: <strong>Reauthenticate</strong> (last or rerun), <strong>Port Bounce</strong>, <strong>Session Terminate</strong>, <strong>Port Shutdown</strong>.</li>
+      </ul>
+      <p>For EAP-TLS this matters in a specific way: <em>reauthenticate with rerun</em> re-evaluates policy without a new EAP handshake, while <em>reauthenticate last</em> forces the supplicant through the full handshake again. For a profiling-driven VLAN change you want the former &mdash; it is much faster, because there is no certificate exchange.</p>
+      <p>CoA failures are their own troubleshooting class. The NAD must have <code>aaa server radius dynamic-author</code> configured with a client statement for every PSN and the matching shared secret; a missing PSN there means profiling silently never takes effect.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 9 ============ -->
+<section class="block" id="tls13">
+  <div class="sechead">
+    <h2><span class="num">09</span>EAP-TLS with TLS 1.3</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="tls13"> Reviewed</label>
+  </div>
+  <p class="lede">Worth covering, because the capture looks completely different and the first time someone sees it they assume something is broken.</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>RFC 9190 vs TLS 1.2</caption>
+      <thead><tr><th>Aspect</th><th>TLS 1.2</th><th>TLS 1.3 (RFC 9190)</th></tr></thead>
+      <tbody>
+        <tr><td>Certificates in a capture</td><td>Both visible in clear text</td><td>Both encrypted &mdash; you see ClientHello, ServerHello, then opaque application data</td></tr>
+        <tr><td>Identity privacy</td><td>Client cert exposes the endpoint identity to any passive listener</td><td>Client certificate is protected</td></tr>
+        <tr><td>Round trips</td><td>Server flight, client flight, server finish</td><td>Compressed; fewer round trips</td></tr>
+        <tr><td><code>ChangeCipherSpec</code></td><td>Present</td><td>Gone (a compatibility dummy record may appear)</td></tr>
+        <tr><td>Success signalling</td><td>EAP-Success after server Finished</td><td>A <strong>protected success indication</strong> &mdash; a single 0x00 application-data octet &mdash; before EAP-Success</td></tr>
+        <tr><td>Key derivation</td><td>PRF with label <code>client EAP encryption</code></td><td>TLS Exporter with label <code>EXPORTER_EAP_TLS_Key_Material</code></td></tr>
+        <tr><td>Resumption</td><td>Session ID / ticket</td><td>PSK-based, with NewSessionTicket</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Why it matters, and what it costs you</h3>
+      <p>The privacy improvement is the headline. Under TLS 1.2, anyone with a span port on the access layer can inventory your endpoints by reading client certificates off the wire. Under TLS 1.3 they cannot. For a healthcare or regulated environment that is a meaningful control, not a nicety.</p>
+      <p>The operational cost is that your own troubleshooting gets harder. The workflow of <em>look at the capture and read the certificate</em> stops working, and you become dependent on ISE's own logging and on supplicant-side logs.</p>
+    </div>
+
+    <div class="term">
+      <h3>ISE support status</h3>
+      <p>Track this carefully, because it has moved recently and differs by version:</p>
+      <ul>
+        <li>From <strong>ISE 3.3</strong>, TLS 1.3 was introduced for the <em>Admin GUI only</em>, with that release's documentation explicitly noting that AAA communications and all internode communications do not support TLS 1.3.</li>
+        <li><strong>ISE 3.4</strong> is reported to extend TLS 1.3 to EAP-TLS and TEAP, and engineers testing with <code>eapol_test</code> against 3.4 patch 1 have found it negotiates.</li>
+        <li>Separately, TLS 1.2 remains the latest supported version when EAP-TLS is used as the <em>inner</em> method for EAP-FAST, TEAP and PEAP &mdash; inner-method EAP-TLS and standalone EAP-TLS are not the same case.</li>
+      </ul>
+      <div class="tip"><b>Before you state this as fact</b>Verify against the Compatibility Guide for your exact release and patch. Supplicant support is the other half of the equation and lags further &mdash; Windows, macOS, iOS and Cisco Secure Client each need checking, and in practice that is what gates deployment rather than ISE.</div>
+      <p>For a demo, <code>eapol_test</code> is the right instrument, because you can force the version explicitly rather than hoping a native supplicant negotiates it.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 10 ============ -->
+<section class="block" id="failures">
+  <div class="sechead">
+    <h2><span class="num">10</span>Failure signatures</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="failures"> Reviewed</label>
+  </div>
+  <p class="lede">The value of understanding the flow is that each failure mode fails at a <em>specific message</em>, which narrows the cause immediately. This is the table to hand around.</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>ISE message to root cause</caption>
+      <thead><tr><th class="num-col">Code</th><th>Message</th><th>Fails at</th><th>Most likely cause</th></tr></thead>
+      <tbody>
+        <tr><td class="num-col">5440</td><td>Endpoint abandoned EAP session, restarted</td><td>Mid-handshake, no alert</td><td>Supplicant walked away. Usually it does not trust the ISE EAP certificate, or fragments are being dropped. The most common EAP-TLS failure of all</td></tr>
+        <tr><td class="num-col">5411</td><td>Supplicant stopped responding</td><td>After an ISE challenge</td><td>Same family as 5440. Correlate with fragment count; stopping at the same fragment every time means MTU</td></tr>
+        <tr><td class="num-col">12514</td><td>EAP-TLS failed, unknown CA in chain</td><td>Client <code>Certificate</code></td><td>Issuing CA or an intermediate missing from the ISE trust store, or the client sent an incomplete chain</td></tr>
+        <tr><td class="num-col">12516</td><td>EAP-TLS failed SSL/TLS handshake</td><td>Varies</td><td>Generic. Read the surrounding steps &mdash; the real reason is in the step detail, often cipher or version</td></tr>
+        <tr><td class="num-col">12520</td><td>Client rejected the ISE local certificate</td><td>After ISE <code>Certificate</code></td><td>Supplicant does not trust ISE's EAP cert, or the server-identity check failed because the SAN does not match</td></tr>
+        <tr><td class="num-col">12566 / 12567</td><td>SSL alert received / sent</td><td>Varies</td><td>Read the alert code: unknown_ca, certificate_expired, handshake_failure each point somewhere different</td></tr>
+        <tr><td class="num-col">12571 / 12572</td><td>OCSP / CRL problems</td><td>Revocation check</td><td>Responder unreachable from this PSN, stale CRL, or the certificate genuinely revoked</td></tr>
+        <tr><td class="num-col">22056</td><td>Subject not found in identity store</td><td>After a clean handshake</td><td>The CAP extracted a principal username that does not exist &mdash; wrong X.509 field, or the object is gone</td></tr>
+        <tr><td class="num-col">22049</td><td>Binary comparison of certificates failed</td><td>After identity lookup</td><td>The certificate on the AD object differs from the one presented, or none is published</td></tr>
+        <tr><td class="num-col">5400</td><td>Authentication failed</td><td>Varies</td><td>Umbrella code. Always open the detailed report</td></tr>
+        <tr><td class="num-col">11001 / 11007</td><td>Received RADIUS from unknown NAD</td><td>Before any EAP</td><td>NAD not defined in ISE, or source IP differs from the configured one. Fix with <code>ip radius source-interface</code></td></tr>
+        <tr><td class="num-col">&mdash;</td><td>No log at all</td><td>&mdash;</td><td>Shared-secret mismatch (Message-Authenticator fails, request silently dropped), wrong UDP port, or the packet never arrived</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The diagnostic shortcut</h3>
+      <p>Teach your team this one distinction and they will solve most cases themselves:</p>
+      <ul>
+        <li><strong>Failure before any certificate appears</strong> &rarr; cipher suite or TLS version mismatch.</li>
+        <li><strong>Failure right after the ISE certificate</strong> &rarr; the supplicant does not trust ISE. Supplicant-side trust problem (12520, or 5440).</li>
+        <li><strong>Failure right after the client certificate</strong> &rarr; ISE does not trust or cannot validate the client. Trust store, chain or revocation problem (12514).</li>
+        <li><strong>Clean handshake, then failure</strong> &rarr; identity resolution, not cryptography (22056, 22049).</li>
+        <li><strong>Clean authentication, wrong access</strong> &rarr; authorisation policy, not EAP at all.</li>
+      </ul>
+    </div>
+
+    <div class="term">
+      <h3>Non-ISE symptoms worth knowing</h3>
+      <ul>
+        <li><strong>Port shows Unauthorized with no RADIUS traffic</strong> &mdash; <code>dot1x pae authenticator</code> missing, or the global <code>aaa</code> configuration is absent.</li>
+        <li><strong>Session falls through to MAB</strong> &mdash; the supplicant never answered the Identity request. Either no supplicant, or max-reauth-req exhausted.</li>
+        <li><strong>Windows reports a disconnected network connection</strong> with a certificate-validation reason code &mdash; check <em>Validate server certificate</em>, the trusted root selection, and the <em>Connect to these servers</em> field in the profile.</li>
+        <li><strong>Works for user, fails for machine</strong> (or vice versa) &mdash; the supplicant's authentication mode and which certificate store it reads. A machine certificate lives in the computer store and requires the supplicant to run as SYSTEM.</li>
+        <li><strong>Intermittent, correlates with time of day</strong> &mdash; almost always certificate expiry around a renewal window, or an OCSP responder under load.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section class="block" id="tools">
+  <div class="sechead">
+    <h2><span class="num">11</span>Troubleshooting toolkit</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="tools"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>On ISE</h3>
+      <p><strong>Live Logs &rarr; the detailed authentication report</strong> is the primary tool, and the <em>Steps</em> column is the part people underuse. It lists every EAP message in order with its ISE step code, so you can see exactly which message the conversation died on. Reading the step list top to bottom against the handshake table above is the whole technique.</p>
+      <ul>
+        <li><em>Operations &rarr; Troubleshoot &rarr; Diagnostic Tools &rarr; TCP Dump</em> &mdash; a capture on the PSN itself, filtered by endpoint MAC or NAD IP. The cleanest way to get the RADIUS leg.</li>
+        <li><em>Evaluate Configuration Validator</em> &mdash; NAD config sanity check.</li>
+        <li><em>Debug Wizard &rarr; Debug Log Configuration</em> &mdash; raise <code>runtime-AAA</code> and <code>nsf-session</code> on the relevant PSN, then collect <code>prrt-server.log</code> for deep EAP state machine detail.</li>
+        <li>The Certificate Authentication Profile and trust store pages, to confirm trust purposes and the selected X.509 field.</li>
+      </ul>
+    </div>
+
+    <div class="term">
+      <h3>On the switch</h3>
+<pre><code>show authentication sessions interface Gi1/0/5 details
+show access-session interface Gi1/0/5 details        <span class="cmt">! IBNS 2.0</span>
+show dot1x interface Gi1/0/5 details
+show aaa servers
+test aaa group radius server &lt;ip&gt; &lt;user&gt; &lt;pass&gt; new-code
+
+debug dot1x all
+debug radius authentication
+debug epm all                                        <span class="cmt">! dACL / redirect</span>
+
+monitor capture CAP interface Gi1/0/5 both
+monitor capture CAP match any
+monitor capture CAP start
+show monitor capture CAP buffer brief</code></pre>
+      <p><code>show access-session ... details</code> gives you the method, the authorisation profile applied, the <code>Audit-Session-Id</code> for CoA correlation, and any dACL in force. Capture the Audit-Session-Id first &mdash; it is the key that ties switch state to ISE logs.</p>
+    </div>
+
+    <div class="term">
+      <h3>On the supplicant</h3>
+      <ul>
+        <li><strong>Windows</strong> &mdash; <code>netsh ras set tracing * enabled</code>, then read <code>%SystemRoot%\Tracing</code>. Event Viewer under <em>Applications and Services Logs &rarr; Microsoft &rarr; Windows &rarr; Wired-AutoConfig</em> (or WLAN-AutoConfig) gives reason codes. <code>certutil -store -user My</code> and <code>certutil -store My</code> confirm which store holds the certificate.</li>
+        <li><strong>Cisco Secure Client NAM</strong> &mdash; DART bundle; the NAM log shows the EAP state machine directly.</li>
+        <li><strong>wpa_supplicant / eapol_test</strong> &mdash; the reference supplicant and the best demo instrument. Prints every EAP and TLS message, lets you force a TLS version or cipher, exits with a clear pass/fail. If eapol_test succeeds with the same certificate a Windows machine fails with, the problem is unambiguously the Windows profile.</li>
+      </ul>
+    </div>
+
+    <div class="term">
+      <h3>Capture strategy</h3>
+      <p>Take captures at two points simultaneously and line them up by EAP Identifier:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Point</th><th>Captures</th><th>Shows</th></tr></thead>
+          <tbody>
+            <tr><td>Endpoint NIC or switch port SPAN</td><td>EAPOL</td><td>Supplicant behaviour, EAPOL-Start, abandonment, 4-way handshake</td></tr>
+            <tr><td>PSN interface (ISE TCP Dump)</td><td>RADIUS</td><td>What ISE received and sent, fragment sizes, the State attribute, timing</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The EAP Identifier byte is the same in both captures for the same logical message, which lets you prove whether a message was lost between the NAD and ISE or between the NAD and the endpoint. That correlation trick is worth demonstrating on its own.</p>
+      <div class="tip"><b>Decryption in the lab</b>To decrypt a TLS 1.2 EAP-TLS capture, force an RSA key-exchange cipher suite and load the ISE EAP certificate's private key into Wireshark. With ECDHE you cannot decrypt from the private key alone &mdash; which is the point of forward secrecy, and another good teaching moment.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 12 ============ -->
+<section class="block" id="demo">
+  <div class="sechead">
+    <h2><span class="num">12</span>Demo runbook</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="demo"> Reviewed</label>
+  </div>
+  <p class="lede">A sequence that takes about forty minutes and ends with two deliberate break-fixes.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Minimum lab</h3>
+      <ul>
+        <li>One access switch with <code>dot1x</code> on a single port, pointed at one PSN.</li>
+        <li>One Windows endpoint with a machine certificate from your lab CA, and a second endpoint running <code>eapol_test</code> as the controllable reference supplicant.</li>
+        <li>Wireshark on a SPAN of the access port, plus ISE TCP Dump armed on the PSN.</li>
+        <li>Both captures started <em>before</em> you bounce the port.</li>
+      </ul>
+    </div>
+
+    <div class="term">
+      <h3>Sequence to walk through</h3>
+      <ol>
+        <li><strong>Show the closed port first.</strong> <code>show access-session interface ...</code> with the port unauthorized. Point out that only EAPOL, CDP/LLDP and STP get through. This establishes the stakes.</li>
+        <li><strong>Bounce the port, then stop both captures.</strong> Everything that follows is reading the two captures.</li>
+        <li><strong>In the EAPOL capture</strong>, point at destination MAC <code>01:80:C2:00:00:03</code> and EtherType <code>0x888E</code>. Then the Identity exchange, and note that the identity is in clear text.</li>
+        <li><strong>Switch to the RADIUS capture</strong> and find the matching Access-Request. Show EAP-Message holding the identical EAP bytes. This is the moment the pass-through concept lands &mdash; same bytes, different envelope.</li>
+        <li><strong>Show the EAP-TLS Start</strong>, flags <code>0x20</code>, no payload.</li>
+        <li><strong>Expand the ISE certificate.</strong> Everyone can read it. Then expand CertificateRequest and show the CA DN list &mdash; and how long it is in your environment.</li>
+        <li><strong>Expand the client certificate.</strong> Point out the SAN field, and tie it to the Certificate Authentication Profile setting in ISE.</li>
+        <li><strong>Point at CertificateVerify</strong> and explain that this, not the certificate, is the proof. Pose the stolen-certificate question.</li>
+        <li><strong>Count the fragments and the acknowledgements.</strong> Show the <code>0x00</code> acks doing nothing but asking for more. Then count the round trips and multiply by your branch RTT.</li>
+        <li><strong>Show EAP-Success and the Access-Accept.</strong> Walk the authorisation attributes, and show MS-MPPE-Recv-Key / Send-Key present but encrypted.</li>
+        <li><strong>Open the ISE detailed report</strong> for the same session and read the Steps column alongside the capture. Same story, two views.</li>
+        <li><strong><code>show access-session ... details</code></strong> to show the end state: method EAP-TLS, authorisation profile, dACL, SGT, Audit-Session-Id.</li>
+      </ol>
+    </div>
+
+    <div class="term">
+      <h3>Two deliberate break-fixes</h3>
+      <p>These land harder than the happy path, because they prove the diagnostic method rather than just describing it.</p>
+      <p><strong>Break 1 &mdash; remove the issuing CA's client-authentication trust purpose in ISE.</strong> Do not delete the CA, just untick <em>Trust for client authentication and Syslog</em>. Re-run. You get 12514, and in the capture the client certificate is sent and then the handshake dies. Walk the shortcut list: failure after the <em>client</em> certificate means ISE-side trust. Fix it live.</p>
+      <p><strong>Break 2 &mdash; untrust the ISE EAP certificate's root on the supplicant.</strong> On the Windows endpoint, deselect the root CA in the network profile. Re-run. Now you get 5440 or 12520, and the handshake dies right after the <em>ISE</em> certificate &mdash; the mirror image. Same shortcut list, opposite side.</p>
+      <p>Run them in that order and the symmetry does the teaching for you.</p>
+    </div>
+
+    <div class="term">
+      <h3>Optional extensions, if time allows</h3>
+      <ul>
+        <li><strong>Session resumption</strong> &mdash; bounce the port twice in quick succession and compare captures. The second has no certificates and far fewer round trips.</li>
+        <li><strong>eapol_test with a forced TLS version</strong> &mdash; show a version-mismatch failure, then TLS 1.3 if your ISE release supports it for EAP. The opaque capture makes the privacy point instantly.</li>
+        <li><strong>CoA</strong> &mdash; trigger a reauthentication from ISE Live Logs and show the CoA-Request on UDP 1700 and the resulting policy change without a new handshake.</li>
+        <li><strong>A fragmentation experiment</strong> &mdash; lower the EAP fragment size on the Allowed Protocols object and watch the fragment count rise.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</main>
+</div>
+
+<footer>
+  <p>Standards referenced: RFC 5216 (EAP-TLS), RFC 9190 (EAP-TLS 1.3), RFC 3748 (EAP), RFC 3579 (RADIUS support for EAP), RFC 5176 (Change of Authorization), IEEE 802.1X and 802.1AE.</p>
+  <p>Cipher support, TLS version support and defaults move between ISE releases &mdash; confirm anything you intend to state as fact against the <a href="https://www.cisco.com/c/en/us/support/security/identity-services-engine/products-device-support-tables-list.html">ISE compatibility guides</a> and the <a href="https://www.cisco.com/c/en/us/support/docs/security/identity-services-engine-33/221570-configure-ciphers-in-ise-3-3-and-later.html">cipher configuration guide</a> for the exact version you are discussing.</p>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var q = document.getElementById('q');
+  var clearBtn = document.getElementById('clearq');
+  var countEl = document.getElementById('count');
+  var noResult = document.getElementById('noresult');
+  var sections = Array.prototype.slice.call(document.querySelectorAll('section.block'));
+  var navLinks = Array.prototype.slice.call(document.querySelectorAll('nav.index a'));
+
+  var items = [];
+  sections.forEach(function(sec){
+    Array.prototype.slice.call(sec.querySelectorAll('.term')).forEach(function(el){
+      items.push({el: el, sec: sec, text: (el.textContent || '').toLowerCase()});
+    });
+  });
+
+  // standalone tables (those not inside a .term card) filter row by row
+  var tables = [];
+  sections.forEach(function(sec){
+    Array.prototype.slice.call(sec.querySelectorAll('.tablewrap')).forEach(function(w){
+      if(w.closest('.term')){ return; }
+      var rows = Array.prototype.slice.call(w.querySelectorAll('tbody tr')).map(function(tr){
+        return {tr: tr, text: (tr.textContent || '').toLowerCase()};
+      });
+      tables.push({wrap: w, sec: sec, rows: rows});
+    });
+  });
+
+  var totalItems = items.length + tables.reduce(function(n, t){ return n + t.rows.length; }, 0);
+
+  function applyFilter(raw){
+    var term = (raw || '').trim().toLowerCase();
+    var filtering = term.length > 0;
+    document.body.classList.toggle('filtering', filtering);
+    clearBtn.hidden = !filtering;
+
+    if(!filtering){
+      items.forEach(function(it){ it.el.style.display = ''; });
+      tables.forEach(function(t){
+        t.wrap.style.display = '';
+        t.rows.forEach(function(r){ r.tr.style.display = ''; });
+      });
+      sections.forEach(function(s){ s.style.display = ''; });
+      noResult.style.display = 'none';
+      countEl.textContent = totalItems + ' entries';
+      return;
+    }
+
+    var shown = 0;
+    var live = {};
+
+    items.forEach(function(it){
+      var hit = it.text.indexOf(term) !== -1;
+      it.el.style.display = hit ? '' : 'none';
+      if(hit){ shown++; live[it.sec.id] = true; }
+    });
+
+    tables.forEach(function(t){
+      var any = false;
+      t.rows.forEach(function(r){
+        var hit = r.text.indexOf(term) !== -1;
+        r.tr.style.display = hit ? '' : 'none';
+        if(hit){ any = true; shown++; }
+      });
+      t.wrap.style.display = any ? '' : 'none';
+      if(any){ live[t.sec.id] = true; }
+    });
+
+    sections.forEach(function(s){ s.style.display = live[s.id] ? '' : 'none'; });
+    noResult.style.display = shown ? 'none' : 'block';
+    countEl.textContent = shown + ' of ' + totalItems + ' entries';
+  }
+
+  q.addEventListener('input', function(){ applyFilter(q.value); });
+  clearBtn.addEventListener('click', function(){ q.value = ''; applyFilter(''); q.focus(); });
+  q.addEventListener('keydown', function(e){
+    if(e.key === 'Escape'){ q.value = ''; applyFilter(''); }
+  });
+  document.addEventListener('keydown', function(e){
+    if(e.key === '/' && document.activeElement !== q){
+      e.preventDefault(); q.focus(); q.select();
+    }
+  });
+
+  // ---- reviewed checkboxes + progress ----
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('.reviewed input'));
+  var fill = document.getElementById('progfill');
+  var ptxt = document.getElementById('progtxt');
+  var KEY = 'eaptls-ref-reviewed-v1';
+
+  function load(){
+    try{
+      var raw = window.localStorage.getItem(KEY);
+      return raw ? JSON.parse(raw) : {};
+    }catch(err){ return {}; }
+  }
+  function save(state){
+    try{ window.localStorage.setItem(KEY, JSON.stringify(state)); }catch(err){ /* storage unavailable */ }
+  }
+  function paint(){
+    var done = boxes.filter(function(b){ return b.checked; }).length;
+    ptxt.textContent = done + '/' + boxes.length;
+    fill.style.width = (boxes.length ? (done / boxes.length * 100) : 0) + '%';
+  }
+  var state = load();
+  boxes.forEach(function(b){
+    if(state[b.dataset.sec]){ b.checked = true; }
+    b.addEventListener('change', function(){
+      var s = load();
+      if(b.checked){ s[b.dataset.sec] = 1; } else { delete s[b.dataset.sec]; }
+      save(s);
+      paint();
+    });
+  });
+  paint();
+
+  // ---- theme toggle ----
+  var tbtn = document.getElementById('themebtn');
+  var TKEY = 'eaptls-ref-theme-v1';
+  try{
+    var saved = window.localStorage.getItem(TKEY);
+    if(saved === 'dark' || saved === 'light'){ document.documentElement.setAttribute('data-theme', saved); }
+  }catch(err){ /* ignore */ }
+  tbtn.addEventListener('click', function(){
+    var cur = document.documentElement.getAttribute('data-theme');
+    var isDark;
+    if(cur){ isDark = cur === 'dark'; }
+    else { isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches; }
+    var next = isDark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try{ window.localStorage.setItem(TKEY, next); }catch(err){ /* ignore */ }
+  });
+
+  // ---- active section in nav ----
+  if('IntersectionObserver' in window){
+    var obs = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(!en.isIntersecting){ return; }
+        navLinks.forEach(function(a){
+          a.classList.toggle('on', a.getAttribute('href') === '#' + en.target.id);
+        });
+      });
+    }, {rootMargin: '-72px 0px -70% 0px', threshold: 0});
+    sections.forEach(function(s){ obs.observe(s); });
+  }
+
+  applyFilter('');
+})();
+</script>
+</body>
+</html>
