@@ -1,0 +1,1441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASA NAT Deep Dive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: fixed left index, scrolling reference column, live filter across terms and table rows. */
+:root{
+  --bg:#f5f7f9; --surface:#ffffff; --surface-2:#eceff4; --surface-3:#e3e8ee;
+  --ink:#141e28; --ink-2:#4e6070; --ink-3:#7c8d9b;
+  --line:#d9e0e7; --line-strong:#c3cdd6;
+  --accent:#0d7a84; --accent-ink:#0a5e66; --accent-soft:rgba(13,122,132,.10);
+  --amber:#9a5c08; --amber-soft:rgba(154,92,8,.10);
+  --good:#1a7347; --crit:#a92a20; --crit-soft:rgba(169,42,32,.09);
+  --font-display:"IBM Plex Serif",Georgia,"Times New Roman",serif;
+  --font-body:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d141a; --surface:#141d25; --surface-2:#1a242d; --surface-3:#212d37;
+    --ink:#e4ecf2; --ink-2:#9db0be; --ink-3:#6f8393;
+    --line:#253239; --line-strong:#334450;
+    --accent:#3ab8c0; --accent-ink:#5fd0d6; --accent-soft:rgba(58,184,192,.14);
+    --amber:#dda550; --amber-soft:rgba(221,165,80,.13);
+    --good:#48c184; --crit:#ef7065; --crit-soft:rgba(239,112,101,.13);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d141a; --surface:#141d25; --surface-2:#1a242d; --surface-3:#212d37;
+  --ink:#e4ecf2; --ink-2:#9db0be; --ink-3:#6f8393;
+  --line:#253239; --line-strong:#334450;
+  --accent:#3ab8c0; --accent-ink:#5fd0d6; --accent-soft:rgba(58,184,192,.14);
+  --amber:#dda550; --amber-soft:rgba(221,165,80,.13);
+  --good:#48c184; --crit:#ef7065; --crit-soft:rgba(239,112,101,.13);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.6}
+h1,h2,h3{font-family:var(--font-display);text-wrap:balance;margin:0}
+a{color:var(--accent-ink)}
+code,kbd{font-family:var(--font-mono);font-size:.88em}
+code{background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:.08em .34em;white-space:nowrap}
+pre{background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:13px 15px;overflow-x:auto;margin:0 0 11px;font-family:var(--font-mono);font-size:12.6px;line-height:1.65;color:var(--ink)}
+pre code{background:none;border:0;padding:0;white-space:pre;font-size:inherit}
+.cmt{color:var(--ink-3)}
+
+.masthead{background:var(--surface);border-bottom:1px solid var(--line)}
+.masthead-in{max-width:1200px;margin:0 auto;padding:26px 20px 22px;display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;justify-content:space-between}
+.brand h1{font-size:27px;line-height:1.2;letter-spacing:-.01em}
+.brand p{margin:6px 0 0;color:var(--ink-2);font-size:14px;max-width:64ch}
+.eyebrow{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--accent-ink);background:var(--accent-soft);border-radius:3px;padding:3px 8px;margin-bottom:10px}
+.themebtn{font:inherit;font-size:13px;font-weight:500;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:7px 13px;cursor:pointer;white-space:nowrap}
+.themebtn:hover{border-color:var(--line-strong);color:var(--ink)}
+
+.toolbar{position:sticky;top:0;z-index:30;background:var(--bg);border-bottom:1px solid var(--line)}
+.toolbar-in{max-width:1200px;margin:0 auto;padding:12px 20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.searchwrap{position:relative;flex:1 1 300px;min-width:0}
+#q{width:100%;font:inherit;font-size:14px;color:var(--ink);background:var(--surface);border:1px solid var(--line-strong);border-radius:7px;padding:9px 34px 9px 12px}
+#q::placeholder{color:var(--ink-3)}
+#q:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+.clearq{position:absolute;right:5px;top:50%;transform:translateY(-50%);border:0;background:none;color:var(--ink-3);font-size:17px;line-height:1;cursor:pointer;padding:5px 7px;border-radius:4px}
+.clearq:hover{color:var(--ink)}
+.count{font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.progwrap{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink-2);white-space:nowrap}
+.progbar{width:92px;height:6px;border-radius:3px;background:var(--surface-3);overflow:hidden}
+.progfill{height:100%;width:0;background:var(--accent);transition:width .25s ease}
+
+.shell{max-width:1200px;margin:0 auto;padding:0 20px 80px;display:flex;gap:34px;align-items:flex-start}
+nav.index{position:sticky;top:64px;flex:0 0 224px;width:224px;max-height:calc(100vh - 84px);overflow-y:auto;padding:22px 0 20px}
+nav.index h2{font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);font-family:var(--font-body);font-weight:600;margin:0 0 9px}
+nav.index ol{list-style:none;margin:0;padding:0;counter-reset:nav}
+nav.index li{counter-increment:nav}
+nav.index a{display:flex;gap:9px;padding:5px 9px;border-radius:5px;color:var(--ink-2);text-decoration:none;font-size:13.5px;line-height:1.35}
+nav.index a::before{content:counter(nav,decimal-leading-zero);color:var(--ink-3);font-variant-numeric:tabular-nums;font-size:11.5px;padding-top:2px}
+nav.index a:hover{background:var(--surface-2);color:var(--ink)}
+nav.index a.on{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
+nav.index a.on::before{color:var(--accent-ink)}
+main{flex:1 1 auto;min-width:0;padding:22px 0 0}
+
+section.block{margin-bottom:38px;scroll-margin-top:72px}
+.sechead{display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap;padding-bottom:9px;border-bottom:2px solid var(--line-strong);margin-bottom:16px}
+.sechead h2{font-size:21px;letter-spacing:-.005em}
+.sechead .num{color:var(--ink-3);font-family:var(--font-mono);font-size:12.5px;margin-right:9px}
+.lede{color:var(--ink-2);font-size:14.5px;margin:0 0 16px;max-width:68ch}
+.reviewed{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-3);cursor:pointer;user-select:none}
+.reviewed input{accent-color:var(--accent);width:14px;height:14px;cursor:pointer}
+
+.terms{display:grid;gap:11px}
+.term{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--line-strong);border-radius:7px;padding:13px 16px}
+.term h3{font-family:var(--font-body);font-size:14.5px;font-weight:700;letter-spacing:-.003em;margin:0 0 5px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+.term h3 .exp{font-weight:400;font-size:12.5px;color:var(--ink-3);font-family:var(--font-mono)}
+.term p{margin:0 0 7px;color:var(--ink-2);font-size:14px}
+.term p:last-child{margin-bottom:0}
+.term strong{color:var(--ink);font-weight:600}
+.term ul,.term ol{margin:6px 0 0;padding-left:20px;color:var(--ink-2);font-size:14px}
+.term li{margin-bottom:4px}
+.term li::marker{color:var(--ink-3)}
+.term .tablewrap,.term pre{margin-top:10px}
+
+.tip{margin-top:9px;padding:8px 11px;border-radius:5px;background:var(--amber-soft);border-left:2px solid var(--amber);font-size:13.3px;color:var(--ink-2)}
+.tip b{color:var(--amber);font-weight:600;letter-spacing:.02em;font-size:11px;text-transform:uppercase;display:block;margin-bottom:2px}
+.gotcha{margin-top:9px;padding:8px 11px;border-radius:5px;background:var(--crit-soft);border-left:2px solid var(--crit);font-size:13.3px;color:var(--ink-2)}
+.gotcha b{color:var(--crit);font-weight:600;letter-spacing:.02em;font-size:11px;text-transform:uppercase;display:block;margin-bottom:2px}
+
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:7px;background:var(--surface);margin:0 0 11px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:520px}
+caption{text-align:left;padding:11px 14px 0;font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+th,td{text-align:left;padding:8px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+thead th{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:600;background:var(--surface-2);white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+td code{white-space:nowrap}
+.num-col{font-variant-numeric:tabular-nums;white-space:nowrap}
+.xlate td{font-family:var(--font-mono);font-size:12.6px}
+.xlate td:first-child{font-family:var(--font-body);font-size:13.5px}
+.chg{color:var(--accent-ink);font-weight:500}
+
+.figure{background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:6px 6px 0;margin:0 0 11px}
+.figscroll{overflow-x:auto}
+.figscroll svg{display:block;width:100%;min-width:660px;height:auto}
+.figcap{padding:6px 12px 11px;font-size:12.5px;color:var(--ink-3)}
+
+.noresult{display:none;padding:26px;text-align:center;color:var(--ink-2);background:var(--surface);border:1px dashed var(--line-strong);border-radius:7px}
+body.filtering .lede,body.filtering .reviewed,body.filtering .figure{display:none}
+
+footer{max-width:1200px;margin:0 auto;padding:22px 20px 40px;border-top:1px solid var(--line);color:var(--ink-3);font-size:12.5px}
+footer p{margin:0 0 5px;max-width:78ch}
+footer a{color:var(--accent-ink)}
+
+@media (max-width:900px){
+  .shell{flex-direction:column;gap:0;padding-bottom:56px}
+  nav.index{position:sticky;top:57px;z-index:20;width:auto;flex:none;max-height:none;padding:9px 0;background:var(--bg);border-bottom:1px solid var(--line);overflow-x:auto;overflow-y:hidden}
+  nav.index h2{display:none}
+  nav.index ol{display:flex;gap:5px;white-space:nowrap}
+  nav.index a{border:1px solid var(--line);background:var(--surface);padding:5px 11px}
+  section.block{scroll-margin-top:118px}
+  .toolbar-in{padding:9px 20px}
+  .progwrap{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+@media print{.toolbar,nav.index,.themebtn{display:none}.shell{display:block}}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-in">
+    <div class="brand">
+      <span class="eyebrow">ASA deep dive</span>
+      <h1>NAT, every type</h1>
+      <p>One lab topology, every NAT type configured against it, with the packet shown before and after translation. Plus the ordering rules that decide which rule wins, and the troubleshooting workflow for when the wrong one does.</p>
+    </div>
+    <button class="themebtn" id="themebtn" type="button">Switch theme</button>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="toolbar-in">
+    <div class="searchwrap">
+      <input id="q" type="search" placeholder="Filter: try pat-pool, exemption, hairpin, proxy-arp, 305006&hellip;" autocomplete="off" aria-label="Filter content">
+      <button class="clearq" id="clearq" type="button" aria-label="Clear filter" hidden>&times;</button>
+    </div>
+    <span class="count" id="count"></span>
+    <div class="progwrap">
+      <span>Reviewed</span>
+      <span class="progbar"><span class="progfill" id="progfill"></span></span>
+      <span class="num-col" id="progtxt">0/15</span>
+    </div>
+  </div>
+</div>
+
+<div class="shell">
+<nav class="index" aria-label="Sections">
+  <h2>Sections</h2>
+  <ol>
+    <li><a href="#rules">How ASA picks a rule</a></li>
+    <li><a href="#topology">Reference topology</a></li>
+    <li><a href="#dynamic-pat">Dynamic PAT</a></li>
+    <li><a href="#dynamic-nat">Dynamic NAT</a></li>
+    <li><a href="#static-nat">Static NAT</a></li>
+    <li><a href="#static-pat">Static PAT</a></li>
+    <li><a href="#identity">Identity NAT &amp; exemption</a></li>
+    <li><a href="#twice">Twice NAT / policy NAT</a></li>
+    <li><a href="#hairpin">Hairpin &amp; U-turn</a></li>
+    <li><a href="#dnsdoctor">DNS doctoring</a></li>
+    <li><a href="#vpn">NAT with VPN</a></li>
+    <li><a href="#patscale">PAT scaling</a></li>
+    <li><a href="#ipv6">IPv6 NAT</a></li>
+    <li><a href="#troubleshoot">Troubleshooting</a></li>
+    <li><a href="#patterns">Failure patterns</a></li>
+  </ol>
+</nav>
+
+<main>
+<div class="noresult" id="noresult">Nothing matches that filter. Try a shorter word, or a term such as <code>xlate</code>, <code>after-auto</code>, <code>no-proxy-arp</code>.</div>
+
+<!-- ============ 1 ============ -->
+<section class="block" id="rules">
+  <div class="sechead">
+    <h2><span class="num">01</span>How the ASA picks a NAT rule</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="rules"> Reviewed</label>
+  </div>
+  <p class="lede">Before any syntax, understand the evaluation order. Most NAT faults are not a wrong rule &mdash; they are the right rule sitting below a broader one that matched first.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The three sections</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th class="num-col">Section</th><th>Rule type</th><th>Order inside the section</th></tr></thead>
+          <tbody>
+            <tr><td class="num-col">1</td><td><strong>Manual NAT</strong> (twice NAT)</td><td>Exactly as configured, top to bottom</td></tr>
+            <tr><td class="num-col">2</td><td><strong>Auto NAT</strong> (object NAT)</td><td>Automatic &mdash; see the ordering rules below</td></tr>
+            <tr><td class="num-col">3</td><td><strong>Manual NAT after-auto</strong></td><td>As configured, evaluated last of all</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The ASA walks section 1 top to bottom, then section 2, then section 3. <strong>First match wins and evaluation stops.</strong> Nothing below it is ever considered for that packet.</p>
+      <div class="gotcha"><b>The single most common NAT fault</b>A broad manual NAT rule configured early in section 1 shadowing every specific rule written later. <code>show nat</code> prints rules in true evaluation order with hit counts &mdash; if your rule has zero hits and traffic is being translated anyway, something above it matched.</div>
+    </div>
+
+    <div class="term">
+      <h3>Auto NAT ordering inside section 2</h3>
+      <p>You do not control this order directly. The ASA sorts auto NAT rules by:</p>
+      <ol>
+        <li><strong>Static before dynamic.</strong> Every static rule is considered before any dynamic rule.</li>
+        <li><strong>Fewest real IP addresses first.</strong> A host object beats a /24 object, which beats a /16.</li>
+        <li><strong>Lowest real IP address first</strong>, where the counts tie.</li>
+        <li><strong>Alphabetically by object name</strong>, as the final tie-break.</li>
+      </ol>
+      <p>This is usually what you want &mdash; most specific first. When it is not, that is the reason manual NAT exists: it gives you explicit placement.</p>
+    </div>
+
+    <div class="term">
+      <h3>Controlling placement explicitly</h3>
+<pre><code><span class="cmt">! line 1 of section 1 — evaluated before everything</span>
+nat (inside,outside) 1 source static NET-A NET-A destination static NET-B NET-B
+
+<span class="cmt">! insert at a specific line in section 1</span>
+nat (inside,outside) 3 source dynamic NET-C POOL-C
+
+<span class="cmt">! section 3 — a catch-all that can never shadow anything</span>
+nat (inside,outside) after-auto source dynamic any interface</code></pre>
+      <p>The numeric argument is the line number within section 1. <code>after-auto</code> places the rule in section 3. A catch-all PAT written <code>after-auto</code> is the clean pattern: it still works, but it can never accidentally pre-empt a specific rule.</p>
+    </div>
+
+    <div class="term">
+      <h3>Proxy ARP</h3>
+      <p>When a mapped address lives in the same subnet as the mapped interface, the ASA answers ARP requests for it so the upstream router can deliver the traffic. That is correct for static NAT publishing a server.</p>
+      <p>It is wrong for identity NAT, where the mapped address is a real network that exists elsewhere &mdash; the ASA would answer ARP for addresses it does not own and black-hole the traffic. Hence <code>no-proxy-arp</code> on exemption rules.</p>
+<pre><code>show arp
+show running-config nat | include proxy
+debug arp                                 <span class="cmt">! scope it, this is noisy</span></code></pre>
+    </div>
+
+    <div class="term">
+      <h3>route-lookup and NAT divert</h3>
+      <p>For manual NAT with a static source translation, the egress interface normally comes from the NAT rule's interface pair rather than the routing table. This is <strong>NAT divert</strong>, and it can pull traffic out of an interface the routing table never chose.</p>
+      <p><code>route-lookup</code> suppresses that and forces a normal routing decision. Add it to identity and exemption rules unless you specifically want the divert behaviour.</p>
+      <div class="tip"><b>Rule of thumb</b>On an exemption rule, write both keywords: <code>no-proxy-arp route-lookup</code>. It is the safe default and avoids two whole classes of problem.</div>
+    </div>
+
+    <div class="term">
+      <h3>Bidirectional vs unidirectional</h3>
+      <p><strong>Static</strong> rules are bidirectional: they translate outbound and un-translate inbound, so the mapped address becomes reachable from the mapped side. <strong>Dynamic</strong> rules are unidirectional &mdash; they only create a translation when traffic originates from the real side.</p>
+      <p>That is why you cannot reach a host that is only covered by dynamic PAT. If inbound access is needed, you need a static rule or static PAT.</p>
+<pre><code>object network SRV
+ host 10.10.10.10
+ nat (dmz,outside) static 203.0.113.10 unidirectional   <span class="cmt">! outbound only</span></code></pre>
+      <p>The <code>unidirectional</code> keyword on a static rule suppresses the inbound half, which is occasionally useful for a server that must present a fixed source address outbound but must never be reachable inbound.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section class="block" id="topology">
+  <div class="sechead">
+    <h2><span class="num">02</span>Reference topology</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="topology"> Reviewed</label>
+  </div>
+  <p class="lede">Every configuration on this page is written against this one topology, so you can compare the types directly.</p>
+
+  <div class="figure">
+    <div class="figscroll">
+      <svg viewBox="0 0 760 424" role="img" aria-label="Lab topology: inside, DMZ and outside zones around one ASA" font-size="13" font-family="var(--font-body)">
+        <defs>
+          <marker id="topoarrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+            <circle cx="5" cy="5" r="3" fill="var(--line-strong)"></circle>
+          </marker>
+        </defs>
+        <text x="24" y="28" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--font-display)">One lab topology for every example on this page</text>
+        <text x="24" y="48" font-size="11.5" fill="var(--ink-3)">Documentation address space. Public 203.0.113.10 maps to the DMZ web server.</text>
+
+        <g stroke="var(--line-strong)" stroke-width="1.5" fill="none">
+          <path d="M194 170H290"></path>
+          <path d="M470 170H566"></path>
+          <path d="M380 230V300"></path>
+        </g>
+
+        <g>
+          <rect x="24" y="118" width="170" height="104" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="109" y="143" text-anchor="middle" font-weight="600" fill="var(--ink)">INSIDE</text>
+          <text x="109" y="165" text-anchor="middle" font-size="11.5" fill="var(--ink-2)" font-family="var(--font-mono)">10.1.1.0/24</text>
+          <text x="109" y="183" text-anchor="middle" font-size="11.5" fill="var(--ink-2)" font-family="var(--font-mono)">host 10.1.1.50</text>
+          <text x="109" y="205" text-anchor="middle" font-size="11" fill="var(--ink-3)">security-level 100</text>
+        </g>
+
+        <g>
+          <rect x="290" y="110" width="180" height="120" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"></rect>
+          <text x="380" y="137" text-anchor="middle" font-weight="600" fill="var(--ink)">ASA</text>
+          <text x="380" y="161" text-anchor="middle" font-size="11.5" fill="var(--ink-2)" font-family="var(--font-mono)">inside 10.1.1.1</text>
+          <text x="380" y="180" text-anchor="middle" font-size="11.5" fill="var(--ink-2)" font-family="var(--font-mono)">dmz 10.10.10.1</text>
+          <text x="380" y="199" text-anchor="middle" font-size="11.5" fill="var(--ink-2)" font-family="var(--font-mono)">outside 203.0.113.2</text>
+        </g>
+
+        <g>
+          <rect x="566" y="118" width="170" height="104" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="651" y="143" text-anchor="middle" font-weight="600" fill="var(--ink)">OUTSIDE</text>
+          <text x="651" y="165" text-anchor="middle" font-size="11.5" fill="var(--ink-2)" font-family="var(--font-mono)">203.0.113.0/24</text>
+          <text x="651" y="183" text-anchor="middle" font-size="11.5" fill="var(--ink-2)" font-family="var(--font-mono)">gw 203.0.113.1</text>
+          <text x="651" y="205" text-anchor="middle" font-size="11" fill="var(--ink-3)">security-level 0</text>
+        </g>
+
+        <g>
+          <rect x="290" y="300" width="180" height="100" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="380" y="325" text-anchor="middle" font-weight="600" fill="var(--ink)">DMZ</text>
+          <text x="380" y="347" text-anchor="middle" font-size="11.5" fill="var(--ink-2)" font-family="var(--font-mono)">10.10.10.0/24</text>
+          <text x="380" y="365" text-anchor="middle" font-size="11.5" fill="var(--ink-2)" font-family="var(--font-mono)">web 10.10.10.10</text>
+          <text x="380" y="387" text-anchor="middle" font-size="11" fill="var(--ink-3)">security-level 50</text>
+        </g>
+
+        <text x="242" y="162" text-anchor="middle" font-size="11" fill="var(--ink-3)" font-family="var(--font-mono)">G0/1</text>
+        <text x="518" y="162" text-anchor="middle" font-size="11" fill="var(--ink-3)" font-family="var(--font-mono)">G0/0</text>
+        <text x="392" y="268" font-size="11" fill="var(--ink-3)" font-family="var(--font-mono)">G0/2</text>
+
+        <text x="566" y="258" font-size="11.5" fill="var(--ink-3)">remote host 198.51.100.5</text>
+        <text x="566" y="276" font-size="11.5" fill="var(--ink-3)">VPN peer 198.51.100.1</text>
+      </svg>
+    </div>
+    <p class="figcap">Lab topology &middot; 3 zones, 1 ASA. All examples below use these addresses.</p>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Objects used throughout</h3>
+<pre><code>object network INSIDE-NET
+ subnet 10.1.1.0 255.255.255.0
+
+object network DMZ-NET
+ subnet 10.10.10.0 255.255.255.0
+
+object network SRV-WEB
+ host 10.10.10.10
+
+object network SRV-WEB-PUBLIC
+ host 203.0.113.10
+
+object network PAT-POOL
+ range 203.0.113.20 203.0.113.29
+
+object network REMOTE-NET
+ subnet 172.16.0.0 255.255.0.0</code></pre>
+      <p>Define objects once and reference them everywhere. Editing an object updates every rule that uses it, which is both convenient and a hazard &mdash; check <code>show nat</code> after changing an object's contents.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section class="block" id="dynamic-pat">
+  <div class="sechead">
+    <h2><span class="num">03</span>Dynamic PAT</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="dynamic-pat"> Reviewed</label>
+  </div>
+  <p class="lede">Many real addresses share one mapped address, distinguished by port. The default for internet access, and the most-deployed NAT type anywhere.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Interface PAT</h3>
+      <p>Everything behind the ASA shares the outside interface address. No extra public addresses needed.</p>
+<pre><code>object network INSIDE-NET
+ subnet 10.1.1.0 255.255.255.0
+ nat (inside,outside) dynamic interface</code></pre>
+      <div class="tablewrap">
+        <table class="xlate">
+          <caption>Packet transformation &mdash; 10.1.1.50 browsing 8.8.8.8</caption>
+          <thead><tr><th>Stage</th><th>Source</th><th>Destination</th></tr></thead>
+          <tbody>
+            <tr><td>Inside &rarr; ASA</td><td>10.1.1.50:51000</td><td>8.8.8.8:443</td></tr>
+            <tr><td>ASA &rarr; Outside</td><td class="chg">203.0.113.2:12345</td><td>8.8.8.8:443</td></tr>
+            <tr><td>Reply in</td><td>8.8.8.8:443</td><td class="chg">203.0.113.2:12345</td></tr>
+            <tr><td>ASA &rarr; Inside</td><td>8.8.8.8:443</td><td class="chg">10.1.1.50:51000</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="term">
+      <h3>PAT to a pool</h3>
+      <p>Spreads translations across several addresses. Needed past roughly 65,000 concurrent translations per mapped address, and useful when an upstream system needs to distinguish groups of users.</p>
+<pre><code>object network INSIDE-NET
+ subnet 10.1.1.0 255.255.255.0
+ nat (inside,outside) dynamic pat-pool PAT-POOL round-robin</code></pre>
+      <ul>
+        <li><code>round-robin</code> &mdash; cycle through pool addresses rather than filling one before moving on. Spreads load, but a single host's connections then come from varying addresses, which breaks some session-affinity applications.</li>
+        <li>Without <code>round-robin</code> the ASA exhausts one address before using the next, keeping a host's translations consistent for longer.</li>
+      </ul>
+    </div>
+
+    <div class="term">
+      <h3>Fallback to interface</h3>
+<pre><code>object network INSIDE-NET
+ subnet 10.1.1.0 255.255.255.0
+ nat (inside,outside) dynamic pat-pool PAT-POOL interface</code></pre>
+      <p>The trailing <code>interface</code> makes the interface address a fallback when the pool is exhausted. Cheap insurance against an outage caused by pool exhaustion, and worth adding by default.</p>
+    </div>
+
+    <div class="term">
+      <h3>Verification</h3>
+<pre><code>show xlate local 10.1.1.50
+show nat pool                             <span class="cmt">! utilisation per mapped address</span>
+show nat detail | include PAT
+
+<span class="cmt">! typical xlate output</span>
+TCP PAT from inside:10.1.1.50/51000 to outside:203.0.113.2/12345 flags ri idle 0:00:04</code></pre>
+      <div class="gotcha"><b>Pool exhaustion</b>Symptom: intermittent connection failures for some users, syslog 305006, ASP drop <code>nat-no-xlate-to-pat-pool</code>. Check <code>show nat pool</code>. Fix with a larger pool, <code>extended</code> PAT, or per-session PAT &mdash; see the PAT scaling section.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section class="block" id="dynamic-nat">
+  <div class="sechead">
+    <h2><span class="num">04</span>Dynamic NAT</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="dynamic-nat"> Reviewed</label>
+  </div>
+  <p class="lede">One-to-one from a pool, with no port translation, for as long as the translation lives. Uncommon today, but it still appears where an application cannot tolerate PAT.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Configuration</h3>
+<pre><code>object network NAT-POOL
+ range 203.0.113.40 203.0.113.60
+
+object network INSIDE-NET
+ subnet 10.1.1.0 255.255.255.0
+ nat (inside,outside) dynamic NAT-POOL</code></pre>
+      <div class="tablewrap">
+        <table class="xlate">
+          <caption>Packet transformation &mdash; ports preserved</caption>
+          <thead><tr><th>Stage</th><th>Source</th><th>Destination</th></tr></thead>
+          <tbody>
+            <tr><td>Inside &rarr; ASA</td><td>10.1.1.50:51000</td><td>8.8.8.8:443</td></tr>
+            <tr><td>ASA &rarr; Outside</td><td class="chg">203.0.113.40</td><td>8.8.8.8:443</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Note the port is unchanged. That is the whole point: protocols that embed or depend on the source port survive, where PAT would break them.</p>
+    </div>
+
+    <div class="term">
+      <h3>When to use it, and why rarely</h3>
+      <ul>
+        <li><strong>Use it</strong> for legacy applications that cannot cope with port rewriting, or where a downstream system must see one address per host.</li>
+        <li><strong>Avoid it</strong> otherwise &mdash; the pool is consumed one address per <em>host</em>, so twenty-one addresses serve twenty-one concurrent hosts and no more. When the pool is empty, further hosts simply fail.</li>
+      </ul>
+      <p>Add a PAT fallback so exhaustion degrades instead of failing:</p>
+<pre><code>object network INSIDE-NET
+ nat (inside,outside) dynamic NAT-POOL interface</code></pre>
+      <div class="tip"><b>Watch the xlate timeout</b>A dynamic NAT translation holds its pool address until the xlate times out (<code>timeout xlate</code>, default three hours), not until the connection closes. A short burst of hosts can hold the pool empty for a long time afterwards.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section class="block" id="static-nat">
+  <div class="sechead">
+    <h2><span class="num">05</span>Static NAT</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="static-nat"> Reviewed</label>
+  </div>
+  <p class="lede">A permanent one-to-one mapping, bidirectional, created at configuration time rather than on first packet. This is how you publish a server.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Publishing a server</h3>
+<pre><code>object network SRV-WEB
+ host 10.10.10.10
+ nat (dmz,outside) static 203.0.113.10
+
+<span class="cmt">! the ACL permits the REAL address, not the mapped one</span>
+access-list OUTSIDE_IN extended permit tcp any4 object SRV-WEB eq 443
+access-group OUTSIDE_IN in interface outside</code></pre>
+      <div class="tablewrap">
+        <table class="xlate">
+          <caption>Inbound: 198.51.100.5 reaching the published server</caption>
+          <thead><tr><th>Stage</th><th>Source</th><th>Destination</th></tr></thead>
+          <tbody>
+            <tr><td>Outside &rarr; ASA</td><td>198.51.100.5:49152</td><td>203.0.113.10:443</td></tr>
+            <tr><td>After un-NAT</td><td>198.51.100.5:49152</td><td class="chg">10.10.10.10:443</td></tr>
+            <tr><td>ACL evaluated against</td><td>198.51.100.5</td><td class="chg">10.10.10.10:443</td></tr>
+            <tr><td>ASA &rarr; DMZ</td><td>198.51.100.5:49152</td><td>10.10.10.10:443</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="gotcha"><b>The post-8.3 trap</b>Un-NAT happens before the ACL check. Permitting <code>203.0.113.10</code> in the outside ACL does nothing &mdash; by the time the ACL runs, the destination is already <code>10.10.10.10</code>. Engineers migrating from 8.2 get this wrong almost every time.</div>
+    </div>
+
+    <div class="term">
+      <h3>Net-to-net static</h3>
+      <p>Map a whole subnet one-to-one, preserving the host portion.</p>
+<pre><code>object network DMZ-NET
+ subnet 10.10.10.0 255.255.255.0
+ nat (dmz,outside) static 203.0.113.0</code></pre>
+      <p>10.10.10.10 becomes 203.0.113.10, 10.10.10.25 becomes 203.0.113.25, and so on. Compact, and the usual approach where a provider has given you a matching public block.</p>
+    </div>
+
+    <div class="term">
+      <h3>Static with an interface mapped address</h3>
+<pre><code>object network SRV-WEB
+ host 10.10.10.10
+ nat (dmz,outside) static interface</code></pre>
+      <p>Maps the server to the outside interface address itself. This consumes the entire address for that one host, so it is almost always wrong &mdash; what people usually want here is static PAT, in the next section.</p>
+    </div>
+
+    <div class="term">
+      <h3>Verification</h3>
+<pre><code>show xlate | include 203.0.113.10
+show nat detail | include SRV-WEB
+
+<span class="cmt">! static xlates exist before any traffic</span>
+NAT from dmz:10.10.10.10 to outside:203.0.113.10 flags sI idle 0:00:00
+
+packet-tracer input outside tcp 198.51.100.5 12345 203.0.113.10 443 detailed</code></pre>
+      <p>Flag <code>s</code> means static, <code>I</code> identity-free inbound. A static translation appears in <code>show xlate</code> immediately on configuration, unlike a dynamic one &mdash; a quick way to confirm the rule parsed as you intended.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section class="block" id="static-pat">
+  <div class="sechead">
+    <h2><span class="num">06</span>Static PAT &mdash; port forwarding</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="static-pat"> Reviewed</label>
+  </div>
+  <p class="lede">Publish a single service rather than a whole host, so several internal servers can share one public address on different ports.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Forwarding one port</h3>
+<pre><code>object network SRV-WEB-443
+ host 10.10.10.10
+ nat (dmz,outside) static interface service tcp 443 443
+
+object network SRV-MAIL-25
+ host 10.10.10.20
+ nat (dmz,outside) static interface service tcp 25 25</code></pre>
+      <p>Both servers share the outside interface address, separated by port. Read the service clause as <code>service &lt;protocol&gt; &lt;real-port&gt; &lt;mapped-port&gt;</code>.</p>
+    </div>
+
+    <div class="term">
+      <h3>Port redirection</h3>
+      <p>Real and mapped ports need not match &mdash; publish an internal service on a different external port.</p>
+<pre><code>object network SRV-SSH
+ host 10.1.1.60
+ nat (inside,outside) static interface service tcp 22 2222</code></pre>
+      <div class="tablewrap">
+        <table class="xlate">
+          <caption>Inbound to port 2222, redirected to 22</caption>
+          <thead><tr><th>Stage</th><th>Source</th><th>Destination</th></tr></thead>
+          <tbody>
+            <tr><td>Outside &rarr; ASA</td><td>198.51.100.5:40000</td><td>203.0.113.2:2222</td></tr>
+            <tr><td>After un-NAT</td><td>198.51.100.5:40000</td><td class="chg">10.1.1.60:22</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The ACL permits <code>tcp any4 host 10.1.1.60 eq 22</code> &mdash; the real address <em>and</em> the real port.</p>
+      <div class="gotcha"><b>Do not forward management to the internet</b>A static PAT of SSH or RDP straight to the internet is a standing invitation. If it must exist, restrict the ACL to known source addresses and put it behind MFA &mdash; or use remote access VPN instead, which is what it is for.</div>
+    </div>
+
+    <div class="term">
+      <h3>Using a service object</h3>
+<pre><code>object service SVC-HTTPS
+ service tcp source eq 443
+
+object network SRV-WEB
+ host 10.10.10.10
+
+nat (dmz,outside) source static SRV-WEB SRV-WEB-PUBLIC service SVC-HTTPS SVC-HTTPS</code></pre>
+      <p>The manual-NAT form, useful when the port mapping must also depend on the destination. Note that in a <em>source</em> static translation the service object describes the <strong>source</strong> port, which is a frequent source of confusion &mdash; for inbound publishing you normally want the auto NAT form above.</p>
+    </div>
+
+    <div class="term">
+      <h3>Conflicts with ASA services</h3>
+      <p>If the ASA itself listens on a port on that interface, static PAT for the same port collides. The common case is TCP 443 when ASDM or AnyConnect is enabled on the outside interface. Move the ASA's service:</p>
+<pre><code>http server enable 8443
+ssh version 2
+webvpn
+ port 4443</code></pre>
+      <p>Or publish the server on a different public address instead of the interface address.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 7 ============ -->
+<section class="block" id="identity">
+  <div class="sechead">
+    <h2><span class="num">07</span>Identity NAT and NAT exemption</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="identity"> Reviewed</label>
+  </div>
+  <p class="lede">Translate an address to itself. Sounds pointless until you remember that a matching NAT rule stops evaluation &mdash; identity NAT is how you protect traffic from a broader rule further down.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Why it exists</h3>
+      <p>Traffic between two internal networks across the ASA should not be translated. But a catch-all PAT rule would match it and translate it anyway. Identity NAT, placed above that rule, matches first and translates the address to itself &mdash; so nothing changes, and evaluation stops before the PAT rule is reached.</p>
+    </div>
+
+    <div class="term">
+      <h3>Simple identity NAT</h3>
+<pre><code>object network INSIDE-NET
+ subnet 10.1.1.0 255.255.255.0
+ nat (inside,dmz) static INSIDE-NET</code></pre>
+      <p>The auto NAT form. Adequate where the exemption applies to all traffic between that interface pair.</p>
+    </div>
+
+    <div class="term">
+      <h3>NAT exemption &mdash; the form you will actually use</h3>
+      <p>Manual NAT, matching source <em>and</em> destination, placed explicitly at the top of section 1.</p>
+<pre><code>nat (inside,outside) 1 source static INSIDE-NET INSIDE-NET \
+    destination static REMOTE-NET REMOTE-NET no-proxy-arp route-lookup</code></pre>
+      <div class="tablewrap">
+        <table class="xlate">
+          <caption>Nothing changes &mdash; which is the point</caption>
+          <thead><tr><th>Stage</th><th>Source</th><th>Destination</th></tr></thead>
+          <tbody>
+            <tr><td>Inside &rarr; ASA</td><td>10.1.1.50:51000</td><td>172.16.5.10:445</td></tr>
+            <tr><td>ASA &rarr; tunnel</td><td>10.1.1.50:51000</td><td>172.16.5.10:445</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The two keywords matter:</p>
+      <ul>
+        <li><code>no-proxy-arp</code> &mdash; the ASA must not answer ARP for 10.1.1.0/24 addresses on the outside, because it does not own them there.</li>
+        <li><code>route-lookup</code> &mdash; use the routing table to pick the egress interface, rather than letting the NAT rule's interface pair divert the traffic.</li>
+      </ul>
+      <div class="tip"><b>Placement is the whole game</b>Write it as line <code>1</code> of section 1. An exemption rule below a catch-all PAT does nothing at all, and this is the single most common reason a site-to-site VPN carries no traffic.</div>
+    </div>
+
+    <div class="term">
+      <h3>Verifying an exemption</h3>
+<pre><code>show nat | include 10.1.1.0
+packet-tracer input inside tcp 10.1.1.50 51000 172.16.5.10 445 detailed</code></pre>
+      <p>In the packet-tracer output, the NAT phase should show your exemption rule and an unchanged address. If it shows the PAT rule and a 203.0.113.2 source, the exemption is below it or does not match.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 8 ============ -->
+<section class="block" id="twice">
+  <div class="sechead">
+    <h2><span class="num">08</span>Twice NAT and policy NAT</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="twice"> Reviewed</label>
+  </div>
+  <p class="lede">Matching source and destination together, so the same source can be translated differently depending on where it is going.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The shape of a manual NAT rule</h3>
+<pre><code>nat (real-intf,mapped-intf) [line | after-auto] \
+    source  static|dynamic  REAL-SRC  MAPPED-SRC \
+    destination static MAPPED-DST REAL-DST \
+    [service REAL-SVC MAPPED-SVC] \
+    [no-proxy-arp] [route-lookup] [unidirectional]</code></pre>
+      <div class="gotcha"><b>The destination operands are reversed</b>In the <code>destination static</code> clause the <em>first</em> object is the mapped (what you see on the wire) and the <em>second</em> is the real. This is the opposite order to the source clause, and it catches everyone. Read it as "translate this destination into that one".</div>
+    </div>
+
+    <div class="term">
+      <h3>Policy NAT: different translation per destination</h3>
+      <p>Internet traffic PATs to the interface, but traffic to a partner must appear as a specific address the partner has whitelisted.</p>
+<pre><code>object network PARTNER-NET
+ subnet 192.0.2.0 255.255.255.0
+object network OUR-PARTNER-IP
+ host 203.0.113.50
+
+<span class="cmt">! specific: to the partner, use the dedicated address</span>
+nat (inside,outside) 1 source dynamic INSIDE-NET OUR-PARTNER-IP \
+    destination static PARTNER-NET PARTNER-NET
+
+<span class="cmt">! general: everything else, interface PAT</span>
+object network INSIDE-NET
+ nat (inside,outside) dynamic interface</code></pre>
+      <div class="tablewrap">
+        <table class="xlate">
+          <caption>Same source, two destinations, two translations</caption>
+          <thead><tr><th>Destination</th><th>Rule matched</th><th>Mapped source</th></tr></thead>
+          <tbody>
+            <tr><td>192.0.2.10 (partner)</td><td>Section 1, line 1</td><td class="chg">203.0.113.50</td></tr>
+            <tr><td>8.8.8.8 (internet)</td><td>Section 2, auto NAT</td><td class="chg">203.0.113.2</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Section 1 is evaluated first, so the specific partner rule wins for partner traffic and everything else falls through to the auto NAT rule. This ordering is precisely why the feature is split into sections.</p>
+    </div>
+
+    <div class="term">
+      <h3>Dual NAT &mdash; translating both ends</h3>
+      <p>Two networks with overlapping address space need to reach each other. Translate both sides so neither sees a conflict.</p>
+<pre><code>object network OUR-10NET
+ subnet 10.1.1.0 255.255.255.0
+object network OUR-10NET-MAPPED
+ subnet 192.168.1.0 255.255.255.0
+object network THEIR-10NET
+ subnet 10.1.1.0 255.255.255.0
+object network THEIR-10NET-MAPPED
+ subnet 192.168.2.0 255.255.255.0
+
+nat (inside,outside) 1 source static OUR-10NET OUR-10NET-MAPPED \
+    destination static THEIR-10NET-MAPPED THEIR-10NET</code></pre>
+      <p>Our hosts reach theirs by dialling 192.168.2.x; the ASA rewrites that to 10.1.1.x on the way out and our source to 192.168.1.x. Both sides see unique space. This is the standard answer to the overlapping-subnet merger problem, and a classic interview question.</p>
+      <div class="tip"><b>Do not forget DNS</b>Dual NAT works at the IP layer only. If hosts resolve names, the DNS answers still contain the untranslated addresses. Either run split DNS or use DNS doctoring.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 9 ============ -->
+<section class="block" id="hairpin">
+  <div class="sechead">
+    <h2><span class="num">09</span>Hairpin and U-turn NAT</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="hairpin"> Reviewed</label>
+  </div>
+  <p class="lede">An internal client reaching an internal server by its public address. Conceptually simple, reliably confusing, and a frequent ticket.</p>
+
+  <div class="figure">
+    <div class="figscroll">
+      <svg viewBox="0 0 760 352" role="img" aria-label="U-turn NAT: the ASA rewrites both the destination and the source" font-size="13" font-family="var(--font-body)">
+        <defs>
+          <marker id="utarrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="var(--line-strong)"></path>
+          </marker>
+        </defs>
+        <text x="24" y="28" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--font-display)">Both the destination and the source must be rewritten</text>
+        <text x="24" y="48" font-size="11.5" fill="var(--ink-3)">Inside client 10.1.1.50 reaching the DMZ web server by its public address</text>
+
+        <g stroke="var(--line-strong)" stroke-width="1.25" fill="none" marker-end="url(#utarrow)">
+          <path d="M380 128V152"></path>
+          <path d="M380 196V220"></path>
+          <path d="M380 264V288"></path>
+        </g>
+
+        <g>
+          <rect x="210" y="84" width="526" height="44" rx="7" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <line x1="473" y1="84" x2="473" y2="128" stroke="var(--line)"></line>
+          <text x="341" y="111" text-anchor="middle" font-size="11.5" fill="var(--ink)" font-family="var(--font-mono)">src 10.1.1.50</text>
+          <text x="604" y="111" text-anchor="middle" font-size="11.5" fill="var(--ink)" font-family="var(--font-mono)">dst 203.0.113.10</text>
+          <text x="24" y="104" font-size="11.5" font-weight="600" fill="var(--ink-2)">1 &middot; Client sends</text>
+          <text x="24" y="120" font-size="11" fill="var(--ink-3)">to the public IP</text>
+        </g>
+
+        <g>
+          <rect x="210" y="152" width="526" height="44" rx="7" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <line x1="473" y1="152" x2="473" y2="196" stroke="var(--line)"></line>
+          <text x="341" y="179" text-anchor="middle" font-size="11.5" fill="var(--ink)" font-family="var(--font-mono)">src 10.1.1.50</text>
+          <text x="604" y="179" text-anchor="middle" font-size="11.5" fill="var(--accent-ink)" font-weight="500" font-family="var(--font-mono)">dst 10.10.10.10</text>
+          <text x="24" y="172" font-size="11.5" font-weight="600" fill="var(--ink-2)">2 &middot; ASA un-NATs</text>
+          <text x="24" y="188" font-size="11" fill="var(--ink-3)">destination static</text>
+        </g>
+
+        <g>
+          <rect x="210" y="220" width="526" height="44" rx="7" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"></rect>
+          <line x1="473" y1="220" x2="473" y2="264" stroke="var(--accent)" stroke-opacity="0.4"></line>
+          <text x="341" y="247" text-anchor="middle" font-size="11.5" fill="var(--accent-ink)" font-weight="500" font-family="var(--font-mono)">src 10.10.10.1</text>
+          <text x="604" y="247" text-anchor="middle" font-size="11.5" fill="var(--ink)" font-family="var(--font-mono)">dst 10.10.10.10</text>
+          <text x="24" y="240" font-size="11.5" font-weight="600" fill="var(--ink-2)">3 &middot; ASA NATs source</text>
+          <text x="24" y="256" font-size="11" fill="var(--ink-3)">this is the vital bit</text>
+        </g>
+
+        <g>
+          <rect x="210" y="288" width="526" height="44" rx="7" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="473" y="315" text-anchor="middle" font-size="11.5" fill="var(--ink)">Server replies to the ASA, so the return path works</text>
+          <text x="24" y="308" font-size="11.5" font-weight="600" fill="var(--ink-2)">4 &middot; Reply</text>
+          <text x="24" y="324" font-size="11" fill="var(--ink-3)">via the firewall</text>
+        </g>
+      </svg>
+    </div>
+    <p class="figcap">U-turn NAT &middot; 4 stages. Step 3 is what makes the return traffic come back through the ASA.</p>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Why the source must also be translated</h3>
+      <p>If you only un-NAT the destination, the server at 10.10.10.10 receives a packet from 10.1.1.50 &mdash; and replies directly to it using its own default gateway, bypassing the ASA. The client then receives a reply from 10.10.10.10 when it was talking to 203.0.113.10, and discards it.</p>
+      <p>Translating the source to the ASA's interface address forces the reply back through the firewall, which then reverses both translations. This is the whole trick, and the reason a "just un-NAT the destination" configuration half-works in a way that is maddening to diagnose.</p>
+    </div>
+
+    <div class="term">
+      <h3>U-turn across interfaces: inside client to DMZ server</h3>
+<pre><code>nat (inside,dmz) 1 source dynamic INSIDE-NET interface \
+    destination static SRV-WEB-PUBLIC SRV-WEB</code></pre>
+      <p>Reads as: for inside traffic heading to 203.0.113.10, rewrite the destination to 10.10.10.10 and the source to the ASA's DMZ interface address.</p>
+    </div>
+
+    <div class="term">
+      <h3>True hairpin: in and out of the same interface</h3>
+      <p>When client and server are on the <em>same</em> interface, traffic must enter and leave through it. That is blocked by default.</p>
+<pre><code>same-security-traffic permit intra-interface
+
+nat (inside,inside) 1 source dynamic INSIDE-NET interface \
+    destination static SRV-PUBLIC SRV-REAL</code></pre>
+      <div class="gotcha"><b>Missing intra-interface permit</b>Without <code>same-security-traffic permit intra-interface</code> the hairpin silently fails even with a perfect NAT rule. Same applies to VPN clients reaching the internet back out the outside interface.</div>
+    </div>
+
+    <div class="term">
+      <h3>The better answer, where you can take it</h3>
+      <p>Hairpinning makes the firewall carry traffic that never needed to cross it, and it hides the real client address from the server &mdash; which ruins the server's access logs. The cleaner fixes:</p>
+      <ul>
+        <li><strong>Split DNS</strong> &mdash; internal resolvers return 10.10.10.10 for the server's name, so clients go direct and the ASA is never involved.</li>
+        <li><strong>DNS doctoring</strong> &mdash; the ASA rewrites DNS replies as they pass. See the next section.</li>
+      </ul>
+      <p>Reach for the NAT solution when you do not control DNS, which is most often the case with partner or third-party resolvers.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 10 ============ -->
+<section class="block" id="dnsdoctor">
+  <div class="sechead">
+    <h2><span class="num">10</span>DNS doctoring</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="dnsdoctor"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>What it does</h3>
+      <p>The <code>dns</code> keyword on a static NAT rule makes the ASA rewrite the A record inside DNS replies that cross it. An inside client asking a public resolver for <code>www.example.com</code> gets back 10.10.10.10 instead of 203.0.113.10, and connects directly &mdash; no hairpin needed.</p>
+<pre><code>object network SRV-WEB
+ host 10.10.10.10
+ nat (dmz,outside) static 203.0.113.10 dns
+
+<span class="cmt">! DNS inspection must be enabled, which it is by default</span>
+policy-map global_policy
+ class inspection_default
+  inspect dns preset_dns_map</code></pre>
+      <div class="tablewrap">
+        <table class="xlate">
+          <caption>The DNS reply, rewritten in flight</caption>
+          <thead><tr><th>Stage</th><th>A record in the reply</th></tr></thead>
+          <tbody>
+            <tr><td>Resolver &rarr; ASA</td><td>www.example.com &rarr; 203.0.113.10</td></tr>
+            <tr><td>ASA &rarr; inside client</td><td class="chg">www.example.com &rarr; 10.10.10.10</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="term">
+      <h3>Limits worth knowing</h3>
+      <ul>
+        <li><strong>DNSSEC breaks it.</strong> Rewriting the record invalidates the signature, so a validating resolver rejects the answer. This is increasingly a reason not to use doctoring at all.</li>
+        <li><strong>Encrypted DNS bypasses it.</strong> DoH and DoT traffic is opaque to the ASA, and modern clients increasingly default to it.</li>
+        <li>The DNS reply must traverse the ASA for the rewrite to happen &mdash; an internal resolver with its own upstream path is untouched.</li>
+        <li>Only A and AAAA records in replies are rewritten, not records inside other message types.</li>
+      </ul>
+      <div class="tip"><b>Where this is going</b>Split DNS is the durable answer and DNS doctoring is the legacy workaround. Know it because you will meet it in existing configurations, but prefer split DNS in anything you design now.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section class="block" id="vpn">
+  <div class="sechead">
+    <h2><span class="num">11</span>NAT with VPN</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="vpn"> Reviewed</label>
+  </div>
+  <p class="lede">The interaction that generates more tickets than any other. Worth understanding as a picture before as a configuration.</p>
+
+  <div class="figure">
+    <div class="figscroll">
+      <svg viewBox="0 0 760 316" role="img" aria-label="Without an exemption rule, VPN traffic is PATed and never enters the tunnel" font-size="13" font-family="var(--font-body)">
+        <defs>
+          <marker id="vpnarrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="var(--line-strong)"></path>
+          </marker>
+          <marker id="vpnbad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="var(--crit)"></path>
+          </marker>
+          <marker id="vpngood" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="var(--accent)"></path>
+          </marker>
+        </defs>
+        <text x="24" y="28" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--font-display)">Without an exemption rule the PAT rule matches first</text>
+        <text x="24" y="48" font-size="11.5" fill="var(--ink-3)">Traffic from 10.1.1.0/24 to the remote 172.16.0.0/16 behind a site-to-site tunnel</text>
+
+        <text x="24" y="88" font-size="11" font-weight="600" fill="var(--crit)" letter-spacing="0.05em">NO EXEMPTION</text>
+        <text x="24" y="206" font-size="11" font-weight="600" fill="var(--accent-ink)" letter-spacing="0.05em">WITH EXEMPTION</text>
+
+        <g stroke="var(--line-strong)" stroke-width="1.25" fill="none" marker-end="url(#vpnarrow)">
+          <path d="M194 128H246"></path>
+          <path d="M194 246H246"></path>
+        </g>
+        <g stroke="var(--crit)" stroke-width="1.25" fill="none" marker-end="url(#vpnbad)">
+          <path d="M466 128H512"></path>
+        </g>
+        <g stroke="var(--accent)" stroke-width="1.5" fill="none" marker-end="url(#vpngood)">
+          <path d="M466 246H512"></path>
+        </g>
+
+        <g>
+          <rect x="24" y="100" width="170" height="56" rx="7" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="109" y="123" text-anchor="middle" font-size="11.5" fill="var(--ink)">Inside host</text>
+          <text x="109" y="141" text-anchor="middle" font-size="11.5" fill="var(--ink-2)" font-family="var(--font-mono)">10.1.1.50</text>
+        </g>
+        <g>
+          <rect x="246" y="100" width="220" height="56" rx="7" fill="none" stroke="var(--crit)" stroke-width="1.25"></rect>
+          <text x="356" y="123" text-anchor="middle" font-size="11.5" fill="var(--ink)">Catch-all PAT matches</text>
+          <text x="356" y="141" text-anchor="middle" font-size="11.5" fill="var(--crit)" font-family="var(--font-mono)">src &rarr; 203.0.113.2</text>
+        </g>
+        <g>
+          <rect x="512" y="100" width="224" height="56" rx="7" fill="none" stroke="var(--crit)" stroke-width="1.25"></rect>
+          <text x="624" y="123" text-anchor="middle" font-size="11.5" fill="var(--ink)">Out the internet, in clear</text>
+          <text x="624" y="141" text-anchor="middle" font-size="11.5" fill="var(--crit)">tunnel never engaged</text>
+        </g>
+
+        <g>
+          <rect x="24" y="218" width="170" height="56" rx="7" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="109" y="241" text-anchor="middle" font-size="11.5" fill="var(--ink)">Inside host</text>
+          <text x="109" y="259" text-anchor="middle" font-size="11.5" fill="var(--ink-2)" font-family="var(--font-mono)">10.1.1.50</text>
+        </g>
+        <g>
+          <rect x="246" y="218" width="220" height="56" rx="7" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"></rect>
+          <text x="356" y="241" text-anchor="middle" font-size="11.5" fill="var(--ink)">Identity NAT, section 1</text>
+          <text x="356" y="259" text-anchor="middle" font-size="11.5" fill="var(--accent-ink)" font-family="var(--font-mono)">src unchanged</text>
+        </g>
+        <g>
+          <rect x="512" y="218" width="224" height="56" rx="7" fill="none" stroke="var(--accent)" stroke-width="1.25"></rect>
+          <text x="624" y="241" text-anchor="middle" font-size="11.5" fill="var(--ink)">Matches the crypto ACL</text>
+          <text x="624" y="259" text-anchor="middle" font-size="11.5" fill="var(--accent-ink)">into the tunnel</text>
+        </g>
+      </svg>
+    </div>
+    <p class="figcap">VPN NAT exemption &middot; the same traffic, two outcomes decided by rule order.</p>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Why it happens</h3>
+      <p>The crypto ACL selects interesting traffic by its <em>post-NAT</em> addresses. If the catch-all PAT rule matched first, the packet's source is now 203.0.113.2 &mdash; which does not match a crypto ACL written for 10.1.1.0/24. The packet misses the tunnel and leaves in clear text.</p>
+      <p>Order of operations explains it exactly: NAT is applied before the crypto map is consulted.</p>
+    </div>
+
+    <div class="term">
+      <h3>The fix</h3>
+<pre><code>object network REMOTE-NET
+ subnet 172.16.0.0 255.255.0.0
+
+nat (inside,outside) 1 source static INSIDE-NET INSIDE-NET \
+    destination static REMOTE-NET REMOTE-NET no-proxy-arp route-lookup
+
+<span class="cmt">! the crypto ACL then matches</span>
+access-list VPN-PARTNER extended permit ip 10.1.1.0 255.255.255.0 172.16.0.0 255.255.0.0</code></pre>
+      <p>Line <code>1</code> places it at the top of section 1, above anything else. Confirm with <code>show nat</code> that it really is first and that it is taking hits.</p>
+    </div>
+
+    <div class="term">
+      <h3>Deliberate NAT into a tunnel</h3>
+      <p>Sometimes you <em>want</em> translation &mdash; the peer has dictated the source range, or your real addresses overlap theirs.</p>
+<pre><code>object network OUR-VPN-SOURCE
+ subnet 192.168.99.0 255.255.255.0
+
+nat (inside,outside) 1 source dynamic INSIDE-NET OUR-VPN-SOURCE \
+    destination static REMOTE-NET REMOTE-NET
+
+<span class="cmt">! the crypto ACL must use the TRANSLATED source</span>
+access-list VPN-PARTNER extended permit ip 192.168.99.0 255.255.255.0 172.16.0.0 255.255.0.0</code></pre>
+      <div class="gotcha"><b>Crypto ACL follows NAT</b>When you deliberately NAT into a tunnel, the crypto ACL must describe the post-NAT source. Writing it with the real addresses produces a tunnel that builds phase 1, fails phase 2, and logs 402116.</div>
+    </div>
+
+    <div class="term">
+      <h3>Remote access VPN</h3>
+<pre><code><span class="cmt">! exempt pool-to-inside traffic from PAT</span>
+object network VPN-POOL
+ subnet 10.9.0.0 255.255.255.0
+
+nat (outside,inside) 1 source static VPN-POOL VPN-POOL \
+    destination static INSIDE-NET INSIDE-NET no-proxy-arp route-lookup
+
+<span class="cmt">! and if clients browse the internet through the ASA</span>
+same-security-traffic permit intra-interface
+nat (outside,outside) source dynamic VPN-POOL interface</code></pre>
+      <p>Two separate needs: exemption so clients reach internal resources untranslated, and a hairpin PAT so their internet traffic can leave. Missing the second is the classic "VPN connects but no internet" fault.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 12 ============ -->
+<section class="block" id="patscale">
+  <div class="sechead">
+    <h2><span class="num">12</span>PAT scaling and tuning</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="patscale"> Reviewed</label>
+  </div>
+  <p class="lede">Each mapped address offers roughly 65,000 ports. On a large network that runs out, and the symptoms are intermittent rather than obvious.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Per-session PAT</h3>
+      <p>By default the ASA holds a PAT translation for a short period after the connection closes, in case of late packets. <strong>Per-session</strong> PAT tears the xlate down immediately with the connection, which hugely increases the achievable connection rate.</p>
+<pre><code>show run all xlate                         <span class="cmt">! see the defaults</span>
+
+xlate per-session permit tcp any4 any4
+xlate per-session permit udp any4 any4 eq domain</code></pre>
+      <p>TCP and DNS over UDP are per-session by default on modern releases. Other UDP traffic is multi-session, because many UDP applications expect the mapping to persist &mdash; so be careful about blanket per-session UDP rules.</p>
+      <div class="tip"><b>First thing to check on PAT exhaustion</b>If connection rate is high but concurrent connections are modest, a multi-session default is probably holding xlates after teardown. <code>show xlate count</code> against <code>show conn count</code> tells you &mdash; far more xlates than conns is the signature.</div>
+    </div>
+
+    <div class="term">
+      <h3>Extended PAT</h3>
+<pre><code>object network INSIDE-NET
+ nat (inside,outside) dynamic pat-pool PAT-POOL extended</code></pre>
+      <p>Normally a mapped address and port pair must be unique. <strong>Extended PAT</strong> makes the translation unique per <em>destination</em>, so the same mapped port can be reused for different destinations &mdash; multiplying capacity substantially.</p>
+      <p>The cost is memory and the fact that some stateful upstream devices dislike it. It also cannot be combined with certain other options; check the release notes for your version.</p>
+    </div>
+
+    <div class="term">
+      <h3>Port range options</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Keyword</th><th>Effect</th></tr></thead>
+          <tbody>
+            <tr><td><code>flat</code></td><td>Use 1024&ndash;65535 as one flat range instead of the three-tier allocation. More usable ports per address</td></tr>
+            <tr><td><code>include-reserve</code></td><td>Also use 1&ndash;1023. Use with <code>flat</code>, and only where nothing upstream objects to low source ports</td></tr>
+            <tr><td><code>round-robin</code></td><td>Cycle through pool addresses rather than filling each in turn</td></tr>
+            <tr><td><code>extended</code></td><td>Per-destination uniqueness, as above</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code>object network INSIDE-NET
+ nat (inside,outside) dynamic pat-pool PAT-POOL flat include-reserve round-robin</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Monitoring</h3>
+<pre><code>show nat pool
+show xlate count
+show conn count
+show local-host | include host|conns
+show perfmon | include xlate</code></pre>
+      <p>Build a baseline before you need it. <code>show nat pool</code> gives per-address port allocation, and a single address climbing toward its ceiling while the others sit idle usually means round-robin is off and the pool is being filled sequentially &mdash; which is fine, until it is not.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 13 ============ -->
+<section class="block" id="ipv6">
+  <div class="sechead">
+    <h2><span class="num">13</span>IPv6 NAT</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="ipv6"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The three flavours</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Type</th><th>Translates</th><th>Typical use</th></tr></thead>
+          <tbody>
+            <tr><td><strong>NAT64</strong></td><td>IPv6 source to IPv4</td><td>IPv6-only clients reaching IPv4-only servers. Paired with DNS64</td></tr>
+            <tr><td><strong>NAT46</strong></td><td>IPv4 source to IPv6</td><td>IPv4 clients reaching IPv6-only servers. Much rarer</td></tr>
+            <tr><td><strong>NAT66</strong></td><td>IPv6 to IPv6</td><td>Prefix translation, usually for multihoming or to hide internal addressing</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="term">
+      <h3>NAT64 outline</h3>
+<pre><code>object network IPV6-CLIENTS
+ subnet 2001:db8:1::/64
+
+object network PAT-POOL-V4
+ range 203.0.113.70 203.0.113.79
+
+<span class="cmt">! source: IPv6 clients PAT to an IPv4 pool</span>
+nat (inside,outside) source dynamic IPV6-CLIENTS pat-pool PAT-POOL-V4
+
+<span class="cmt">! destination: the well-known NAT64 prefix maps to real IPv4</span>
+object network NAT64-PREFIX
+ subnet 64:ff9b::/96
+object network ANY-V4
+ subnet 0.0.0.0 0.0.0.0
+
+nat (inside,outside) source dynamic IPV6-CLIENTS pat-pool PAT-POOL-V4 \
+    destination static NAT64-PREFIX ANY-V4</code></pre>
+      <p>DNS64 is the other half: a resolver that synthesises a AAAA record inside <code>64:ff9b::/96</code> when a name has only an A record, so the client sends IPv6 traffic that the ASA can translate. The ASA does not provide DNS64 itself &mdash; that is your resolver's job.</p>
+      <div class="tip"><b>Check the version</b>IPv6 NAT syntax and capability changed across releases, and some forms are not supported in every mode. Validate against the configuration guide for your exact version before building this in production rather than copying any example, including this one.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 14 ============ -->
+<section class="block" id="troubleshoot">
+  <div class="sechead">
+    <h2><span class="num">14</span>Troubleshooting NAT</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="troubleshoot"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The workflow</h3>
+      <ol>
+        <li><code>packet-tracer</code> the flow and read the <strong>UN-NAT</strong> and <strong>NAT</strong> phases. They name the exact rule that matched.</li>
+        <li><code>show nat</code> &mdash; is that the rule you expected, and where does yours sit relative to it?</li>
+        <li><code>show nat detail</code> &mdash; confirm the objects expanded to the addresses you think they did.</li>
+        <li><code>show xlate local &lt;host&gt;</code> &mdash; what translation actually exists right now?</li>
+        <li><code>clear asp drop</code>, reproduce, <code>show asp drop</code> &mdash; any NAT-related drops?</li>
+        <li><code>show logging | include 305</code> &mdash; the 305xxx family is all translation messages.</li>
+      </ol>
+    </div>
+
+    <div class="term">
+      <h3>Reading packet-tracer for NAT</h3>
+<pre><code>packet-tracer input inside tcp 10.1.1.50 51000 172.16.5.10 445 detailed
+
+Phase: 2
+Type: UN-NAT
+Subtype: static
+Result: ALLOW
+Config:
+nat (inside,outside) source static INSIDE-NET INSIDE-NET destination static REMOTE-NET REMOTE-NET
+Additional Information:
+NAT divert to egress interface outside</code></pre>
+      <p>The <code>Config:</code> block is the authoritative answer to "which rule matched". If it shows a rule you did not expect, you have a shadowing problem, not a syntax problem.</p>
+    </div>
+
+    <div class="term">
+      <h3>Commands</h3>
+<pre><code>show nat                                   <span class="cmt">! evaluation order + hit counts</span>
+show nat detail                            <span class="cmt">! expanded objects</span>
+show nat pool                              <span class="cmt">! PAT utilisation</span>
+show run nat
+show run object network
+
+show xlate
+show xlate detail
+show xlate local 10.1.1.50
+show xlate global 203.0.113.10
+show xlate count
+
+clear xlate local 10.1.1.50                <span class="cmt">! disruptive, kills conns too</span>
+clear nat counters
+
+show asp drop | include nat
+capture NATDROP type asp-drop nat-xlate-failed</code></pre>
+      <div class="gotcha"><b>clear xlate is not harmless</b>It tears down the connections associated with the translations it removes. On a production firewall <code>clear xlate</code> with no arguments drops every NATed session on the box. Always scope it with <code>local</code> or <code>global</code>.</div>
+    </div>
+
+    <div class="term">
+      <h3>NAT-related syslog messages</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th class="num-col">ID</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td class="num-col">305005</td><td>No translation group found. There is no NAT rule covering this traffic and one is required</td></tr>
+            <tr><td class="num-col">305006</td><td>Translation creation failed. Usually pool exhaustion, or a rule that cannot be applied</td></tr>
+            <tr><td class="num-col">305009 / 305010</td><td>Built / Teardown static translation</td></tr>
+            <tr><td class="num-col">305011 / 305012</td><td>Built / Teardown dynamic translation (PAT)</td></tr>
+            <tr><td class="num-col">201002 / 201011</td><td>Connection limit exceeded &mdash; often confused with NAT exhaustion</td></tr>
+            <tr><td class="num-col">402116</td><td>IPsec packet did not match the SA's proxy ID &mdash; nearly always a NAT or crypto ACL mismatch</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="term">
+      <h3>ASP drops that mean NAT</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Drop reason</th><th>What it tells you</th></tr></thead>
+          <tbody>
+            <tr><td><code>nat-xlate-failed</code></td><td>A translation was required and could not be created</td></tr>
+            <tr><td><code>nat-no-xlate-to-pat-pool</code></td><td>PAT pool exhausted, or no pool address available for this flow</td></tr>
+            <tr><td><code>nat-rpf-failed</code></td><td>The packet arrived on an interface inconsistent with the matched NAT rule's interface pair. Asymmetric routing, or the wrong pair configured</td></tr>
+            <tr><td><code>no-route</code></td><td>Not NAT itself, but often a consequence &mdash; NAT divert sent the packet to an interface with no route to the destination</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tip"><b>nat-rpf-failed in one line</b>&ldquo;Your NAT rule says this traffic belongs on interface X, but it showed up on interface Y.&rdquo; Check the interface pair in the rule against the actual path.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 15 ============ -->
+<section class="block" id="patterns">
+  <div class="sechead">
+    <h2><span class="num">15</span>Failure patterns</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="patterns"> Reviewed</label>
+  </div>
+  <p class="lede">Symptom to cause, for the faults that recur. This is the table to keep open while troubleshooting.</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>Symptom &rarr; cause &rarr; fix</caption>
+      <thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Published server unreachable from outside; ACL looks correct</td>
+          <td>ACL written against the mapped address</td>
+          <td>Permit the <strong>real</strong> address. Un-NAT runs before the ACL</td>
+        </tr>
+        <tr>
+          <td>Site-to-site tunnel is up but passes no traffic</td>
+          <td>No NAT exemption, or it sits below the catch-all PAT</td>
+          <td>Identity NAT at line 1 of section 1 with <code>no-proxy-arp route-lookup</code></td>
+        </tr>
+        <tr>
+          <td>Tunnel builds phase 1, fails phase 2; syslog 402116</td>
+          <td>Crypto ACL does not match the post-NAT addresses, or peers disagree on selectors</td>
+          <td>Mirror the crypto ACL exactly; if you NAT into the tunnel, use the translated source</td>
+        </tr>
+        <tr>
+          <td>Your rule has zero hits but traffic is translated anyway</td>
+          <td>A broader rule above it matched first</td>
+          <td><code>show nat</code> for true order; move yours up with a line number, or push the broad one to <code>after-auto</code></td>
+        </tr>
+        <tr>
+          <td>Intermittent failures for some users only</td>
+          <td>PAT pool exhaustion</td>
+          <td><code>show nat pool</code>. Enlarge the pool, add <code>extended</code>, enable per-session PAT, or add an interface fallback</td>
+        </tr>
+        <tr>
+          <td>Internal users cannot reach an internal server by its public name</td>
+          <td>No hairpin or U-turn NAT configured</td>
+          <td>Split DNS if you control the resolver; otherwise U-turn NAT translating <em>both</em> source and destination</td>
+        </tr>
+        <tr>
+          <td>Hairpin rule looks right but traffic still fails</td>
+          <td><code>same-security-traffic permit intra-interface</code> missing</td>
+          <td>Add it. Required whenever traffic enters and leaves the same interface</td>
+        </tr>
+        <tr>
+          <td>Traffic leaves the wrong interface after adding a NAT rule</td>
+          <td>NAT divert overriding the routing table</td>
+          <td>Add <code>route-lookup</code> to the manual NAT rule</td>
+        </tr>
+        <tr>
+          <td>Some hosts in a subnet unreachable after a NAT change; ARP looks odd</td>
+          <td>ASA proxy-ARPing for addresses it should not own</td>
+          <td>Add <code>no-proxy-arp</code>; verify with <code>show arp</code></td>
+        </tr>
+        <tr>
+          <td>ASP drop <code>nat-rpf-failed</code> incrementing</td>
+          <td>Packets arriving on an interface inconsistent with the rule's interface pair</td>
+          <td>Fix the asymmetric path, or correct the interface pair in the rule</td>
+        </tr>
+        <tr>
+          <td>VPN clients connect but have no internet</td>
+          <td>Missing hairpin PAT and/or intra-interface permit</td>
+          <td><code>same-security-traffic permit intra-interface</code> plus <code>nat (outside,outside)</code> dynamic to interface</td>
+        </tr>
+        <tr>
+          <td>Server logs show the firewall's address instead of real clients</td>
+          <td>Source translated by a U-turn or hairpin rule</td>
+          <td>Expected behaviour. Use split DNS so clients go direct, or X-Forwarded-For at the application layer</td>
+        </tr>
+        <tr>
+          <td>Works for existing sessions, fails for new ones after a change</td>
+          <td>Old connections still using the previous translation</td>
+          <td><code>clear conn address &lt;host&gt;</code> and <code>clear xlate local &lt;host&gt;</code>, scoped</td>
+        </tr>
+        <tr>
+          <td>Static PAT on 443 does not work on the outside interface</td>
+          <td>ASDM or AnyConnect already listening on that port</td>
+          <td>Move the ASA service port, or publish on a different public address</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+</main>
+</div>
+
+<footer>
+  <p>NAT syntax, keyword availability and defaults vary by ASA release. Verify against the configuration guide and command reference for your exact version before applying anything here to production, and test in a lab where the change affects existing translations.</p>
+  <p>Examples use documentation address ranges (RFC 5737: 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24), RFC 1918 space, and the IPv6 documentation prefix 2001:db8::/32 (RFC 3849).</p>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var q = document.getElementById('q');
+  var clearBtn = document.getElementById('clearq');
+  var countEl = document.getElementById('count');
+  var noResult = document.getElementById('noresult');
+  var sections = Array.prototype.slice.call(document.querySelectorAll('section.block'));
+  var navLinks = Array.prototype.slice.call(document.querySelectorAll('nav.index a'));
+
+  var items = [];
+  sections.forEach(function(sec){
+    Array.prototype.slice.call(sec.querySelectorAll('.term')).forEach(function(el){
+      items.push({el: el, sec: sec, text: (el.textContent || '').toLowerCase()});
+    });
+  });
+
+  var tables = [];
+  sections.forEach(function(sec){
+    Array.prototype.slice.call(sec.querySelectorAll('.tablewrap')).forEach(function(w){
+      if(w.closest('.term')){ return; }
+      var rows = Array.prototype.slice.call(w.querySelectorAll('tbody tr')).map(function(tr){
+        return {tr: tr, text: (tr.textContent || '').toLowerCase()};
+      });
+      tables.push({wrap: w, sec: sec, rows: rows});
+    });
+  });
+
+  var totalItems = items.length + tables.reduce(function(n, t){ return n + t.rows.length; }, 0);
+
+  function applyFilter(raw){
+    var term = (raw || '').trim().toLowerCase();
+    var filtering = term.length > 0;
+    document.body.classList.toggle('filtering', filtering);
+    clearBtn.hidden = !filtering;
+
+    if(!filtering){
+      items.forEach(function(it){ it.el.style.display = ''; });
+      tables.forEach(function(t){
+        t.wrap.style.display = '';
+        t.rows.forEach(function(r){ r.tr.style.display = ''; });
+      });
+      sections.forEach(function(s){ s.style.display = ''; });
+      noResult.style.display = 'none';
+      countEl.textContent = totalItems + ' entries';
+      return;
+    }
+
+    var shown = 0;
+    var live = {};
+
+    items.forEach(function(it){
+      var hit = it.text.indexOf(term) !== -1;
+      it.el.style.display = hit ? '' : 'none';
+      if(hit){ shown++; live[it.sec.id] = true; }
+    });
+
+    tables.forEach(function(t){
+      var any = false;
+      t.rows.forEach(function(r){
+        var hit = r.text.indexOf(term) !== -1;
+        r.tr.style.display = hit ? '' : 'none';
+        if(hit){ any = true; shown++; }
+      });
+      t.wrap.style.display = any ? '' : 'none';
+      if(any){ live[t.sec.id] = true; }
+    });
+
+    sections.forEach(function(s){ s.style.display = live[s.id] ? '' : 'none'; });
+    noResult.style.display = shown ? 'none' : 'block';
+    countEl.textContent = shown + ' of ' + totalItems + ' entries';
+  }
+
+  q.addEventListener('input', function(){ applyFilter(q.value); });
+  clearBtn.addEventListener('click', function(){ q.value = ''; applyFilter(''); q.focus(); });
+  q.addEventListener('keydown', function(e){
+    if(e.key === 'Escape'){ q.value = ''; applyFilter(''); }
+  });
+  document.addEventListener('keydown', function(e){
+    if(e.key === '/' && document.activeElement !== q){
+      e.preventDefault(); q.focus(); q.select();
+    }
+  });
+
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('.reviewed input'));
+  var fill = document.getElementById('progfill');
+  var ptxt = document.getElementById('progtxt');
+  var KEY = 'asa-nat-reviewed-v1';
+
+  function load(){
+    try{
+      var raw = window.localStorage.getItem(KEY);
+      return raw ? JSON.parse(raw) : {};
+    }catch(err){ return {}; }
+  }
+  function save(state){
+    try{ window.localStorage.setItem(KEY, JSON.stringify(state)); }catch(err){ /* storage unavailable */ }
+  }
+  function paint(){
+    var done = boxes.filter(function(b){ return b.checked; }).length;
+    ptxt.textContent = done + '/' + boxes.length;
+    fill.style.width = (boxes.length ? (done / boxes.length * 100) : 0) + '%';
+  }
+  var state = load();
+  boxes.forEach(function(b){
+    if(state[b.dataset.sec]){ b.checked = true; }
+    b.addEventListener('change', function(){
+      var s = load();
+      if(b.checked){ s[b.dataset.sec] = 1; } else { delete s[b.dataset.sec]; }
+      save(s);
+      paint();
+    });
+  });
+  paint();
+
+  var tbtn = document.getElementById('themebtn');
+  var TKEY = 'asa-nat-theme-v1';
+  try{
+    var saved = window.localStorage.getItem(TKEY);
+    if(saved === 'dark' || saved === 'light'){ document.documentElement.setAttribute('data-theme', saved); }
+  }catch(err){ /* ignore */ }
+  tbtn.addEventListener('click', function(){
+    var cur = document.documentElement.getAttribute('data-theme');
+    var isDark;
+    if(cur){ isDark = cur === 'dark'; }
+    else { isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches; }
+    var next = isDark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try{ window.localStorage.setItem(TKEY, next); }catch(err){ /* ignore */ }
+  });
+
+  if('IntersectionObserver' in window){
+    var obs = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(!en.isIntersecting){ return; }
+        navLinks.forEach(function(a){
+          a.classList.toggle('on', a.getAttribute('href') === '#' + en.target.id);
+        });
+      });
+    }, {rootMargin: '-72px 0px -70% 0px', threshold: 0});
+    sections.forEach(function(s){ obs.observe(s); });
+  }
+
+  applyFilter('');
+})();
+</script>
+</body>
+</html>
