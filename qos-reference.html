@@ -1,0 +1,2348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QoS Deep Dive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: fixed left index, scrolling reference column, live filter across terms, scenarios and table rows. */
+:root{
+  --bg:#f5f7f9; --surface:#ffffff; --surface-2:#eceff4; --surface-3:#e3e8ee;
+  --ink:#141e28; --ink-2:#4e6070; --ink-3:#7c8d9b;
+  --line:#d9e0e7; --line-strong:#c3cdd6;
+  --accent:#0d7a84; --accent-ink:#0a5e66; --accent-soft:rgba(13,122,132,.10);
+  --amber:#9a5c08; --amber-soft:rgba(154,92,8,.10);
+  --good:#1a7347; --good-soft:rgba(26,115,71,.09);
+  --crit:#a92a20; --crit-soft:rgba(169,42,32,.09);
+  --font-display:"IBM Plex Serif",Georgia,"Times New Roman",serif;
+  --font-body:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d141a; --surface:#141d25; --surface-2:#1a242d; --surface-3:#212d37;
+    --ink:#e4ecf2; --ink-2:#9db0be; --ink-3:#6f8393;
+    --line:#253239; --line-strong:#334450;
+    --accent:#3ab8c0; --accent-ink:#5fd0d6; --accent-soft:rgba(58,184,192,.14);
+    --amber:#dda550; --amber-soft:rgba(221,165,80,.13);
+    --good:#48c184; --good-soft:rgba(72,193,132,.12);
+    --crit:#ef7065; --crit-soft:rgba(239,112,101,.13);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d141a; --surface:#141d25; --surface-2:#1a242d; --surface-3:#212d37;
+  --ink:#e4ecf2; --ink-2:#9db0be; --ink-3:#6f8393;
+  --line:#253239; --line-strong:#334450;
+  --accent:#3ab8c0; --accent-ink:#5fd0d6; --accent-soft:rgba(58,184,192,.14);
+  --amber:#dda550; --amber-soft:rgba(221,165,80,.13);
+  --good:#48c184; --good-soft:rgba(72,193,132,.12);
+  --crit:#ef7065; --crit-soft:rgba(239,112,101,.13);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.6}
+h1,h2,h3{font-family:var(--font-display);text-wrap:balance;margin:0}
+a{color:var(--accent-ink)}
+code,kbd{font-family:var(--font-mono);font-size:.88em}
+code{background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:.08em .34em;white-space:nowrap}
+pre{background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:13px 15px;overflow-x:auto;margin:0 0 11px;font-family:var(--font-mono);font-size:12.5px;line-height:1.62;color:var(--ink)}
+pre code{background:none;border:0;padding:0;white-space:pre;font-size:inherit}
+.cmt{color:var(--ink-3)}
+.hl{color:var(--accent-ink);font-weight:500}
+.bad{color:var(--crit);font-weight:500}
+
+.masthead{background:var(--surface);border-bottom:1px solid var(--line)}
+.masthead-in{max-width:1200px;margin:0 auto;padding:26px 20px 22px;display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;justify-content:space-between}
+.brand h1{font-size:27px;line-height:1.2;letter-spacing:-.01em}
+.brand p{margin:6px 0 0;color:var(--ink-2);font-size:14px;max-width:64ch}
+.eyebrow{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--accent-ink);background:var(--accent-soft);border-radius:3px;padding:3px 8px;margin-bottom:10px}
+.themebtn{font:inherit;font-size:13px;font-weight:500;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:7px 13px;cursor:pointer;white-space:nowrap}
+.themebtn:hover{border-color:var(--line-strong);color:var(--ink)}
+
+.toolbar{position:sticky;top:0;z-index:30;background:var(--bg);border-bottom:1px solid var(--line)}
+.toolbar-in{max-width:1200px;margin:0 auto;padding:12px 20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.searchwrap{position:relative;flex:1 1 300px;min-width:0}
+#q{width:100%;font:inherit;font-size:14px;color:var(--ink);background:var(--surface);border:1px solid var(--line-strong);border-radius:7px;padding:9px 34px 9px 12px}
+#q::placeholder{color:var(--ink-3)}
+#q:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+.clearq{position:absolute;right:5px;top:50%;transform:translateY(-50%);border:0;background:none;color:var(--ink-3);font-size:17px;line-height:1;cursor:pointer;padding:5px 7px;border-radius:4px}
+.clearq:hover{color:var(--ink)}
+.count{font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.progwrap{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink-2);white-space:nowrap}
+.progbar{width:92px;height:6px;border-radius:3px;background:var(--surface-3);overflow:hidden}
+.progfill{height:100%;width:0;background:var(--accent);transition:width .25s ease}
+
+.shell{max-width:1200px;margin:0 auto;padding:0 20px 80px;display:flex;gap:34px;align-items:flex-start}
+nav.index{position:sticky;top:64px;flex:0 0 232px;width:232px;max-height:calc(100vh - 84px);overflow-y:auto;padding:22px 0 20px}
+nav.index h2{font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);font-family:var(--font-body);font-weight:600;margin:0 0 9px}
+nav.index ol{list-style:none;margin:0;padding:0;counter-reset:nav}
+nav.index li{counter-increment:nav}
+nav.index a{display:flex;gap:9px;padding:5px 9px;border-radius:5px;color:var(--ink-2);text-decoration:none;font-size:13.5px;line-height:1.35}
+nav.index a::before{content:counter(nav,decimal-leading-zero);color:var(--ink-3);font-variant-numeric:tabular-nums;font-size:11.5px;padding-top:2px}
+nav.index a:hover{background:var(--surface-2);color:var(--ink)}
+nav.index a.on{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
+nav.index a.on::before{color:var(--accent-ink)}
+main{flex:1 1 auto;min-width:0;padding:22px 0 0}
+
+section.block{margin-bottom:38px;scroll-margin-top:72px}
+.sechead{display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap;padding-bottom:9px;border-bottom:2px solid var(--line-strong);margin-bottom:16px}
+.sechead h2{font-size:21px;letter-spacing:-.005em}
+.sechead .num{color:var(--ink-3);font-family:var(--font-mono);font-size:12.5px;margin-right:9px}
+.lede{color:var(--ink-2);font-size:14.5px;margin:0 0 16px;max-width:68ch}
+.reviewed{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-3);cursor:pointer;user-select:none}
+.reviewed input{accent-color:var(--accent);width:14px;height:14px;cursor:pointer}
+
+.terms{display:grid;gap:11px}
+.term{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--line-strong);border-radius:7px;padding:13px 16px}
+.term h3{font-family:var(--font-body);font-size:14.5px;font-weight:700;letter-spacing:-.003em;margin:0 0 5px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+.term h3 .exp{font-weight:400;font-size:12.5px;color:var(--ink-3);font-family:var(--font-mono)}
+.term p{margin:0 0 7px;color:var(--ink-2);font-size:14px}
+.term p:last-child{margin-bottom:0}
+.term strong{color:var(--ink);font-weight:600}
+.term ul,.term ol{margin:6px 0 0;padding-left:20px;color:var(--ink-2);font-size:14px}
+.term li{margin-bottom:4px}
+.term li::marker{color:var(--ink-3)}
+.term .tablewrap,.term pre{margin-top:10px}
+
+.tip{margin-top:9px;padding:8px 11px;border-radius:5px;background:var(--amber-soft);border-left:2px solid var(--amber);font-size:13.3px;color:var(--ink-2)}
+.tip b{color:var(--amber);font-weight:600;letter-spacing:.02em;font-size:11px;text-transform:uppercase;display:block;margin-bottom:2px}
+.gotcha{margin-top:9px;padding:8px 11px;border-radius:5px;background:var(--crit-soft);border-left:2px solid var(--crit);font-size:13.3px;color:var(--ink-2)}
+.gotcha b{color:var(--crit);font-weight:600;letter-spacing:.02em;font-size:11px;text-transform:uppercase;display:block;margin-bottom:2px}
+
+.scn{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:7px;padding:0;margin-bottom:12px;overflow:hidden}
+.scn > summary{cursor:pointer;padding:13px 16px;font-weight:700;font-size:14.5px;color:var(--ink);list-style:none;display:flex;gap:11px;align-items:flex-start}
+.scn > summary::-webkit-details-marker{display:none}
+.scn > summary::before{content:attr(data-n);flex:0 0 22px;height:22px;border-radius:5px;background:var(--accent-soft);color:var(--accent-ink);font-size:11.5px;font-weight:700;display:grid;place-items:center;margin-top:1px;font-family:var(--font-mono)}
+.scn > summary:hover{color:var(--accent-ink)}
+.scn[open] > summary{border-bottom:1px solid var(--line);background:var(--surface-2)}
+.scn .body{padding:14px 16px 16px}
+.scn .body p{margin:0 0 8px;color:var(--ink-2);font-size:14px}
+.scn .body ul,.scn .body ol{margin:6px 0 10px;padding-left:20px;color:var(--ink-2);font-size:14px}
+.scn .body li{margin-bottom:4px}
+.scn .body strong{color:var(--ink);font-weight:600}
+.step{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin:14px 0 6px;display:block}
+.step:first-child{margin-top:0}
+.verdict{margin-top:10px;padding:9px 12px;border-radius:5px;background:var(--good-soft);border-left:2px solid var(--good);font-size:13.5px;color:var(--ink-2)}
+.verdict b{color:var(--good);font-weight:600;letter-spacing:.02em;font-size:11px;text-transform:uppercase;display:block;margin-bottom:2px}
+
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:7px;background:var(--surface);margin:0 0 11px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:540px}
+caption{text-align:left;padding:11px 14px 0;font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+th,td{text-align:left;padding:8px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+thead th{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:600;background:var(--surface-2);white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+td code{white-space:nowrap}
+.num-col{font-variant-numeric:tabular-nums;white-space:nowrap}
+.mono-col{font-family:var(--font-mono);font-size:12.5px;white-space:nowrap}
+
+.figure{background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:6px 6px 0;margin:0 0 11px}
+.figscroll{overflow-x:auto}
+.figscroll svg{display:block;width:100%;min-width:680px;height:auto}
+.figcap{padding:6px 12px 11px;font-size:12.5px;color:var(--ink-3)}
+
+.noresult{display:none;padding:26px;text-align:center;color:var(--ink-2);background:var(--surface);border:1px dashed var(--line-strong);border-radius:7px}
+body.filtering .lede,body.filtering .reviewed,body.filtering .figure{display:none}
+
+footer{max-width:1200px;margin:0 auto;padding:22px 20px 40px;border-top:1px solid var(--line);color:var(--ink-3);font-size:12.5px}
+footer p{margin:0 0 5px;max-width:78ch}
+footer a{color:var(--accent-ink)}
+
+@media (max-width:900px){
+  .shell{flex-direction:column;gap:0;padding-bottom:56px}
+  nav.index{position:sticky;top:57px;z-index:20;width:auto;flex:none;max-height:none;padding:9px 0;background:var(--bg);border-bottom:1px solid var(--line);overflow-x:auto;overflow-y:hidden}
+  nav.index h2{display:none}
+  nav.index ol{display:flex;gap:5px;white-space:nowrap}
+  nav.index a{border:1px solid var(--line);background:var(--surface);padding:5px 11px}
+  section.block{scroll-margin-top:118px}
+  .toolbar-in{padding:9px 20px}
+  .progwrap{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+@media print{.toolbar,nav.index,.themebtn{display:none}.shell{display:block}.scn .body{display:block !important}}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-in">
+    <div class="brand">
+      <span class="eyebrow">Network services deep dive</span>
+      <h1>Quality of Service</h1>
+      <p>The ToS byte at bit level, every PHB and what it is for, queuing and scheduling, policing against shaping with the token-bucket maths, campus and WAN designs, and ten real incidents where the QoS policy was the problem.</p>
+    </div>
+    <button class="themebtn" id="themebtn" type="button">Switch theme</button>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="toolbar-in">
+    <div class="searchwrap">
+      <input id="q" type="search" placeholder="Filter: try EF, AF41, Bc, LLQ, WRED, microburst&hellip;" autocomplete="off" aria-label="Filter content">
+      <button class="clearq" id="clearq" type="button" aria-label="Clear filter" hidden>&times;</button>
+    </div>
+    <span class="count" id="count"></span>
+    <div class="progwrap">
+      <span>Reviewed</span>
+      <span class="progbar"><span class="progfill" id="progfill"></span></span>
+      <span class="num-col" id="progtxt">0/19</span>
+    </div>
+  </div>
+</div>
+
+<div class="shell">
+<nav class="index" aria-label="Sections">
+  <h2>Sections</h2>
+  <ol>
+    <li><a href="#fundamentals">Fundamentals</a></li>
+    <li><a href="#topology">Lab topology</a></li>
+    <li><a href="#tosbyte">The ToS byte</a></li>
+    <li><a href="#phb">DSCP and PHBs</a></li>
+    <li><a href="#classification">Classification</a></li>
+    <li><a href="#mqc">MQC</a></li>
+    <li><a href="#queuing">Queuing</a></li>
+    <li><a href="#llq">LLQ &amp; bandwidth</a></li>
+    <li><a href="#wred">WRED and ECN</a></li>
+    <li><a href="#policing">Policing</a></li>
+    <li><a href="#shaping">Shaping</a></li>
+    <li><a href="#hqos">Hierarchical QoS</a></li>
+    <li><a href="#campus">Campus switch QoS</a></li>
+    <li><a href="#wan">WAN and MPLS</a></li>
+    <li><a href="#wireless">Wireless QoS</a></li>
+    <li><a href="#design">Design guidance</a></li>
+    <li><a href="#verification">Verification</a></li>
+    <li><a href="#scenarios">Real-world scenarios</a></li>
+    <li><a href="#commands">Command reference</a></li>
+  </ol>
+</nav>
+
+<main>
+<div class="noresult" id="noresult">Nothing matches that filter. Try a shorter word, or a term such as <code>EF</code>, <code>shaper</code>, <code>drop</code>.</div>
+
+<!-- ============ 1 ============ -->
+<section class="block" id="fundamentals">
+  <div class="sechead">
+    <h2><span class="num">01</span>Fundamentals</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="fundamentals"> Reviewed</label>
+  </div>
+  <p class="lede">QoS does not create bandwidth. It decides who suffers when there is not enough, and it only does anything at all at a point of congestion.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The four impairments</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Impairment</th><th>What it is</th><th>Voice target</th><th>Caused by</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Bandwidth</strong></td><td>Available throughput</td><td>~80 kbps per G.711 call with overhead</td><td>Link capacity, contention</td></tr>
+            <tr><td><strong>Delay (latency)</strong></td><td>One-way transit time</td><td><strong>&lt; 150 ms</strong> one-way end to end</td><td>Propagation, serialisation, queuing</td></tr>
+            <tr><td><strong>Jitter</strong></td><td>Variation in delay</td><td><strong>&lt; 30 ms</strong></td><td>Variable queue depth</td></tr>
+            <tr><td><strong>Loss</strong></td><td>Packets discarded</td><td><strong>&lt; 1%</strong></td><td>Queue overflow, policing, errors</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Of the four, only <strong>queuing delay and loss</strong> are things QoS can influence. Propagation delay is physics, and serialisation delay is a function of link speed and packet size. If your round trip to the data centre is 180 ms because it is on another continent, no QoS policy will fix it.</p>
+      <div class="tip"><b>The question to ask first</b>"Where is the congestion?" QoS configured on an interface that never fills does nothing but consume CPU and confuse the next engineer. Find the bottleneck &mdash; usually a WAN circuit, a sub-line-rate handoff, or an uplink oversubscription ratio &mdash; and apply policy there.</div>
+    </div>
+
+    <div class="term">
+      <h3>The three models</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Model</th><th>How it works</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Best Effort</strong></td><td>No differentiation. FIFO, tail drop</td><td>The default everywhere</td></tr>
+            <tr><td><strong>IntServ</strong></td><td>Per-flow reservation signalled end to end with RSVP</td><td>Does not scale. Survives in MPLS-TE and some voice admission control</td></tr>
+            <tr><td><strong>DiffServ</strong></td><td>Packets marked into a small number of classes; each hop applies a per-hop behaviour</td><td><strong>What everyone deploys</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>DiffServ scales because routers hold state per <em>class</em>, not per <em>flow</em>. A core router with a million flows still has six or twelve queues. The trade-off is that there is no end-to-end guarantee &mdash; only a consistent treatment at each hop, which is why marking consistency across a network matters so much.</p>
+    </div>
+
+    <div class="term">
+      <h3>The DiffServ toolkit</h3>
+      <ol>
+        <li><strong>Classification</strong> &mdash; identify which traffic is which.</li>
+        <li><strong>Marking</strong> &mdash; write that decision into the packet so later hops need not reclassify.</li>
+        <li><strong>Policing</strong> &mdash; enforce a rate by dropping or remarking excess.</li>
+        <li><strong>Shaping</strong> &mdash; enforce a rate by buffering excess.</li>
+        <li><strong>Queuing and scheduling</strong> &mdash; decide the order packets leave.</li>
+        <li><strong>Congestion avoidance</strong> &mdash; drop selectively <em>before</em> the queue is full.</li>
+        <li><strong>Link efficiency</strong> &mdash; fragmentation, interleaving, header compression. Mostly historical.</li>
+      </ol>
+      <p>Classify and mark once, as close to the source as possible. Everything else is applied where congestion occurs.</p>
+    </div>
+
+    <div class="term">
+      <h3>Trust boundary</h3>
+      <p>The point where you begin believing the markings in arriving packets. Inside it, markings are trusted and acted on. Outside it, they are rewritten or cleared.</p>
+      <p>Put it as close to the edge as you can while still controlling it &mdash; normally the <strong>access switch port</strong>. A PC can set DSCP 46 on its own traffic; if you trust the access port unconditionally, any user can put their file transfer in the voice queue.</p>
+<pre><code><span class="cmt">! Access port with an IP phone and a PC behind it</span>
+interface GigabitEthernet1/0/10
+ <span class="cmt">! trust the phone, but have the phone re-mark the PC to 0</span>
+ auto qos trust device cisco-phone
+ <span class="cmt">! or explicitly</span>
+ trust device cisco-phone
+ service-policy input ACCESS-EDGE-IN</code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section class="block" id="topology">
+  <div class="sechead">
+    <h2><span class="num">02</span>Lab topology</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="topology"> Reviewed</label>
+  </div>
+  <p class="lede">Campus to branch across an MPLS service. Three congestion points, one trust boundary.</p>
+
+  <div class="figure">
+    <div class="figscroll">
+      <svg viewBox="0 0 760 356" role="img" aria-label="Campus to branch topology showing the trust boundary and the three congestion points" font-size="13" font-family="var(--font-body)">
+        <defs>
+          <marker id="qarrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="var(--line-strong)"></path>
+          </marker>
+        </defs>
+        <text x="24" y="28" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--font-display)">Policy goes where the congestion is, not everywhere</text>
+        <text x="24" y="48" font-size="11.5" fill="var(--ink-3)">Mark once at the access edge. Queue and shape at each bottleneck.</text>
+
+        <g stroke="var(--line-strong)" stroke-width="1.5" fill="none">
+          <path d="M136 150H180"></path>
+          <path d="M300 150H344"></path>
+          <path d="M464 150H508"></path>
+          <path d="M628 150H672" stroke-dasharray="4 3"></path>
+        </g>
+
+        <g>
+          <rect x="24" y="124" width="112" height="52" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="80" y="146" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--ink)">Phone + PC</text>
+          <text x="80" y="163" text-anchor="middle" font-size="11" fill="var(--ink-3)">untrusted</text>
+        </g>
+        <g>
+          <rect x="180" y="124" width="120" height="52" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"></rect>
+          <text x="240" y="146" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--ink)">Access SW</text>
+          <text x="240" y="163" text-anchor="middle" font-size="11" fill="var(--accent-ink)">classify + mark</text>
+        </g>
+        <g>
+          <rect x="344" y="124" width="120" height="52" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="404" y="146" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--ink)">Distribution</text>
+          <text x="404" y="163" text-anchor="middle" font-size="11" fill="var(--ink-3)">trust DSCP</text>
+        </g>
+        <g>
+          <rect x="508" y="124" width="120" height="52" rx="8" fill="var(--amber-soft)" stroke="var(--amber)" stroke-width="2"></rect>
+          <text x="568" y="146" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--ink)">WAN router</text>
+          <text x="568" y="163" text-anchor="middle" font-size="11" fill="var(--amber)">shape + queue</text>
+        </g>
+        <g>
+          <rect x="672" y="124" width="64" height="52" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25" stroke-dasharray="4 3"></rect>
+          <text x="704" y="153" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ink)">MPLS</text>
+        </g>
+
+        <g stroke="var(--crit)" stroke-width="1.5" stroke-dasharray="5 3" fill="none">
+          <path d="M158 96V208"></path>
+        </g>
+        <text x="166" y="92" font-size="11" font-weight="600" fill="var(--crit)">TRUST BOUNDARY</text>
+
+        <text x="240" y="236" text-anchor="middle" font-size="11" fill="var(--ink-3)">1 Gbps</text>
+        <text x="404" y="236" text-anchor="middle" font-size="11" fill="var(--ink-3)">10 Gbps</text>
+        <text x="568" y="236" text-anchor="middle" font-size="11" fill="var(--crit)">1 Gbps port,</text>
+        <text x="568" y="252" text-anchor="middle" font-size="11" fill="var(--crit)">200 Mbps CIR</text>
+
+        <g>
+          <rect x="24" y="282" width="712" height="54" rx="8" fill="var(--crit-soft)" stroke="var(--crit)" stroke-width="1.25"></rect>
+          <text x="40" y="304" font-size="12" font-weight="600" fill="var(--ink)">The three congestion points</text>
+          <text x="40" y="323" font-size="11.5" fill="var(--ink-2)">Access uplink oversubscription &middot; distribution to WAN step-down &middot; the sub-line-rate WAN handoff, which is the worst</text>
+        </g>
+      </svg>
+    </div>
+    <p class="figcap">QoS lab topology &middot; one trust boundary, three congestion points.</p>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Why the WAN handoff is the hard one</h3>
+      <p>The WAN router has a <strong>1 Gbps physical port</strong> but the service provider sells a <strong>200 Mbps CIR</strong>. The router sees no congestion &mdash; it can clock out a gigabit happily &mdash; so its queues never build and its QoS policy never engages. The provider polices at 200 Mbps and drops the excess, including voice.</p>
+      <p>The fix is a <strong>shaper</strong> on your side at or just below the CIR, which creates artificial congestion the router can then manage with its own queuing policy. This is the single most common QoS requirement on any WAN, and the most commonly missed. It is scenario 05.</p>
+      <div class="gotcha"><b>Queuing without shaping on a sub-line-rate circuit does nothing</b>If the physical port is faster than the contracted rate, the router never queues, so LLQ, CBWFQ and WRED are all inert. Shape first, queue inside the shaper.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section class="block" id="tosbyte">
+  <div class="sechead">
+    <h2><span class="num">03</span>The ToS byte</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="tosbyte"> Reviewed</label>
+  </div>
+
+  <div class="figure">
+    <div class="figscroll">
+      <svg viewBox="0 0 760 322" role="img" aria-label="The IPv4 ToS byte, showing the legacy and current interpretations" font-size="13" font-family="var(--font-body)">
+        <text x="24" y="28" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--font-display)">Six bits of DSCP sit where three bits of IP Precedence used to</text>
+        <text x="24" y="48" font-size="11.5" fill="var(--ink-3)">One byte in the IPv4 header (Traffic Class in IPv6). Bit 0 is the most significant.</text>
+
+        <g font-size="10" fill="var(--ink-3)" text-anchor="middle" font-family="var(--font-mono)">
+          <text x="100" y="80">0</text><text x="180" y="80">1</text><text x="260" y="80">2</text><text x="340" y="80">3</text>
+          <text x="420" y="80">4</text><text x="500" y="80">5</text><text x="580" y="80">6</text><text x="660" y="80">7</text>
+        </g>
+
+        <text x="24" y="106" font-size="10.5" font-weight="600" fill="var(--ink-3)" letter-spacing="0.05em">RFC 791</text>
+        <g stroke="var(--line-strong)" stroke-width="1" fill="none">
+          <rect x="60" y="88" width="240" height="30"></rect>
+          <rect x="300" y="88" width="240" height="30"></rect>
+          <rect x="540" y="88" width="160" height="30"></rect>
+        </g>
+        <g font-size="11.5" fill="var(--ink-2)" text-anchor="middle">
+          <text x="180" y="108">IP Precedence</text>
+          <text x="420" y="108">Type of Service</text>
+          <text x="620" y="108">MBZ</text>
+        </g>
+
+        <text x="24" y="156" font-size="10.5" font-weight="600" fill="var(--accent-ink)" letter-spacing="0.05em">RFC 2474</text>
+        <g stroke="var(--accent)" stroke-width="1.5" fill="var(--accent-soft)">
+          <rect x="60" y="136" width="480" height="34"></rect>
+        </g>
+        <g stroke="var(--amber)" stroke-width="1.5" fill="var(--amber-soft)">
+          <rect x="540" y="136" width="160" height="34"></rect>
+        </g>
+        <text x="300" y="158" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--ink)">DSCP &mdash; 6 bits, 64 values</text>
+        <text x="620" y="158" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--ink)">ECN</text>
+
+        <text x="24" y="212" font-size="10.5" font-weight="600" fill="var(--ink-3)" letter-spacing="0.05em">EXAMPLE</text>
+        <g stroke="var(--line-strong)" stroke-width="1" fill="var(--surface-2)">
+          <rect x="60" y="192" width="80" height="30"></rect>
+          <rect x="140" y="192" width="80" height="30"></rect>
+          <rect x="220" y="192" width="80" height="30"></rect>
+          <rect x="300" y="192" width="80" height="30"></rect>
+          <rect x="380" y="192" width="80" height="30"></rect>
+          <rect x="460" y="192" width="80" height="30"></rect>
+          <rect x="540" y="192" width="80" height="30"></rect>
+          <rect x="620" y="192" width="80" height="30"></rect>
+        </g>
+        <g font-size="13" fill="var(--ink)" text-anchor="middle" font-family="var(--font-mono)" font-weight="500">
+          <text x="100" y="212">1</text><text x="180" y="212">0</text><text x="260" y="212">1</text><text x="340" y="212">1</text>
+          <text x="420" y="212">1</text><text x="500" y="212">0</text><text x="580" y="212">0</text><text x="660" y="212">0</text>
+        </g>
+        <text x="300" y="242" text-anchor="middle" font-size="11.5" fill="var(--accent-ink)" font-weight="500">101110 = 46 = EF</text>
+        <text x="620" y="242" text-anchor="middle" font-size="11.5" fill="var(--ink-3)">00 = not ECN capable</text>
+
+        <text x="24" y="282" font-size="12" fill="var(--ink-2)">The top three DSCP bits are the Class Selector, so DSCP 46 maps to IP Precedence 5 on a legacy device.</text>
+        <text x="24" y="302" font-size="12" fill="var(--ink-2)">That backward compatibility is why Class Selector values are all multiples of 8.</text>
+      </svg>
+    </div>
+    <p class="figcap">IPv4 ToS byte &middot; legacy and current interpretations, with EF decoded.</p>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Layer 2 marking</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Field</th><th>Bits</th><th>Where</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><strong>CoS / 802.1p</strong></td><td>3</td><td>In the 802.1Q tag</td><td><strong>Lost on an access port</strong> &mdash; there is no tag to carry it</td></tr>
+            <tr><td><strong>MPLS EXP / TC</strong></td><td>3</td><td>MPLS shim header</td><td>What the provider queues on inside the MPLS core</td></tr>
+            <tr><td><strong>Frame Relay DE</strong></td><td>1</td><td>FR header</td><td>Historical</td></tr>
+            <tr><td><strong>WMM / 802.11e UP</strong></td><td>3</td><td>802.11 QoS control</td><td>Four access categories</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="gotcha"><b>CoS evaporates on untagged links</b>CoS lives in the 802.1Q tag. An access port strips the tag, so the marking is gone the moment the frame leaves. Mark with DSCP, which lives in the IP header and survives every layer-2 hop. Use CoS only where you know the link is trunked and the next device reads it.</div>
+    </div>
+
+    <div class="term">
+      <h3>ECN</h3>
+      <p>The two low-order bits let routers signal congestion by <em>marking</em> rather than dropping. The sender's TCP stack reduces its rate as though it had seen a loss, without the retransmission.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th class="mono-col">Bits</th><th>Name</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td class="mono-col">00</td><td>Non-ECT</td><td>Endpoint does not support ECN. Routers must drop instead</td></tr>
+            <tr><td class="mono-col">10</td><td>ECT(0)</td><td>ECN capable</td></tr>
+            <tr><td class="mono-col">01</td><td>ECT(1)</td><td>ECN capable</td></tr>
+            <tr><td class="mono-col">11</td><td>CE</td><td><strong>Congestion Experienced</strong> &mdash; set by a router instead of dropping</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Both endpoints must negotiate ECN in the TCP handshake. A router setting CE on a non-ECT packet is a bug; the correct action there is to drop.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section class="block" id="phb">
+  <div class="sechead">
+    <h2><span class="num">04</span>DSCP values and per-hop behaviours</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="phb"> Reviewed</label>
+  </div>
+  <p class="lede">Four PHB families. Learn the AF arithmetic and the rest follows.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The four families</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>PHB</th><th>RFC</th><th>Behaviour</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Default / BE</strong></td><td>2474</td><td>DSCP 0. No guarantee</td></tr>
+            <tr><td><strong>Class Selector (CS)</strong></td><td>2474</td><td>CS1&ndash;CS7, multiples of 8. Backward compatible with IP Precedence</td></tr>
+            <tr><td><strong>Assured Forwarding (AF)</strong></td><td>2597</td><td>Four classes, three drop precedences each. Bandwidth guarantee with differentiated discard</td></tr>
+            <tr><td><strong>Expedited Forwarding (EF)</strong></td><td>3246</td><td>DSCP 46. Low loss, low delay, low jitter. Must be rate-limited</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="term">
+      <h3>The AF arithmetic</h3>
+      <p>AF is written <strong>AF<em>xy</em></strong> where <em>x</em> is the class (1&ndash;4, higher is better) and <em>y</em> is the drop precedence (1&ndash;3, <strong>higher is dropped sooner</strong>).</p>
+<pre><code>DSCP = 8x + 2y
+
+AF11 = 8(1) + 2(1) = 10
+AF23 = 8(2) + 2(3) = 22
+AF41 = 8(4) + 2(1) = 34
+AF43 = 8(4) + 2(3) = 38</code></pre>
+      <div class="tablewrap">
+        <table>
+          <caption>The AF matrix</caption>
+          <thead><tr><th>&nbsp;</th><th>Low drop (y=1)</th><th>Medium drop (y=2)</th><th>High drop (y=3)</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Class 4</strong></td><td class="mono-col">AF41 = 34</td><td class="mono-col">AF42 = 36</td><td class="mono-col">AF43 = 38</td></tr>
+            <tr><td><strong>Class 3</strong></td><td class="mono-col">AF31 = 26</td><td class="mono-col">AF32 = 28</td><td class="mono-col">AF33 = 30</td></tr>
+            <tr><td><strong>Class 2</strong></td><td class="mono-col">AF21 = 18</td><td class="mono-col">AF22 = 20</td><td class="mono-col">AF23 = 22</td></tr>
+            <tr><td><strong>Class 1</strong></td><td class="mono-col">AF11 = 10</td><td class="mono-col">AF12 = 12</td><td class="mono-col">AF13 = 14</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tip"><b>The drop precedence is the point</b>All three values in a class share one queue and one bandwidth guarantee. The difference is <em>which gets discarded first</em> when that queue fills, via DSCP-based WRED. Mark conforming traffic AFx1 and policed-but-allowed traffic AFx2 or AFx3, and congestion naturally sheds the excess first.</div>
+    </div>
+
+    <div class="term">
+      <h3>Full DSCP reference</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Name</th><th class="num-col">Decimal</th><th class="mono-col">Binary</th><th class="num-col">Legacy IP Prec</th><th>Typical use</th></tr></thead>
+          <tbody>
+            <tr><td><strong>DF / BE</strong></td><td class="num-col">0</td><td class="mono-col">000000</td><td class="num-col">0</td><td>Best effort, the bulk of traffic</td></tr>
+            <tr><td>CS1</td><td class="num-col">8</td><td class="mono-col">001000</td><td class="num-col">1</td><td>Scavenger &mdash; less than best effort</td></tr>
+            <tr><td>AF11 / AF12 / AF13</td><td class="num-col">10 / 12 / 14</td><td class="mono-col">0010x0</td><td class="num-col">1</td><td>Bulk data: backups, large transfers</td></tr>
+            <tr><td>CS2</td><td class="num-col">16</td><td class="mono-col">010000</td><td class="num-col">2</td><td>OAM: SNMP, SSH, syslog</td></tr>
+            <tr><td>AF21 / AF22 / AF23</td><td class="num-col">18 / 20 / 22</td><td class="mono-col">0100x0</td><td class="num-col">2</td><td>Transactional data: ERP, interactive apps</td></tr>
+            <tr><td>CS3</td><td class="num-col">24</td><td class="mono-col">011000</td><td class="num-col">3</td><td><strong>Call signalling</strong>: SIP, SCCP, H.323</td></tr>
+            <tr><td>AF31 / AF32 / AF33</td><td class="num-col">26 / 28 / 30</td><td class="mono-col">0110x0</td><td class="num-col">3</td><td>Multimedia streaming</td></tr>
+            <tr><td>CS4</td><td class="num-col">32</td><td class="mono-col">100000</td><td class="num-col">4</td><td>Realtime interactive: telepresence</td></tr>
+            <tr><td>AF41 / AF42 / AF43</td><td class="num-col">34 / 36 / 38</td><td class="mono-col">1000x0</td><td class="num-col">4</td><td><strong>Multimedia conferencing</strong>: video calls</td></tr>
+            <tr><td>CS5</td><td class="num-col">40</td><td class="mono-col">101000</td><td class="num-col">5</td><td>Broadcast video</td></tr>
+            <tr><td><strong>EF</strong></td><td class="num-col"><strong>46</strong></td><td class="mono-col">101110</td><td class="num-col">5</td><td><strong>Voice bearer (RTP)</strong></td></tr>
+            <tr><td>VA (voice-admit)</td><td class="num-col">44</td><td class="mono-col">101100</td><td class="num-col">5</td><td>Admitted voice, RFC 5865</td></tr>
+            <tr><td>CS6</td><td class="num-col">48</td><td class="mono-col">110000</td><td class="num-col">6</td><td><strong>Network control</strong>: OSPF, BGP, HSRP</td></tr>
+            <tr><td>CS7</td><td class="num-col">56</td><td class="mono-col">111000</td><td class="num-col">7</td><td>Reserved. Do not use for user traffic</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="term">
+      <h3>The 12-class model <span class="exp">RFC 4594</span></h3>
+      <p>The reference design most enterprises start from and then collapse down. Few networks need all twelve, but the mapping is the common language &mdash; use these values even in a four-class design so interoperation is predictable.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Class</th><th>DSCP</th><th>Queuing</th><th>Drop policy</th></tr></thead>
+          <tbody>
+            <tr><td>VoIP bearer</td><td class="mono-col">EF</td><td>Priority (LLQ)</td><td>Tail drop, policed</td></tr>
+            <tr><td>Broadcast video</td><td class="mono-col">CS5</td><td>Priority or BW</td><td>Tail drop, policed</td></tr>
+            <tr><td>Realtime interactive</td><td class="mono-col">CS4</td><td>Priority or BW</td><td>Tail drop, policed</td></tr>
+            <tr><td>Multimedia conferencing</td><td class="mono-col">AF41&ndash;43</td><td>Bandwidth</td><td>DSCP WRED</td></tr>
+            <tr><td>Multimedia streaming</td><td class="mono-col">AF31&ndash;33</td><td>Bandwidth</td><td>DSCP WRED</td></tr>
+            <tr><td>Network control</td><td class="mono-col">CS6</td><td>Bandwidth</td><td>Tail drop</td></tr>
+            <tr><td>Call signalling</td><td class="mono-col">CS3</td><td>Bandwidth</td><td>Tail drop</td></tr>
+            <tr><td>OAM</td><td class="mono-col">CS2</td><td>Bandwidth</td><td>Tail drop</td></tr>
+            <tr><td>Transactional data</td><td class="mono-col">AF21&ndash;23</td><td>Bandwidth</td><td>DSCP WRED</td></tr>
+            <tr><td>Bulk data</td><td class="mono-col">AF11&ndash;13</td><td>Bandwidth</td><td>DSCP WRED</td></tr>
+            <tr><td>Best effort</td><td class="mono-col">DF</td><td>Bandwidth, 25%+</td><td>WRED</td></tr>
+            <tr><td>Scavenger</td><td class="mono-col">CS1</td><td>Bandwidth, 1%</td><td>Tail drop</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="gotcha"><b>Signalling is CS3, not EF</b>A persistent mistake is putting SIP or SCCP in the voice priority queue with the RTP. Signalling is low-volume, bursty and tolerant of a few milliseconds &mdash; it belongs in a guaranteed-bandwidth class, not the strict-priority queue, where its bursts steal from the bearer traffic.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section class="block" id="classification">
+  <div class="sechead">
+    <h2><span class="num">05</span>Classification</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="classification"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Match criteria</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Criterion</th><th>Example</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>DSCP</td><td><code>match dscp ef</code></td><td>Cheapest. Use once past the trust boundary</td></tr>
+            <tr><td>IP Precedence</td><td><code>match precedence 5</code></td><td>Legacy</td></tr>
+            <tr><td>CoS</td><td><code>match cos 5</code></td><td>Trunk links only</td></tr>
+            <tr><td>MPLS EXP</td><td><code>match mpls experimental topmost 5</code></td><td>Inside an MPLS core</td></tr>
+            <tr><td>ACL</td><td><code>match access-group name VOICE</code></td><td>Addresses and ports. The workhorse at the edge</td></tr>
+            <tr><td>Protocol / NBAR2</td><td><code>match protocol webex-media</code></td><td>Deep inspection. CPU cost, and defeated by encryption</td></tr>
+            <tr><td>Input interface</td><td><code>match input-interface Gi0/1</code></td><td>Where the port implies the traffic</td></tr>
+            <tr><td>Packet length</td><td><code>match packet length min 64 max 200</code></td><td>Crude voice detection. Avoid</td></tr>
+            <tr><td>QoS group</td><td><code>match qos-group 3</code></td><td>Internal label passed between policies</td></tr>
+            <tr><td>VLAN</td><td><code>match vlan 110</code></td><td>Where a VLAN maps to a traffic type</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="term">
+      <h3>Classifying at the edge</h3>
+<pre><code>ip access-list extended VOICE-RTP
+ permit udp 10.10.110.0 0.0.0.255 any range 16384 32767
+ip access-list extended VOICE-SIGNALLING
+ permit tcp 10.10.110.0 0.0.0.255 any eq 5060 5061
+ permit tcp 10.10.110.0 0.0.0.255 any range 2000 2002
+!
+class-map match-all VOICE
+ match access-group name VOICE-RTP
+class-map match-all SIGNALLING
+ match access-group name VOICE-SIGNALLING
+!
+policy-map ACCESS-EDGE-IN
+ class VOICE
+  set dscp ef
+  police 128000 conform-action transmit exceed-action drop
+ class SIGNALLING
+  set dscp cs3
+ class class-default
+  set dscp default</code></pre>
+      <p>Note the policer on the voice class. Marking EF without rate-limiting it means anything that matches the ACL gets priority treatment &mdash; including a flood. Mark and police together at the edge.</p>
+    </div>
+
+    <div class="term">
+      <h3>Classifying in the core</h3>
+<pre><code>class-map match-any VOICE
+ match dscp ef
+class-map match-any VIDEO
+ match dscp af41 af42 af43
+ match dscp cs4
+class-map match-any SIGNALLING
+ match dscp cs3
+class-map match-any NET-CTRL
+ match dscp cs6
+class-map match-any TRANSACTIONAL
+ match dscp af21 af22 af23
+class-map match-any SCAVENGER
+ match dscp cs1</code></pre>
+      <p>Past the trust boundary, match on DSCP only. It is a single field comparison rather than an ACL walk or deep inspection, and it is the entire point of marking at the edge.</p>
+      <div class="tip"><b>match-all versus match-any</b><code>match-all</code> requires every criterion (AND); <code>match-any</code> requires one (OR). The default is <code>match-all</code>, which silently matches nothing if you list several DSCP values expecting OR behaviour. For a list of DSCP values you almost always want <code>match-any</code>.</div>
+    </div>
+
+    <div class="term">
+      <h3>NBAR2 and the encryption problem</h3>
+<pre><code>class-map match-any BUSINESS-APPS
+ match protocol attribute business-relevance business-relevant
+ match protocol attribute traffic-class transactional-data
+!
+show ip nbar protocol-discovery interface Gi0/1
+show ip nbar protocol-pack active</code></pre>
+      <p>NBAR2 recognises applications by signature rather than port, and groups them by attribute so policy survives new applications appearing. It is genuinely useful at a branch edge.</p>
+      <div class="gotcha"><b>Encryption has eroded deep inspection</b>TLS 1.3 with encrypted SNI, QUIC over UDP 443, and VPN tunnels all hide what NBAR used to read. Classification is drifting back toward endpoint marking and metadata &mdash; which is another argument for getting the trust boundary and endpoint marking right rather than relying on inspection in the network.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section class="block" id="mqc">
+  <div class="sechead">
+    <h2><span class="num">06</span>MQC &mdash; Modular QoS CLI</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="mqc"> Reviewed</label>
+  </div>
+
+  <div class="figure">
+    <div class="figscroll">
+      <svg viewBox="0 0 760 340" role="img" aria-label="QoS actions in the order a packet meets them, ingress and egress" font-size="13" font-family="var(--font-body)">
+        <defs>
+          <marker id="pipearrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="var(--line-strong)"></path>
+          </marker>
+        </defs>
+        <text x="24" y="28" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--font-display)">Queuing only exists on egress, which is where congestion happens</text>
+        <text x="24" y="48" font-size="11.5" fill="var(--ink-3)">Ingress can classify, mark and police. It cannot queue.</text>
+
+        <text x="24" y="92" font-size="10.5" font-weight="600" fill="var(--ink-3)" letter-spacing="0.05em">INGRESS</text>
+
+        <g fill="none" stroke="var(--line-strong)" stroke-width="1.25" marker-end="url(#pipearrow)">
+          <path d="M196 118H226"></path>
+          <path d="M374 118H404"></path>
+          <path d="M552 118H582"></path>
+        </g>
+        <g>
+          <rect x="24" y="100" width="172" height="36" rx="7" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="110" y="123" text-anchor="middle" font-size="12.5" fill="var(--ink)">Classify</text>
+        </g>
+        <g>
+          <rect x="226" y="100" width="148" height="36" rx="7" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"></rect>
+          <text x="300" y="123" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--ink)">Mark</text>
+        </g>
+        <g>
+          <rect x="404" y="100" width="148" height="36" rx="7" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="478" y="123" text-anchor="middle" font-size="12.5" fill="var(--ink)">Police</text>
+        </g>
+        <g>
+          <rect x="582" y="100" width="154" height="36" rx="7" fill="none" stroke="var(--line-strong)" stroke-width="1.25" stroke-dasharray="4 3"></rect>
+          <text x="659" y="123" text-anchor="middle" font-size="12.5" fill="var(--ink-3)">Forward</text>
+        </g>
+
+        <text x="24" y="196" font-size="10.5" font-weight="600" fill="var(--amber)" letter-spacing="0.05em">EGRESS</text>
+
+        <g fill="none" stroke="var(--line-strong)" stroke-width="1.25" marker-end="url(#pipearrow)">
+          <path d="M160 222H190"></path>
+          <path d="M326 222H356"></path>
+          <path d="M492 222H522"></path>
+          <path d="M620 222H650"></path>
+        </g>
+        <g>
+          <rect x="24" y="204" width="136" height="36" rx="7" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="92" y="227" text-anchor="middle" font-size="12.5" fill="var(--ink)">Classify</text>
+        </g>
+        <g>
+          <rect x="190" y="204" width="136" height="36" rx="7" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="258" y="227" text-anchor="middle" font-size="12.5" fill="var(--ink)">WRED</text>
+        </g>
+        <g>
+          <rect x="356" y="204" width="136" height="36" rx="7" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"></rect>
+          <text x="424" y="227" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--ink)">Queue</text>
+        </g>
+        <g>
+          <rect x="522" y="204" width="98" height="36" rx="7" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"></rect>
+          <text x="571" y="227" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--ink)">Schedule</text>
+        </g>
+        <g>
+          <rect x="650" y="204" width="86" height="36" rx="7" fill="var(--amber-soft)" stroke="var(--amber)" stroke-width="1.5"></rect>
+          <text x="693" y="227" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--ink)">Shape</text>
+        </g>
+
+        <g>
+          <rect x="24" y="272" width="712" height="52" rx="8" fill="var(--surface-2)" stroke="var(--line)" stroke-width="1"></rect>
+          <text x="40" y="294" font-size="12" font-weight="600" fill="var(--ink)">Then the tx-ring, then the wire</text>
+          <text x="40" y="312" font-size="11.5" fill="var(--ink-2)">A deep tx-ring hides your queuing policy &mdash; packets sit below the software queues where QoS cannot reorder them.</text>
+        </g>
+      </svg>
+    </div>
+    <p class="figcap">QoS action order &middot; ingress and egress, with what each can do.</p>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The three-step structure</h3>
+<pre><code><span class="cmt">! 1. class-map — what traffic</span>
+class-map match-any VOICE
+ match dscp ef
+
+<span class="cmt">! 2. policy-map — what to do with it</span>
+policy-map WAN-EGRESS
+ class VOICE
+  priority percent 10
+ class class-default
+  fair-queue
+  random-detect
+
+<span class="cmt">! 3. service-policy — where it applies</span>
+interface GigabitEthernet0/0
+ service-policy output WAN-EGRESS</code></pre>
+      <p>One input policy and one output policy per interface. Any class not explicitly matched falls into <code>class-default</code>, which always exists whether you configure it or not.</p>
+    </div>
+
+    <div class="term">
+      <h3>Actions available in a policy-map class</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Action</th><th>Direction</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>set dscp | cos | precedence | qos-group</code></td><td>Both</td><td>Mark</td></tr>
+            <tr><td><code>police</code></td><td>Both</td><td>Rate-limit by dropping or remarking</td></tr>
+            <tr><td><code>shape average | peak</code></td><td>Output</td><td>Rate-limit by buffering</td></tr>
+            <tr><td><code>bandwidth [percent | remaining percent]</code></td><td>Output</td><td>Minimum guarantee under congestion</td></tr>
+            <tr><td><code>priority [percent]</code></td><td>Output</td><td>Strict priority with an implicit policer</td></tr>
+            <tr><td><code>queue-limit</code></td><td>Output</td><td>Queue depth in packets or bytes</td></tr>
+            <tr><td><code>random-detect</code></td><td>Output</td><td>WRED</td></tr>
+            <tr><td><code>fair-queue</code></td><td>Output</td><td>Flow-based fairness within the class</td></tr>
+            <tr><td><code>service-policy</code></td><td>Both</td><td>Nest a child policy &mdash; the basis of HQoS</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="gotcha"><b>bandwidth and priority are both minimums under congestion</b>Neither caps a class when the link is idle &mdash; except <code>priority</code>, whose implicit policer <em>does</em> cap it during congestion. A class with <code>bandwidth percent 20</code> can use 100% of the link if nothing else wants it. To cap a class always, add an explicit <code>police</code> or <code>shape</code>.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 7 ============ -->
+<section class="block" id="queuing">
+  <div class="sechead">
+    <h2><span class="num">07</span>Queuing</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="queuing"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The mechanisms, in order of age</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Mechanism</th><th>How it schedules</th><th>Verdict</th></tr></thead>
+          <tbody>
+            <tr><td><strong>FIFO</strong></td><td>First in, first out. One queue</td><td>The default on fast interfaces. No differentiation</td></tr>
+            <tr><td><strong>PQ</strong></td><td>Four strict-priority queues, highest always served first</td><td>Starves lower queues. Obsolete</td></tr>
+            <tr><td><strong>CQ</strong></td><td>Round robin with byte counts per queue</td><td>Obsolete</td></tr>
+            <tr><td><strong>WFQ</strong></td><td>Per-flow fairness, weighted by IP Precedence</td><td>Default on slow serial links. No class control</td></tr>
+            <tr><td><strong>CBWFQ</strong></td><td>User-defined classes, each with a bandwidth guarantee</td><td>The foundation of modern QoS</td></tr>
+            <tr><td><strong>LLQ</strong></td><td>CBWFQ plus one or more strict-priority queues with built-in policers</td><td><strong>What you deploy</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="term">
+      <h3>CBWFQ</h3>
+<pre><code>policy-map WAN-EGRESS
+ class SIGNALLING
+  bandwidth percent 5
+ class TRANSACTIONAL
+  bandwidth percent 25
+  random-detect dscp-based
+ class BULK
+  bandwidth percent 10
+  random-detect dscp-based
+ class SCAVENGER
+  bandwidth percent 1
+ class class-default
+  bandwidth percent 25
+  fair-queue
+  random-detect</code></pre>
+      <p><code>bandwidth percent</code> is a <strong>minimum guarantee during congestion</strong>, not a cap. Unused capacity is shared among classes that want it, in proportion to their configured weights.</p>
+      <p>By default IOS reserves 25% of the interface for control traffic and overhead, so configured bandwidth can total only 75%. Override with <code>max-reserved-bandwidth 100</code> if you are accounting for control traffic in your own classes &mdash; which you should be, via a CS6 class.</p>
+    </div>
+
+    <div class="term">
+      <h3>bandwidth remaining percent</h3>
+<pre><code>policy-map CHILD
+ class VOICE
+  priority percent 10
+ class TRANSACTIONAL
+  bandwidth remaining percent 40
+ class class-default
+  bandwidth remaining percent 60</code></pre>
+      <p>Shares out what is left <em>after</em> the priority class has taken its share, rather than a percentage of the whole interface. This is the form to use inside a hierarchical policy, because the child policy does not know the parent shaper's rate &mdash; percentages of "the interface" would be meaningless or wrong.</p>
+      <div class="tip"><b>Use remaining percent inside any shaped policy</b>If the parent shapes to 200 Mbps on a 1 Gbps port, <code>bandwidth percent 25</code> in the child is ambiguous at best. <code>bandwidth remaining percent</code> is unambiguous and survives a change to the shaper rate without needing recalculation.</div>
+    </div>
+
+    <div class="term">
+      <h3>Queue limits and the tx-ring</h3>
+<pre><code>policy-map WAN-EGRESS
+ class VOICE
+  priority percent 10
+  queue-limit 64 packets
+ class class-default
+  queue-limit 512 packets
+!
+interface GigabitEthernet0/0
+ tx-ring-limit 3</code></pre>
+      <p>Below the software queues sits the <strong>tx-ring</strong>, a small hardware FIFO. Packets there are already committed &mdash; QoS cannot reorder them. A deep tx-ring therefore adds latency that your priority queue cannot avoid, which is why it is reduced on low-speed links.</p>
+      <p>Queue depth is a latency-versus-loss trade. A deep queue absorbs bursts but adds delay; a shallow queue drops sooner but keeps latency low. For voice, shallow is right &mdash; a voice packet delayed 200 ms is as useless as one dropped, and has consumed buffer in the meantime.</p>
+      <div class="gotcha"><b>Bufferbloat is a real failure mode</b>Oversized buffers on a congested link produce hundreds of milliseconds of queuing delay. Interactive traffic becomes unusable while throughput looks fine and the interface reports no drops. If users report sluggishness with no errors anywhere, measure latency <em>under load</em>, not at rest.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 8 ============ -->
+<section class="block" id="llq">
+  <div class="sechead">
+    <h2><span class="num">08</span>LLQ and bandwidth allocation</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="llq"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>How LLQ works</h3>
+      <p>LLQ adds a <strong>strict-priority queue</strong> to CBWFQ. Packets in it are served ahead of everything else, giving the lowest possible delay and jitter. To prevent starvation, the priority queue has an <strong>implicit policer</strong> that engages during congestion.</p>
+<pre><code>policy-map WAN-EGRESS
+ class VOICE
+  priority percent 10
+ class VIDEO
+  priority percent 23
+ class class-default
+  fair-queue</code></pre>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Link state</th><th>Priority class behaviour</th></tr></thead>
+          <tbody>
+            <tr><td>Not congested</td><td>Can exceed its configured rate. The policer is not enforcing</td></tr>
+            <tr><td>Congested</td><td>Policed to its configured rate. Excess is <strong>dropped</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="gotcha"><b>The priority policer drops, it does not queue</b>Exceed the priority rate during congestion and those packets are discarded, not delayed. For voice that means choppy audio precisely when the network is busy &mdash; the moment you most needed it to work. Size the priority queue for the real call volume plus headroom, and use call admission control to stop more calls being placed than the queue can carry.</div>
+    </div>
+
+    <div class="term">
+      <h3>Sizing the voice queue</h3>
+      <p>A G.711 call with IP, UDP and RTP headers over Ethernet is roughly <strong>80&ndash;90 kbps</strong> each way. G.729 is about 26&ndash;32 kbps. Multiply by concurrent calls and add headroom.</p>
+<pre><code>Example: 200 Mbps WAN CIR, 40 concurrent G.711 calls
+
+  40 calls x 90 kbps = 3.6 Mbps
+  Add ~20% headroom   = 4.3 Mbps
+  As a percentage     = 4.3 / 200 = ~2.2%
+
+policy-map WAN-CHILD
+ class VOICE
+  priority percent 4          <span class="cmt">! rounded up, with margin</span></code></pre>
+      <p>Note how small that is. Voice rarely needs much bandwidth &mdash; it needs <em>predictable</em> bandwidth. Allocating 30% to voice because it feels important wastes capacity that other classes could guarantee.</p>
+    </div>
+
+    <div class="term">
+      <h3>The 33% guideline</h3>
+      <p>Cisco's long-standing recommendation is to keep <strong>total priority bandwidth at or below one third</strong> of the link. It is a guideline, not an enforced limit, and the reasoning is sound: a large strict-priority allocation means that during congestion the non-priority classes are squeezed into whatever remains, and their guarantees become meaningless.</p>
+      <p>If your design needs more than 33% in priority, the usual causes are that the link is too small, or that something is in the priority queue that should not be &mdash; signalling, or a video class that would be better served by a generous <code>bandwidth</code> guarantee.</p>
+    </div>
+
+    <div class="term">
+      <h3>Multi-level priority</h3>
+<pre><code>policy-map WAN-CHILD
+ class VOICE
+  priority level 1 percent 4
+ class TELEPRESENCE
+  priority level 2 percent 15
+ class class-default
+  fair-queue</code></pre>
+      <p>Level 1 is served before level 2. Useful when two classes both need low latency but one must never be affected by the other &mdash; voice ahead of immersive video, typically. Each level keeps its own policer.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 9 ============ -->
+<section class="block" id="wred">
+  <div class="sechead">
+    <h2><span class="num">09</span>Congestion avoidance: WRED and ECN</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="wred"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The problem with tail drop</h3>
+      <p>When a queue fills, a FIFO drops every arriving packet. Many TCP flows lose packets at the same instant, all back off together, the link empties, then all ramp up together and fill it again. This is <strong>global synchronisation</strong>, and it produces a sawtooth utilisation pattern that wastes capacity.</p>
+      <p>RED breaks the synchronisation by dropping a <em>few</em> packets randomly <em>before</em> the queue is full, so a handful of flows back off early and the rest keep running.</p>
+    </div>
+
+    <div class="term">
+      <h3>WRED parameters</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Parameter</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Minimum threshold</strong></td><td>Average queue depth below which nothing is dropped</td></tr>
+            <tr><td><strong>Maximum threshold</strong></td><td>Depth above which <em>everything</em> is dropped &mdash; tail drop resumes</td></tr>
+            <tr><td><strong>Mark probability denominator</strong></td><td>At max threshold, 1 in N packets is dropped. Default 10</td></tr>
+            <tr><td><strong>Exponential weighting constant</strong></td><td>How fast the average queue depth tracks the instantaneous depth. Default 9</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code>policy-map WAN-CHILD
+ class TRANSACTIONAL
+  bandwidth remaining percent 30
+  random-detect dscp-based
+  random-detect dscp af21 32 40 10
+  random-detect dscp af22 28 40 10
+  random-detect dscp af23 24 40 10</code></pre>
+      <p>Read those as: AF23 starts being dropped at an average depth of 24, AF22 at 28, AF21 at 32. All reach full drop at 40. So within one class, the highest drop precedence sheds first &mdash; which is the entire reason the AF drop precedences exist.</p>
+    </div>
+
+    <div class="term">
+      <h3>Where WRED is wrong</h3>
+      <div class="gotcha"><b>Never apply WRED to voice or video</b>RED works by exploiting TCP's congestion response. UDP voice and video do not back off &mdash; dropping their packets degrades quality and reduces nothing. Use tail drop with a shallow queue for real-time classes, and WRED only on TCP-dominated classes.</div>
+      <p>Also avoid it on classes dominated by small numbers of large flows, where dropping from the few flows present just hurts them without the statistical benefit RED depends on.</p>
+    </div>
+
+    <div class="term">
+      <h3>ECN instead of dropping</h3>
+<pre><code>policy-map WAN-CHILD
+ class TRANSACTIONAL
+  bandwidth remaining percent 30
+  random-detect dscp-based
+  random-detect ecn</code></pre>
+      <p>With <code>random-detect ecn</code>, a router that would have dropped an ECN-capable packet instead sets the CE bits and forwards it. The receiver echoes the signal, the sender reduces its window, and no retransmission is needed. Non-ECN-capable packets are still dropped as before.</p>
+      <p>The benefit is real for long-lived TCP flows across high-latency paths, where a retransmission costs a full round trip. Data-centre deployments use it heavily, with DCTCP.</p>
+    </div>
+
+    <div class="term">
+      <h3>Modern AQM</h3>
+      <p>RED's weakness is that it is tuned in <em>queue depth</em>, which does not translate to a latency target and needs retuning per link speed. Modern algorithms target <strong>delay</strong> instead:</p>
+      <ul>
+        <li><strong>CoDel</strong> &mdash; measures how long packets sit in the queue and drops when the minimum delay over an interval stays above target. Self-tuning.</li>
+        <li><strong>FQ-CoDel</strong> &mdash; CoDel plus per-flow fair queuing. Very effective against bufferbloat.</li>
+        <li><strong>PIE</strong> &mdash; proportional-integral controller targeting a delay figure. Used in DOCSIS.</li>
+      </ul>
+      <p>Availability varies by platform. Where you have the option on an edge or broadband-facing device, FQ-CoDel usually outperforms hand-tuned WRED for mixed traffic.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 10 ============ -->
+<section class="block" id="policing">
+  <div class="sechead">
+    <h2><span class="num">10</span>Policing</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="policing"> Reviewed</label>
+  </div>
+
+  <div class="figure">
+    <div class="figscroll">
+      <svg viewBox="0 0 760 330" role="img" aria-label="Policing drops the excess while shaping buffers and delays it" font-size="13" font-family="var(--font-body)">
+        <text x="24" y="28" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--font-display)">Policing throws the excess away; shaping delays it</text>
+        <text x="24" y="48" font-size="11.5" fill="var(--ink-3)">Same offered traffic, same CIR. The difference is what happens to the part above the line.</text>
+
+        <text x="40" y="82" font-size="11" font-weight="600" fill="var(--crit)" letter-spacing="0.05em">POLICING</text>
+        <text x="400" y="82" font-size="11" font-weight="600" fill="var(--accent-ink)" letter-spacing="0.05em">SHAPING</text>
+
+        <g stroke="var(--line-strong)" stroke-width="1.25">
+          <line x1="40" y1="250" x2="360" y2="250"></line>
+          <line x1="400" y1="250" x2="720" y2="250"></line>
+        </g>
+        <g stroke="var(--amber)" stroke-width="1.5" stroke-dasharray="5 3">
+          <line x1="40" y1="170" x2="360" y2="170"></line>
+          <line x1="400" y1="170" x2="720" y2="170"></line>
+        </g>
+        <text x="44" y="164" font-size="10.5" fill="var(--amber)" font-weight="600">CIR</text>
+        <text x="404" y="164" font-size="10.5" fill="var(--amber)" font-weight="600">CIR</text>
+
+        <g fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.25">
+          <rect x="56" y="210" width="40" height="40"></rect>
+          <rect x="104" y="170" width="40" height="80"></rect>
+          <rect x="152" y="170" width="40" height="80"></rect>
+          <rect x="200" y="170" width="40" height="80"></rect>
+          <rect x="248" y="200" width="40" height="50"></rect>
+          <rect x="296" y="220" width="40" height="30"></rect>
+        </g>
+        <g fill="var(--crit-soft)" stroke="var(--crit)" stroke-width="1.25" stroke-dasharray="3 2">
+          <rect x="104" y="160" width="40" height="10"></rect>
+          <rect x="152" y="130" width="40" height="40"></rect>
+          <rect x="200" y="140" width="40" height="30"></rect>
+        </g>
+        <text x="172" y="122" text-anchor="middle" font-size="11" fill="var(--crit)" font-weight="600">dropped</text>
+
+        <g fill="none" stroke="var(--line-strong)" stroke-width="1" stroke-dasharray="3 2">
+          <rect x="416" y="210" width="40" height="40"></rect>
+          <rect x="464" y="160" width="40" height="90"></rect>
+          <rect x="512" y="130" width="40" height="120"></rect>
+          <rect x="560" y="140" width="40" height="110"></rect>
+          <rect x="608" y="200" width="40" height="50"></rect>
+          <rect x="656" y="220" width="40" height="30"></rect>
+        </g>
+        <g fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.25">
+          <rect x="416" y="210" width="40" height="40"></rect>
+          <rect x="464" y="170" width="40" height="80"></rect>
+          <rect x="512" y="170" width="40" height="80"></rect>
+          <rect x="560" y="170" width="40" height="80"></rect>
+          <rect x="608" y="170" width="40" height="80"></rect>
+          <rect x="656" y="170" width="40" height="80"></rect>
+        </g>
+        <text x="580" y="122" text-anchor="middle" font-size="11" fill="var(--accent-ink)" font-weight="600">buffered, sent later</text>
+
+        <text x="40" y="282" font-size="11.5" fill="var(--ink-2)">Instant enforcement, no added delay,</text>
+        <text x="40" y="299" font-size="11.5" fill="var(--ink-2)">but TCP retransmits what was lost.</text>
+        <text x="400" y="282" font-size="11.5" fill="var(--ink-2)">Nothing lost, throughput preserved,</text>
+        <text x="400" y="299" font-size="11.5" fill="var(--ink-2)">but delay and jitter increase.</text>
+      </svg>
+    </div>
+    <p class="figcap">Policing against shaping &middot; the same six intervals of offered traffic.</p>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Token bucket maths</h3>
+      <p>A policer holds a bucket of tokens. Tokens are added at the <strong>CIR</strong>, the bucket holds at most <strong>Bc</strong> bits, and a packet may pass only if enough tokens are present.</p>
+<pre><code>Tc = Bc / CIR          <span class="cmt">! the interval, in seconds</span>
+Bc = CIR x Tc          <span class="cmt">! burst size, in bits</span>
+
+Example: CIR 10 Mbps, Tc 10 ms
+  Bc = 10,000,000 x 0.010 = 100,000 bits = 12,500 bytes</code></pre>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Bc setting</th><th>Effect</th></tr></thead>
+          <tbody>
+            <tr><td>Too small</td><td>Bursty TCP is punished. Throughput falls well below the CIR even though average demand fits</td></tr>
+            <tr><td>Too large</td><td>Long bursts pass unchecked, defeating the point and causing downstream congestion</td></tr>
+            <tr><td>Rule of thumb</td><td>Bc = CIR &times; 1.5 &divide; 8 bytes is a common default, roughly 1.5 seconds of burst for TCP friendliness</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="gotcha"><b>Small Bc wrecks TCP throughput</b>TCP sends in bursts of a full window. A policer with a tight Bc drops mid-burst, TCP halves its window, and measured throughput can sit at a fraction of the policed rate. A customer complaining their 100 Mbps circuit only delivers 30 Mbps on a file transfer is often seeing this. See scenario 04.</div>
+    </div>
+
+    <div class="term">
+      <h3>The three policer types</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Type</th><th>Parameters</th><th>Colours</th></tr></thead>
+          <tbody>
+            <tr><td>Single-rate two-colour</td><td>CIR, Bc</td><td>conform, exceed</td></tr>
+            <tr><td>Single-rate three-colour (srTCM, RFC 2697)</td><td>CIR, Bc, Be</td><td>conform, exceed, violate</td></tr>
+            <tr><td>Two-rate three-colour (trTCM, RFC 2698)</td><td>CIR, PIR, Bc, Be</td><td>conform, exceed, violate</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code><span class="cmt">! Two-colour: pass or drop</span>
+police 10000000 conform-action transmit exceed-action drop
+
+<span class="cmt">! Three-colour, single rate: remark rather than drop the middle band</span>
+police cir 10000000 bc 1875000 be 3750000
+  conform-action transmit
+  exceed-action set-dscp-transmit af22
+  violate-action drop
+
+<span class="cmt">! Two-rate: separate committed and peak rates</span>
+police cir 10000000 pir 20000000
+  conform-action transmit
+  exceed-action set-dscp-transmit af23
+  violate-action drop
+
+<span class="cmt">! Percentage form, adapts to interface speed</span>
+police cir percent 20 bc 100 ms be 200 ms</code></pre>
+      <div class="tip"><b>Remark rather than drop where you can</b>Marking exceeding traffic down to a higher drop precedence &mdash; AF21 to AF22, say &mdash; lets it through when the network is quiet and sheds it first when congested. That is strictly better than dropping it at the policer, and it is what the AF drop precedences were designed for.</div>
+    </div>
+
+    <div class="term">
+      <h3>Where to police</h3>
+      <ul>
+        <li><strong>Ingress at the edge</strong> &mdash; enforce what a customer, VLAN or port may send, and re-mark anything outside contract.</li>
+        <li><strong>On the priority class</strong> &mdash; LLQ does this implicitly, but an explicit policer on the voice class at the edge stops a misbehaving endpoint flooding EF.</li>
+        <li><strong>Scavenger</strong> &mdash; cap known-low-value traffic hard.</li>
+        <li><strong>Control plane</strong> &mdash; CoPP, which is policing applied to traffic destined for the router itself.</li>
+      </ul>
+<pre><code><span class="cmt">! Control Plane Policing</span>
+policy-map COPP
+ class CRITICAL-ROUTING
+  police 500000 conform-action transmit exceed-action transmit
+ class MANAGEMENT
+  police 250000 conform-action transmit exceed-action drop
+ class class-default
+  police 100000 conform-action transmit exceed-action drop
+!
+control-plane
+ service-policy input COPP</code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section class="block" id="shaping">
+  <div class="sechead">
+    <h2><span class="num">11</span>Shaping</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="shaping"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Shaping versus policing</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>&nbsp;</th><th>Policing</th><th>Shaping</th></tr></thead>
+          <tbody>
+            <tr><td>Excess traffic</td><td>Dropped or remarked</td><td>Buffered and sent later</td></tr>
+            <tr><td>Adds delay</td><td>No</td><td><strong>Yes</strong></td></tr>
+            <tr><td>Causes loss</td><td><strong>Yes</strong></td><td>Only if the buffer overflows</td></tr>
+            <tr><td>Direction</td><td>Ingress or egress</td><td><strong>Egress only</strong></td></tr>
+            <tr><td>Output pattern</td><td>Bursty &mdash; passes or drops</td><td>Smooth</td></tr>
+            <tr><td>TCP effect</td><td>Triggers retransmission and backoff</td><td>Naturally paces the sender</td></tr>
+            <tr><td>Typical use</td><td>Enforcing a contract on someone else's traffic</td><td>Matching your output to a contract you bought</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The short version: <strong>police what arrives, shape what leaves</strong>. You police to protect yourself from others; you shape to avoid being policed by others.</p>
+    </div>
+
+    <div class="term">
+      <h3>Configuration</h3>
+<pre><code><span class="cmt">! Shape to the contracted rate</span>
+policy-map WAN-PARENT
+ class class-default
+  shape average 200000000              <span class="cmt">! 200 Mbps</span>
+  service-policy WAN-CHILD
+
+<span class="cmt">! Explicit Bc for a smaller Tc — important for voice</span>
+  shape average 200000000 2000000      <span class="cmt">! CIR, Bc</span>
+<span class="cmt">! Tc = Bc / CIR = 2,000,000 / 200,000,000 = 10 ms</span>
+
+<span class="cmt">! Percentage of interface</span>
+  shape average percent 20
+
+<span class="cmt">! Peak shaping — allows Bc + Be per interval. Rarely a good idea</span>
+  shape peak 200000000</code></pre>
+      <div class="gotcha"><b>Default Tc is often 125 ms, which is far too coarse for voice</b>A shaper releases a burst then pauses until the next interval. With Tc = 125 ms, a voice packet arriving just after a burst waits up to 125 ms before anything else is sent &mdash; blowing the jitter budget on its own. Set Bc so that <strong>Tc lands around 10 ms</strong> on any link carrying real-time traffic.</div>
+<pre><code>Target Tc = 10 ms, so Bc = CIR / 100
+
+  200 Mbps circuit:  Bc = 2,000,000 bits
+   50 Mbps circuit:  Bc =   500,000 bits
+   10 Mbps circuit:  Bc =   100,000 bits</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Shaping to what, exactly?</h3>
+      <p>Shape slightly <em>below</em> the contracted rate, not exactly at it. Providers usually police on layer-2 frame size including the Ethernet header, preamble and inter-frame gap, while your shaper may count only the layer-3 payload. Shaping at exactly 200 Mbps can still see the provider police you.</p>
+      <ul>
+        <li>Start at roughly <strong>95%</strong> of CIR and test.</li>
+        <li>Ask the provider what their policer counts &mdash; some platforms let you account for the overhead explicitly.</li>
+        <li>On Ethernet handoffs, <code>shape average ... account user-defined 20</code> or similar adjusts for the overhead where supported.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 12 ============ -->
+<section class="block" id="hqos">
+  <div class="sechead">
+    <h2><span class="num">12</span>Hierarchical QoS</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="hqos"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Parent shaper, child queuing</h3>
+      <p>The standard WAN pattern. A parent policy shapes to the contracted rate, creating the congestion that the child policy's queuing then manages.</p>
+<pre><code>policy-map WAN-CHILD
+ class VOICE
+  priority percent 4
+ class SIGNALLING
+  bandwidth remaining percent 2
+ class VIDEO
+  bandwidth remaining percent 25
+  random-detect dscp-based
+ class TRANSACTIONAL
+  bandwidth remaining percent 30
+  random-detect dscp-based
+ class SCAVENGER
+  bandwidth remaining percent 1
+ class class-default
+  bandwidth remaining percent 42
+  fair-queue
+  random-detect
+!
+policy-map WAN-PARENT
+ class class-default
+  shape average 200000000 2000000
+  service-policy WAN-CHILD
+!
+interface GigabitEthernet0/0
+ service-policy output WAN-PARENT</code></pre>
+      <p>Without the parent shaper the child does nothing, because a 1 Gbps interface carrying 200 Mbps never queues. This two-level structure is the single most important QoS pattern on any WAN.</p>
+    </div>
+
+    <div class="term">
+      <h3>Per-site shaping on a hub</h3>
+      <p>A hub with a 1 Gbps circuit serving fifty branches, each with a 10 Mbps tail. Without per-site shaping the hub can blast 1 Gbps at a 10 Mbps branch, and the provider drops the excess &mdash; including the branch's voice.</p>
+<pre><code><span class="cmt">! Per-branch shaping, selected by destination</span>
+class-map match-all BRANCH-01
+ match access-group name BRANCH-01-SUBNETS
+!
+policy-map HUB-PARENT
+ class BRANCH-01
+  shape average 10000000 100000
+  service-policy WAN-CHILD
+ class BRANCH-02
+  shape average 20000000 200000
+  service-policy WAN-CHILD
+ class class-default
+  shape average 100000000
+  service-policy WAN-CHILD</code></pre>
+      <p>On DMVPN, <strong>per-tunnel QoS</strong> does this automatically by NHRP group, which scales far better than maintaining a class per spoke:</p>
+<pre><code><span class="cmt">! Hub</span>
+interface Tunnel0
+ nhrp map group BRANCH-10M service-policy output BRANCH-10M-PARENT
+ nhrp map group BRANCH-20M service-policy output BRANCH-20M-PARENT
+
+<span class="cmt">! Spoke declares its group</span>
+interface Tunnel0
+ nhrp group BRANCH-10M
+
+show policy-map multipoint</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Three-level hierarchy</h3>
+<pre><code>policy-map LEVEL3-QUEUING
+ class VOICE
+  priority percent 10
+ class class-default
+  fair-queue
+!
+policy-map LEVEL2-VLAN
+ class VLAN-110
+  shape average 50000000
+  service-policy LEVEL3-QUEUING
+ class VLAN-120
+  shape average 30000000
+  service-policy LEVEL3-QUEUING
+!
+policy-map LEVEL1-PORT
+ class class-default
+  shape average 200000000
+  service-policy LEVEL2-VLAN</code></pre>
+      <p>Port shaper, then per-VLAN shapers, then per-class queuing inside each. Platform support for three levels varies considerably &mdash; check before designing around it.</p>
+      <div class="tip"><b>Always use bandwidth remaining percent in a child</b>The child policy does not know the parent's rate. <code>bandwidth percent 25</code> in a child under a 200 Mbps shaper on a 1 Gbps port is ambiguous and platform-dependent. <code>bandwidth remaining percent</code> is well defined at every level and survives a shaper-rate change without recalculation.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 13 ============ -->
+<section class="block" id="campus">
+  <div class="sechead">
+    <h2><span class="num">13</span>Campus switch QoS</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="campus"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Why switches are different</h3>
+      <p>Switch QoS is implemented in hardware with a <strong>fixed number of queues per port</strong> &mdash; commonly expressed as 1P3Q3T or 2P6Q4T, meaning priority queues, normal queues and drop thresholds per queue. You cannot define arbitrary classes; you map DSCP values into the queues the silicon provides.</p>
+      <p>Older Catalyst platforms use the <code>mls qos</code> model; modern IOS-XE Catalyst uses MQC. Both appear in production, so recognise each.</p>
+    </div>
+
+    <div class="term">
+      <h3>Legacy mls qos</h3>
+<pre><code>mls qos                                        <span class="cmt">! global enable — off by default</span>
+!
+interface GigabitEthernet1/0/10
+ mls qos trust device cisco-phone
+ mls qos trust dscp
+ auto qos voip cisco-phone
+!
+<span class="cmt">! queue mapping and thresholds</span>
+mls qos srr-queue output cos-map queue 1 threshold 3 5
+mls qos srr-queue output dscp-map queue 1 threshold 3 46
+mls qos queue-set output 1 threshold 1 100 100 100 100
+!
+interface GigabitEthernet1/0/1
+ srr-queue bandwidth share 1 30 35 5
+ srr-queue bandwidth shape 10 0 0 0
+ priority-queue out
+
+show mls qos
+show mls qos interface Gi1/0/10
+show mls qos interface Gi1/0/1 statistics</code></pre>
+      <div class="gotcha"><b>mls qos is globally disabled by default, and enabling it changes everything</b>With it off, all markings pass through untouched. The moment you enable it, every port defaults to untrusted and <strong>rewrites DSCP to 0</strong> on ingress. Turning on QoS has taken down voice on more than one campus. Configure the trust statements on every port first, then enable globally.</div>
+    </div>
+
+    <div class="term">
+      <h3>Modern MQC on Catalyst</h3>
+<pre><code><span class="cmt">! Ingress — classify and mark at the access edge</span>
+policy-map ACCESS-EDGE-IN
+ class VOICE
+  set dscp ef
+  police cir 128000 conform-action transmit exceed-action drop
+ class SIGNALLING
+  set dscp cs3
+ class class-default
+  set dscp default
+!
+<span class="cmt">! Egress — map into the hardware queues</span>
+policy-map UPLINK-OUT
+ class VOICE
+  priority level 1
+  queue-limit 64 packets
+ class VIDEO
+  bandwidth remaining percent 30
+ class class-default
+  bandwidth remaining percent 70
+  queue-limit 512 packets
+!
+interface GigabitEthernet1/0/10
+ service-policy input ACCESS-EDGE-IN
+interface TenGigabitEthernet1/1/1
+ service-policy output UPLINK-OUT
+
+show policy-map interface Gi1/0/10
+show platform hardware fed switch active qos queue stats interface Te1/1/1</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Microbursts</h3>
+      <p>A switch port shows 15% average utilisation and yet the counters show output drops. The cause is almost always a <strong>microburst</strong>: a sub-millisecond spike that exceeds line rate and overflows the egress buffer, invisible to any counter averaged over five minutes or even five seconds.</p>
+      <p>Classic causes: many-to-one patterns (incast), a 10G source feeding a 1G destination, or synchronised backups.</p>
+<pre><code>show interface Te1/1/1 | include output drops|queue
+show platform hardware fed switch active qos queue stats interface Te1/1/1
+<span class="cmt">! some platforms expose peak buffer usage</span>
+show platform hardware fed switch active qos queue config interface Te1/1/1</code></pre>
+      <p>Mitigations: increase the buffer allocation for the affected queue, enable a deeper queue-set threshold, reduce the speed mismatch, or spread the sources in time. QoS classes help only if the drops are hitting traffic you care about more than the rest &mdash; the burst itself is a buffer problem, not a scheduling one. This is scenario 10.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 14 ============ -->
+<section class="block" id="wan">
+  <div class="sechead">
+    <h2><span class="num">14</span>WAN and MPLS QoS</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="wan"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The provider boundary</h3>
+      <p>Your DSCP markings mean nothing to the provider unless the contract says otherwise. A typical MPLS service offers three to six classes and publishes a DSCP-to-class mapping. Anything outside it is remapped or ignored, and some providers <strong>rewrite DSCP entirely</strong>.</p>
+      <ul>
+        <li>Get the provider's class map in writing before designing.</li>
+        <li>Mark to <em>their</em> values on egress if they differ from yours, and restore your values on ingress at the far end if needed.</li>
+        <li>Verify with a capture at both ends &mdash; do not assume markings survived. This is scenario 02.</li>
+      </ul>
+    </div>
+
+    <div class="term">
+      <h3>MPLS EXP and tunnelling modes</h3>
+      <p>Inside the MPLS core, routers queue on the 3-bit <strong>EXP</strong> field in the label, not on the customer's DSCP. How EXP and DSCP interact at the edges is set by the tunnelling mode.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Mode</th><th>On push</th><th>On pop</th><th>Egress PE queues on</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Uniform</strong></td><td>DSCP copied to EXP</td><td><strong>EXP copied back to DSCP</strong></td><td>EXP</td></tr>
+            <tr><td><strong>Pipe</strong></td><td>EXP set by provider policy</td><td>Original DSCP preserved</td><td>EXP</td></tr>
+            <tr><td><strong>Short pipe</strong></td><td>EXP set by provider policy</td><td>Original DSCP preserved</td><td><strong>Customer DSCP</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="gotcha"><b>Uniform mode lets the provider rewrite your DSCP</b>If the core re-marks EXP during congestion, uniform mode copies that back into your IP header on the way out. Your AF31 can arrive as something else entirely. Short pipe is usually what an enterprise wants, because the customer marking survives end to end &mdash; but it is the provider's choice, so ask.</div>
+    </div>
+
+    <div class="term">
+      <h3>QoS over VPN and overlays</h3>
+<pre><code><span class="cmt">! Copy the inner DSCP to the tunnel header — usually the default</span>
+interface Tunnel0
+ tunnel mode gre ip
+ <span class="cmt">! qos pre-classify lets the policy see the ORIGINAL headers</span>
+ qos pre-classify
+
+<span class="cmt">! IPsec: preserve DSCP into the outer header</span>
+crypto ipsec profile PROF
+ set security-association ... </code></pre>
+      <p><code>qos pre-classify</code> matters whenever you classify on anything other than DSCP. Without it, the service policy on the physical interface sees only the tunnel's outer header &mdash; same source, same destination, for every flow &mdash; and your ACL-based classification matches nothing. With it, the original inner headers are available to the classifier.</p>
+      <p>The outer header still needs a usable marking, because transit routers only see that. Most tunnel implementations copy the inner DSCP outward by default; verify rather than assume.</p>
+    </div>
+
+    <div class="term">
+      <h3>SD-WAN</h3>
+      <p>SD-WAN changes the emphasis rather than the mechanics. Classification, marking, queuing and shaping all still apply per transport. What is added:</p>
+      <ul>
+        <li><strong>Application-aware routing</strong> &mdash; measure loss, latency and jitter per path with BFD probes, and steer classes to whichever transport currently meets an SLA.</li>
+        <li><strong>Per-transport shapers</strong> &mdash; each underlay has its own contracted rate.</li>
+        <li><strong>Forward error correction and packet duplication</strong> for critical classes on lossy paths.</li>
+      </ul>
+      <p>The classes and DSCP values should stay the same as the rest of your network. SD-WAN is a steering layer on top of DiffServ, not a replacement for it.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 15 ============ -->
+<section class="block" id="wireless">
+  <div class="sechead">
+    <h2><span class="num">15</span>Wireless QoS</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="wireless"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>WMM and access categories</h3>
+      <p>802.11 is a shared, half-duplex medium with contention. WMM (based on 802.11e) gives four <strong>access categories</strong>, differentiated by how long a station waits before transmitting and how large its random backoff window is &mdash; so higher categories win contention more often.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Access category</th><th class="mono-col">UP</th><th>Maps from</th></tr></thead>
+          <tbody>
+            <tr><td><strong>AC_VO</strong> &mdash; Voice</td><td class="mono-col">6, 7</td><td>EF, CS6, CS7</td></tr>
+            <tr><td><strong>AC_VI</strong> &mdash; Video</td><td class="mono-col">4, 5</td><td>AF41&ndash;43, CS4, CS5</td></tr>
+            <tr><td><strong>AC_BE</strong> &mdash; Best effort</td><td class="mono-col">0, 3</td><td>DF, CS3, AF31&ndash;33</td></tr>
+            <tr><td><strong>AC_BK</strong> &mdash; Background</td><td class="mono-col">1, 2</td><td>CS1, AF11&ndash;13</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="term">
+      <h3>The DSCP-to-UP mapping trap</h3>
+      <div class="gotcha"><b>The naive mapping is wrong for voice</b>Taking the top three DSCP bits as the UP value maps EF (46, binary 101110) to UP 5 &mdash; which is <strong>video</strong>, not voice. RFC 8325 defines the correct mapping, and modern controllers implement it. On older gear, verify that EF lands in AC_VO and not AC_VI, or your voice shares a category with video and loses the contention advantage you configured it for.</div>
+<pre><code><span class="cmt">! Catalyst 9800 WLC</span>
+wireless profile policy BRANCH-POLICY
+ service-policy input platinum-up
+ service-policy output platinum
+!
+<span class="cmt">! trust the DSCP arriving from the wired side</span>
+qos wireless-default-untrust
+
+show wireless profile policy detailed BRANCH-POLICY
+show policy-map interface wireless ssid</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>What actually helps on wireless</h3>
+      <p>QoS marking matters less on Wi-Fi than three other things:</p>
+      <ol>
+        <li><strong>Airtime</strong>. A slow client transmitting at a low data rate consumes airtime that every other client loses. Disabling very low data rates often does more for voice quality than any queue tuning.</li>
+        <li><strong>Channel planning and co-channel interference</strong>. Contention you cannot schedule your way out of.</li>
+        <li><strong>Client density per radio</strong>.</li>
+      </ol>
+      <p>Configure WMM correctly, verify the DSCP-to-UP mapping, then spend your effort on RF. The scheduler cannot fix a medium that is busy.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 16 ============ -->
+<section class="block" id="design">
+  <div class="sechead">
+    <h2><span class="num">16</span>Design guidance</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="design"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>How many classes?</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Model</th><th>Classes</th><th>Suits</th></tr></thead>
+          <tbody>
+            <tr><td><strong>4-class</strong></td><td>Voice (EF), Signalling (CS3), Business (AF21), Best effort (DF)</td><td>Most enterprises. Start here</td></tr>
+            <tr><td><strong>8-class</strong></td><td>Adds video, network control, bulk, scavenger</td><td>Networks with real video volume</td></tr>
+            <tr><td><strong>12-class</strong></td><td>Full RFC 4594</td><td>Service providers, very large enterprises</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>More classes means more to configure consistently on every device and more to get wrong. A well-implemented four-class policy beats a twelve-class policy applied inconsistently &mdash; and inconsistency is the normal outcome of complexity. Use the standard DSCP values even in a small model, so expanding later is a configuration change rather than a remarking exercise.</p>
+    </div>
+
+    <div class="term">
+      <h3>A worked four-class policy</h3>
+<pre><code>class-map match-any VOICE
+ match dscp ef
+class-map match-any SIGNALLING
+ match dscp cs3 cs6
+class-map match-any BUSINESS
+ match dscp af21 af22 af23 af31 af32 af33 af41 af42 af43
+!
+policy-map WAN-CHILD
+ class VOICE
+  priority percent 10
+ class SIGNALLING
+  bandwidth remaining percent 5
+ class BUSINESS
+  bandwidth remaining percent 40
+  random-detect dscp-based
+ class class-default
+  bandwidth remaining percent 55
+  fair-queue
+  random-detect
+!
+policy-map WAN-PARENT
+ class class-default
+  shape average 200000000 2000000
+  service-policy WAN-CHILD
+!
+interface GigabitEthernet0/0
+ service-policy output WAN-PARENT</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Rules worth following</h3>
+      <ol>
+        <li><strong>Mark once, at the edge.</strong> Everything else matches on DSCP.</li>
+        <li><strong>Trust boundary at the access port.</strong> Never trust an endpoint you do not control.</li>
+        <li><strong>Signalling is CS3, voice bearer is EF.</strong> Not the same class.</li>
+        <li><strong>Total priority at or below 33%.</strong> More than that and your guarantees stop meaning anything.</li>
+        <li><strong>Shape on any sub-line-rate circuit.</strong> Without it the queuing policy is inert.</li>
+        <li><strong>Tc around 10 ms</strong> wherever real-time traffic crosses a shaper.</li>
+        <li><strong>WRED on TCP classes only.</strong> Never on voice or video.</li>
+        <li><strong>Give class-default at least 25%.</strong> Most of your traffic lives there.</li>
+        <li><strong>Protect the control plane</strong> with a CS6 class and CoPP.</li>
+        <li><strong>Document the DSCP map</strong> and treat it as an interface contract between teams.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 17 ============ -->
+<section class="block" id="verification">
+  <div class="sechead">
+    <h2><span class="num">17</span>Verification</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="verification"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Reading show policy-map interface</h3>
+      <p>The one command that matters. Everything you need is in its output, and most people skim past the important lines.</p>
+<pre><code>R1# show policy-map interface GigabitEthernet0/0 output
+
+ Service-policy output: WAN-PARENT
+   Class-map: class-default (match-any)
+     482910284 packets, 68422918402 bytes
+     <span class="cmt">! --- the shaper ---</span>
+     Queueing
+       queue limit 416 packets
+       (queue depth/total drops/no-buffer drops) <span class="hl">0/0/0</span>
+     shape (average) cir 200000000, bc 2000000, be 2000000
+       target shape rate 200000000
+
+     Service-policy : WAN-CHILD
+
+       Class-map: VOICE (match-any)
+         28491028 packets, 4812910284 bytes
+         <span class="cmt">! --- the LLQ policer. THIS is what to watch ---</span>
+         Priority: 4% (8000 kbps), burst bytes 200000,
+           b/w exceed <span class="bad">drops: 48291</span>
+
+       Class-map: BUSINESS (match-any)
+         182910284 packets, 28491028401 bytes
+         Queueing
+           queue limit 104 packets
+           (queue depth/total drops/no-buffer drops) <span class="hl">12/8402/0</span>
+           bandwidth remaining 40%
+         Exp-weight-constant: 9 (1/512)
+         Mean queue depth: 14 packets
+           dscp  Transmitted    Random drop   Tail drop  Minimum Maximum Mark
+                 pkts/bytes     pkts/bytes    pkts/bytes  thresh  thresh prob
+           af21  18291/2841028  <span class="hl">402/58291</span>     0/0         32      40  1/10</code></pre>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Line</th><th>What it tells you</th></tr></thead>
+          <tbody>
+            <tr><td><code>b/w exceed drops</code> in a priority class</td><td><strong>Voice is being dropped by the LLQ policer.</strong> Either too much voice or too small an allocation</td></tr>
+            <tr><td><code>total drops</code> in a bandwidth class</td><td>Queue overflow. Class is undersized, or the shaper is too tight</td></tr>
+            <tr><td><code>queue depth</code> persistently high</td><td>Sustained congestion, and latency to match</td></tr>
+            <tr><td><code>Random drop</code> under WRED</td><td>WRED working as designed on TCP. Expected in moderation</td></tr>
+            <tr><td><code>Tail drop</code> under WRED</td><td>Queue hit maximum threshold. WRED is no longer coping</td></tr>
+            <tr><td><code>no-buffer drops</code></td><td>Platform out of buffers. A resource problem, not a policy one</td></tr>
+            <tr><td>Zero packets in a class</td><td><strong>Classification is not matching.</strong> Check the class-map before anything else</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tip"><b>Start with the packet counters</b>Before investigating drops, confirm each class is counting packets at all. A class with zero packets means your classification is wrong, and every other number in the output is meaningless. It is the first thing to check and the most often skipped.</div>
+    </div>
+
+    <div class="term">
+      <h3>Other commands</h3>
+<pre><code>show policy-map interface Gi0/0
+show policy-map interface Gi0/0 output class VOICE
+show policy-map                             <span class="cmt">! configured policies</span>
+show class-map
+show table-map
+show interface Gi0/0 | include drops|queue|rate
+show queueing interface Gi0/0
+show mls qos interface Gi1/0/1 statistics   <span class="cmt">! legacy switch</span>
+show platform hardware fed switch active qos queue stats interface Te1/1/1
+
+<span class="cmt">! reset counters for a clean measurement</span>
+clear counters
+clear policy-map interface</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Measuring, not guessing</h3>
+      <p>Counters tell you about drops. They do not tell you about latency or jitter, which is what users actually experience. For that:</p>
+<pre><code><span class="cmt">! IP SLA jitter probe matching your voice marking</span>
+ip sla 100
+ udp-jitter 10.20.1.1 16400 codec g711alaw
+ tos 184                                   <span class="cmt">! 184 = DSCP 46 << 2</span>
+ frequency 60
+ip sla schedule 100 life forever start-time now
+!
+show ip sla statistics 100
+show ip sla statistics aggregated 100</code></pre>
+      <p>Note the <code>tos</code> value: the ToS byte is the DSCP shifted left by two bits, so EF (46) becomes 184. Setting it ensures the probe travels in the same queue as real voice &mdash; a probe in the default class measures nothing useful about your voice path.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 18 ============ -->
+<section class="block" id="scenarios">
+  <div class="sechead">
+    <h2><span class="num">18</span>Real-world scenarios</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="scenarios"> Reviewed</label>
+  </div>
+  <p class="lede">Ten incidents on the lab topology, from reported symptom to fix. Work out the cause before expanding the diagnosis.</p>
+
+  <details class="scn"><summary data-n="01">Voice is choppy, and LLQ is configured correctly</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>Users at the branch report choppy audio during business hours. The WAN policy has a priority class for EF and it looks right.</p>
+
+    <span class="step">What you see</span>
+<pre><code>R1# show policy-map interface Gi0/0 output class VOICE
+
+       Class-map: VOICE (match-any)
+         28491028 packets, 4812910284 bytes
+         Match: dscp ef (46)
+         Priority: 4% (8000 kbps), burst bytes 200000,
+           b/w exceed <span class="bad">drops: 1842910</span></code></pre>
+    <p>The class is matching, so classification is fine. But the LLQ policer is dropping heavily.</p>
+
+    <span class="step">Diagnosis</span>
+<pre><code><span class="cmt">! How much voice is actually offered?</span>
+R1# show policy-map interface Gi0/0 output class VOICE | include bytes
+  28491028 packets, 4812910284 bytes
+  30 second offered rate <span class="bad">11482000 bps</span>, drop rate 3410000 bps
+
+<span class="cmt">! The allocation</span>
+  Priority: 4% (8000 kbps)</code></pre>
+    <p>11.5 Mbps of voice offered into an 8 Mbps priority allocation. The policer drops the difference, and because it drops rather than queues, the loss is spread across every active call.</p>
+<pre><code>R1# show call active voice brief | count
+Number of lines which match regexp = <span class="bad">147</span>
+<span class="cmt">! sized for 40 calls, carrying 147</span></code></pre>
+
+    <span class="step">Root cause</span>
+    <p>Call volume grew well past the original design. The priority queue was sized for 40 concurrent calls; the branch now runs 147 at peak.</p>
+
+    <span class="step">Fix</span>
+<pre><code><span class="cmt">! 147 calls x 90 kbps = 13.2 Mbps, plus headroom = ~16 Mbps</span>
+<span class="cmt">! On a 200 Mbps shaper that is 8%</span>
+policy-map WAN-CHILD
+ class VOICE
+  priority percent 8</code></pre>
+    <p>And the real fix &mdash; stop more calls being placed than the queue can carry:</p>
+<pre><code><span class="cmt">! Call admission control via CUCM locations, or RSVP-based CAC</span>
+<span class="cmt">! so call 148 gets a busy signal instead of degrading all 147</span></code></pre>
+
+    <div class="verdict"><b>Takeaway</b>The LLQ policer <em>drops</em>, it does not delay. Exceeding the priority rate degrades every call at once rather than rejecting one. Always pair a priority queue with call admission control, and re-check the sizing whenever call volumes change. <code>b/w exceed drops</code> climbing is the definitive signal.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="02">DSCP markings arrive at the branch as zero</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>The hub marks correctly. The branch sees everything as best effort, so the branch egress policy puts voice in class-default.</p>
+
+    <span class="step">What you see</span>
+<pre><code><span class="cmt">! At the hub, leaving</span>
+HUB# show policy-map interface Gi0/0 output class VOICE
+       Class-map: VOICE (match-any)
+         28491028 packets   <span class="cmt">! marking correctly on the way out</span>
+
+<span class="cmt">! At the branch, arriving</span>
+BRANCH# show policy-map interface Gi0/1 input class VOICE
+       Class-map: VOICE (match-any)
+         <span class="bad">0 packets, 0 bytes</span>
+       Class-map: class-default (match-any)
+         <span class="bad">184291028 packets</span>   <span class="cmt">! everything landed here</span></code></pre>
+
+    <span class="step">Diagnosis</span>
+<pre><code>BRANCH# monitor capture CAP interface Gi0/1 in match ipv4 any any
+BRANCH# monitor capture CAP start
+BRANCH# show monitor capture CAP buffer detail | include DSCP
+    Differentiated Services Field: 0x00 (<span class="bad">DSCP: CS0</span>, ECN: Not-ECT)
+    Differentiated Services Field: 0x00 (<span class="bad">DSCP: CS0</span>, ECN: Not-ECT)</code></pre>
+    <p>Everything arrives at DSCP 0. The provider is clearing the field. Checking the contract confirms it: the service was ordered as a single-class best-effort product, and the provider's PE re-marks all ingress traffic to zero.</p>
+
+    <span class="step">Root cause</span>
+    <p>No QoS class of service purchased on the MPLS circuit. The provider's uniform-mode behaviour copies their EXP marking back into DSCP on egress, and their EXP is 0 for the best-effort product.</p>
+
+    <span class="step">Fix &mdash; two options</span>
+<pre><code><span class="cmt">! A. Buy the CoS product and mark to THEIR values</span>
+<span class="cmt">!    Provider maps: EF -> their RT class, AF31 -> their Business class</span>
+policy-map PROVIDER-MAP-OUT
+ class VOICE
+  set dscp ef
+ class BUSINESS
+  set dscp af31
+
+<span class="cmt">! B. If CoS cannot be bought — re-mark at the branch on ingress</span>
+<span class="cmt">!    Classify on the inner addresses/ports instead of DSCP</span>
+ip access-list extended VOICE-FROM-HUB
+ permit udp 10.10.110.0 0.0.0.255 any range 16384 32767
+!
+class-map match-all REMARK-VOICE
+ match access-group name VOICE-FROM-HUB
+policy-map BRANCH-IN
+ class REMARK-VOICE
+  set dscp ef
+!
+interface GigabitEthernet0/1
+ service-policy input BRANCH-IN</code></pre>
+    <p>Option B restores the marking locally so the branch LAN treats it correctly, but it cannot help across the provider's network, where the damage already happened.</p>
+
+    <div class="verdict"><b>Takeaway</b>Never assume markings survive a provider. Capture at both ends and compare. Get the DSCP-to-class mapping in the contract, and understand which MPLS tunnelling mode the provider uses &mdash; uniform mode means their re-marking propagates into your IP header.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="03">Shaper configured, and latency got worse</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>A shaper was added to a 50 Mbps circuit to stop provider drops. Drops stopped, but voice jitter went from 8 ms to 90 ms.</p>
+
+    <span class="step">What you see</span>
+<pre><code>R1# show policy-map interface Gi0/0 output | include shape|Bc|queue depth
+     shape (average) cir 50000000, <span class="bad">bc 6250000</span>, be 6250000
+       target shape rate 50000000
+       (queue depth/total drops/no-buffer drops) <span class="bad">184/0/0</span></code></pre>
+
+    <span class="step">Diagnosis</span>
+<pre><code>Tc = Bc / CIR
+Tc = 6,250,000 / 50,000,000 = <span class="bad">0.125 s = 125 ms</span></code></pre>
+    <p>The default Bc produced a 125 ms interval. The shaper releases a burst then pauses for the rest of the interval. A voice packet arriving just after a burst waits up to 125 ms before the next one opens &mdash; that single mechanism blows the entire 30 ms jitter budget.</p>
+
+    <span class="step">Root cause</span>
+    <p>Bc left at the platform default. The shaper was correct in rate but far too coarse in time for real-time traffic.</p>
+
+    <span class="step">Fix</span>
+<pre><code><span class="cmt">! Target Tc = 10 ms, so Bc = CIR / 100</span>
+<span class="cmt">! 50,000,000 / 100 = 500,000 bits</span>
+
+policy-map WAN-PARENT
+ class class-default
+  shape average 50000000 500000
+  service-policy WAN-CHILD</code></pre>
+<pre><code>R1# show policy-map interface Gi0/0 output | include shape|queue depth
+     shape (average) cir 50000000, <span class="hl">bc 500000</span>, be 500000
+       (queue depth/total drops/no-buffer drops) <span class="hl">6/0/0</span>
+
+<span class="cmt">! jitter back to 11 ms</span></code></pre>
+
+    <div class="verdict"><b>Takeaway</b>A shaper's Bc determines its granularity, and the default is usually 125 ms &mdash; fine for bulk data, catastrophic for voice. On any link carrying real-time traffic, set Bc so Tc lands near 10 ms: <strong>Bc = CIR / 100</strong>. The shaper then releases smaller bursts far more often, and the priority queue can actually do its job.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="04">A 100 Mbps circuit only delivers 30 Mbps on file transfers</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>A 100 Mbps policed service. Large file transfers reach only about 30 Mbps. The provider insists the circuit is clean and their counters show no policing.</p>
+
+    <span class="step">What you see</span>
+<pre><code>R1# show policy-map interface Gi0/0 input class BULK
+       Class-map: BULK (match-any)
+         police:
+           cir 100000000 bps, <span class="bad">bc 12500 bytes</span>
+         conformed 1842910 packets, 2841028401 bytes; actions: transmit
+         exceeded <span class="bad">481029 packets</span>, 710284018 bytes; actions: drop</code></pre>
+
+    <span class="step">Diagnosis</span>
+<pre><code>Bc = 12,500 bytes = 100,000 bits
+Tc = Bc / CIR = 100,000 / 100,000,000 = <span class="bad">1 ms</span></code></pre>
+    <p>A 1 ms token bucket. TCP sends a full congestion window as a burst &mdash; on a high-bandwidth-delay path that can be hundreds of kilobytes arriving back to back. The bucket holds 12.5 KB. Everything past that in each burst is dropped, TCP halves its window, and the achieved rate settles far below the policed rate.</p>
+<pre><code>R1# show interface Gi0/0 | include reliability|output drops
+<span class="cmt">! no interface drops — the loss is entirely at the policer</span></code></pre>
+
+    <span class="step">Root cause</span>
+    <p>Bc far too small for a TCP-dominated workload. The policer enforces the average rate correctly but punishes the burst behaviour TCP depends on.</p>
+
+    <span class="step">Fix</span>
+<pre><code><span class="cmt">! Allow ~1.5 s of burst, a common TCP-friendly figure</span>
+<span class="cmt">! Bc = CIR x 1.5 / 8 = 100,000,000 x 1.5 / 8 = 18,750,000 bytes</span>
+<span class="cmt">! Many platforms cap this; use the largest supported value</span>
+
+policy-map INGRESS-POLICE
+ class BULK
+  police cir 100000000 bc 1875000
+    conform-action transmit
+    exceed-action set-dscp-transmit af12
+    violate-action drop</code></pre>
+    <p>Note the second improvement: exceeding traffic is now <strong>re-marked rather than dropped</strong>, so it still gets through when the network is quiet and is shed first under congestion.</p>
+
+    <div class="verdict"><b>Takeaway</b>A policer with a small Bc produces throughput far below its configured rate for TCP, while reporting the rate as correct. If a circuit underdelivers on bulk transfers but ping and small flows look fine, check Bc before anything else. Prefer shaping over policing for TCP-heavy traffic, and remark rather than drop where the option exists.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="05">QoS policy is applied and makes no difference at all</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>A full LLQ policy on the WAN interface. Voice still degrades under load. The policy is attached and shows no errors.</p>
+
+    <span class="step">What you see</span>
+<pre><code>R1# show policy-map interface Gi0/0 output
+
+ Service-policy output: WAN-EGRESS
+   Class-map: VOICE (match-any)
+     28491028 packets, 4812910284 bytes
+     Priority: 10% (100000 kbps), burst bytes 2500000,
+       b/w exceed drops: <span class="hl">0</span>
+   Class-map: class-default (match-any)
+     482910284 packets
+       (queue depth/total drops/no-buffer drops) <span class="hl">0/0/0</span></code></pre>
+    <p>No drops anywhere, queue depth zero, and yet voice is bad. The policy is not engaging because the router never sees congestion.</p>
+
+    <span class="step">Diagnosis</span>
+<pre><code>R1# show interface Gi0/0 | include BW|rate
+  MTU 1500 bytes, <span class="bad">BW 1000000 Kbit/sec</span>
+  30 second output rate <span class="bad">198412000 bits/sec</span>
+
+<span class="cmt">! Contract with the provider:</span>
+<span class="cmt">!   physical handoff 1 Gbps, committed rate 200 Mbps</span></code></pre>
+    <p>The router has a gigabit port and is clocking out 198 Mbps. From its point of view there is no congestion at all, so the queues stay empty and LLQ never has anything to prioritise. The provider polices at 200 Mbps and drops the excess &mdash; indiscriminately, including EF.</p>
+
+    <span class="step">Root cause</span>
+    <p>Sub-line-rate circuit with no shaper. The classic. Queuing policy on an interface that never queues does nothing whatsoever.</p>
+
+    <span class="step">Fix</span>
+<pre><code><span class="cmt">! Parent shaper creates the congestion the child can manage</span>
+policy-map WAN-PARENT
+ class class-default
+  shape average 190000000 1900000     <span class="cmt">! 95% of CIR, Tc = 10 ms</span>
+  service-policy WAN-EGRESS
+!
+interface GigabitEthernet0/0
+ no service-policy output WAN-EGRESS
+ service-policy output WAN-PARENT</code></pre>
+<pre><code>R1# show policy-map interface Gi0/0 output | include queue depth|exceed
+       (queue depth/total drops/no-buffer drops) <span class="hl">8/1204/0</span>
+       b/w exceed drops: 0
+<span class="cmt">! now it is queuing, and the drops are landing in class-default where they belong</span></code></pre>
+
+    <div class="verdict"><b>Takeaway</b>On any circuit where the physical port is faster than the contracted rate, you must shape to the contract before any queuing policy means anything. Shape at about 95% of CIR &mdash; providers usually police on layer-2 frame size including overhead your shaper may not count. This is the most common QoS design error in existence.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="06">Video quality collapsed after enabling WRED</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>WRED was enabled across all classes to reduce tail drop. TCP applications improved. Video conferencing became unwatchable.</p>
+
+    <span class="step">What you see</span>
+<pre><code>R1# show policy-map interface Gi0/0 output class VIDEO
+
+       Class-map: VIDEO (match-any)
+         Match: dscp af41 af42 af43 cs4
+         Queueing
+           bandwidth remaining 25%
+         Exp-weight-constant: 9 (1/512)
+         Mean queue depth: 26 packets
+           dscp  Transmitted     <span class="bad">Random drop</span>    Tail drop
+           af41  2841028/4.1G    <span class="bad">184291/284M</span>     0/0
+           cs4   481029/710M     <span class="bad">38210/58M</span>       0/0</code></pre>
+
+    <span class="step">Diagnosis</span>
+    <p>WRED is randomly discarding video packets. The mechanism depends on TCP responding to loss by reducing its window &mdash; video over UDP/RTP does no such thing. The sender keeps transmitting at the same rate, so the drops achieve no congestion relief whatsoever and simply destroy frames.</p>
+    <p>Worse, video is unusually sensitive: losing part of a reference frame corrupts every frame that depends on it until the next keyframe arrives.</p>
+
+    <span class="step">Root cause</span>
+    <p>WRED applied to a UDP real-time class. Correct for TCP, actively harmful here.</p>
+
+    <span class="step">Fix</span>
+<pre><code>policy-map WAN-CHILD
+ class VOICE
+  priority percent 4
+  <span class="cmt">! no WRED — tail drop with a shallow queue</span>
+  queue-limit 64 packets
+ class VIDEO
+  bandwidth remaining percent 25
+  <span class="cmt">! no WRED here either</span>
+  queue-limit 128 packets
+ class TRANSACTIONAL
+  bandwidth remaining percent 30
+  random-detect dscp-based          <span class="cmt">! TCP — correct place for it</span>
+ class class-default
+  bandwidth remaining percent 41
+  fair-queue
+  random-detect                     <span class="cmt">! TCP-dominated — fine</span></code></pre>
+
+    <div class="verdict"><b>Takeaway</b>WRED only works on traffic that responds to loss. Apply it to TCP-dominated classes and never to voice or video. For real-time classes use tail drop with a deliberately shallow queue &mdash; a late real-time packet is useless anyway, so dropping it quickly is better than delaying everything behind it.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="07">Enabling QoS on the campus switch took voice down</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p><code>mls qos</code> was enabled globally on an access switch during a QoS rollout. All phones on that switch immediately had one-way audio and poor quality.</p>
+
+    <span class="step">What you see</span>
+<pre><code>SW1# show mls qos interface Gi1/0/10
+GigabitEthernet1/0/10
+trust state: <span class="bad">not trusted</span>
+trust mode: <span class="bad">not trusted</span>
+trust enabled flag: ena
+COS override: dis
+<span class="bad">default COS: 0</span>
+DSCP Mutation Map: Default DSCP Mutation Map</code></pre>
+<pre><code>SW1# show mls qos interface Gi1/0/1 statistics | begin dscp
+  dscp: incoming
+  0 -  4 :  <span class="bad">184291028</span>   0   0   0   0
+ 40 - 44 :       <span class="bad">0</span>   0   0   0   0
+<span class="cmt">! everything arriving as DSCP 0 — EF has vanished</span></code></pre>
+
+    <span class="step">Diagnosis</span>
+    <p>Enabling <code>mls qos</code> globally changes the default behaviour of every port from "pass markings through untouched" to "untrusted, rewrite DSCP to 0 on ingress". The phones were marking EF correctly; the switch was erasing it the moment it arrived.</p>
+
+    <span class="step">Root cause</span>
+    <p>Global QoS enabled before per-port trust was configured. Before the change, QoS was off and markings passed through by accident &mdash; so the network appeared to work without ever having been configured.</p>
+
+    <span class="step">Immediate recovery</span>
+<pre><code>SW1(config)# no mls qos
+<span class="cmt">! back to pass-through while you prepare properly</span></code></pre>
+
+    <span class="step">Correct rollout</span>
+<pre><code><span class="cmt">! 1. Configure trust on EVERY port first</span>
+interface range GigabitEthernet1/0/1-48
+ mls qos trust device cisco-phone
+ mls qos trust dscp
+!
+interface range TenGigabitEthernet1/1/1-4
+ mls qos trust dscp
+!
+<span class="cmt">! 2. Only then enable globally</span>
+mls qos
+!
+<span class="cmt">! 3. Verify immediately</span>
+show mls qos interface Gi1/0/10 | include trust
+show mls qos interface Te1/1/1 statistics | begin dscp</code></pre>
+
+    <div class="verdict"><b>Takeaway</b>On legacy Catalyst, <code>mls qos</code> is off by default and markings pass through untouched &mdash; so a network can appear to have working QoS while having none configured. Enabling it flips every port to untrusted and zeroes DSCP. Configure trust everywhere first, enable globally second, verify third. And do it in a window.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="08">The class matches nothing after moving to a tunnel</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>A branch was migrated from direct MPLS to a DMVPN tunnel over broadband. The same QoS policy was applied to the physical interface. Every class shows zero packets except class-default.</p>
+
+    <span class="step">What you see</span>
+<pre><code>R1# show policy-map interface Gi0/0 output
+
+       Class-map: VOICE (match-any)
+         Match: access-group name VOICE-RTP
+         <span class="bad">0 packets, 0 bytes</span>
+       Class-map: BUSINESS (match-any)
+         <span class="bad">0 packets, 0 bytes</span>
+       Class-map: class-default (match-any)
+         <span class="bad">481029384 packets</span></code></pre>
+
+    <span class="step">Diagnosis</span>
+    <p>The classification uses an ACL matching inner source addresses and RTP port ranges. By the time packets reach the physical interface they are encapsulated &mdash; the outer header shows the tunnel source and destination and protocol 47 or UDP 4500. The ACL cannot see the original addresses, so nothing matches.</p>
+<pre><code>R1# show monitor capture CAP buffer detail | include Src|Dst|Protocol
+    Protocol: <span class="bad">GRE (47)</span>
+    Src: 203.0.113.10, Dst: 198.51.100.20
+<span class="cmt">! every packet looks identical to the classifier</span></code></pre>
+
+    <span class="step">Fix &mdash; two options</span>
+<pre><code><span class="cmt">! A. qos pre-classify — lets the policy see the ORIGINAL headers</span>
+interface Tunnel0
+ qos pre-classify
+
+<span class="cmt">! B. Better: classify on DSCP, which IS copied to the outer header</span>
+class-map match-any VOICE
+ match dscp ef
+class-map match-any BUSINESS
+ match dscp af21 af22 af23</code></pre>
+    <p>Option B is the right long-term answer. Mark at the edge, classify on DSCP everywhere else, and tunnelling becomes a non-issue because the DSCP is copied into the outer header by default.</p>
+<pre><code><span class="cmt">! Verify the outer header carries the marking</span>
+R1# show monitor capture CAP buffer detail | include DSCP
+    Differentiated Services Field: 0xb8 (<span class="hl">DSCP: EF</span>, ECN: Not-ECT)</code></pre>
+
+    <div class="verdict"><b>Takeaway</b>ACL-based classification breaks the moment traffic is encapsulated, because the classifier sees only the outer header. <code>qos pre-classify</code> is the patch; marking at the edge and matching on DSCP is the design. This is another argument for doing classification once, as close to the source as possible.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="09">The child policy's percentages do not add up to what you expected</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>A hierarchical policy shapes to 200 Mbps with a child policy allocating percentages. The business class is getting far less than the 30% configured.</p>
+
+    <span class="step">What you see</span>
+<pre><code>R1# show run | section policy-map
+policy-map WAN-CHILD
+ class VOICE
+  priority percent 10
+ class BUSINESS
+  <span class="bad">bandwidth percent 30</span>
+ class class-default
+  <span class="bad">bandwidth percent 40</span>
+!
+policy-map WAN-PARENT
+ class class-default
+  shape average 200000000
+  service-policy WAN-CHILD</code></pre>
+<pre><code>R1# show policy-map interface Gi0/0 output class BUSINESS | include bandwidth|drops
+           bandwidth 30% (<span class="bad">300000 kbps</span>)
+           (queue depth/total drops/no-buffer drops) 104/<span class="bad">8402910</span>/0</code></pre>
+    <p>300 Mbps reserved inside a 200 Mbps shaper. The percentages are being taken against the <em>interface</em> rate of 1 Gbps, not the shaper rate.</p>
+
+    <span class="step">Diagnosis</span>
+    <p>Platform behaviour for <code>bandwidth percent</code> inside a shaped parent is inconsistent &mdash; some take the parent rate, some the interface rate, and the result is either a nonsensical reservation or a rejected configuration. Here the reservations exceed the actual available rate, so the scheduler cannot honour them and the class starves.</p>
+
+    <span class="step">Fix</span>
+<pre><code>policy-map WAN-CHILD
+ class VOICE
+  priority percent 10
+ class BUSINESS
+  <span class="hl">bandwidth remaining percent 50</span>
+ class class-default
+  <span class="hl">bandwidth remaining percent 50</span>
+  fair-queue</code></pre>
+    <p><code>bandwidth remaining percent</code> divides up what is left after the priority class takes its share, and is unambiguous at every level of the hierarchy.</p>
+<pre><code>R1# show policy-map interface Gi0/0 output class BUSINESS | include bandwidth|drops
+           bandwidth remaining 50%
+           (queue depth/total drops/no-buffer drops) 12/<span class="hl">2104</span>/0</code></pre>
+
+    <div class="verdict"><b>Takeaway</b>Inside any shaped parent, use <code>bandwidth remaining percent</code>, never <code>bandwidth percent</code>. The child policy has no reliable knowledge of the parent's rate, and the interpretation varies by platform. The remaining-percent form is well defined everywhere and survives a change to the shaper rate without recalculating every class.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="10">Output drops on a switch port at 12% utilisation</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>An access switch uplink reports steadily increasing output drops. Monitoring shows average utilisation around 12%. Users report occasional application timeouts.</p>
+
+    <span class="step">What you see</span>
+<pre><code>SW1# show interface TenGigabitEthernet1/1/1 | include rate|drops
+  30 second input rate 1842000000 bits/sec
+  30 second output rate <span class="hl">1204000000 bits/sec</span>      <span class="cmt">! ~12% of 10G</span>
+     Total output drops: <span class="bad">4829104</span></code></pre>
+    <p>Drops with no sustained congestion. Averaged counters hide what is happening.</p>
+
+    <span class="step">Diagnosis</span>
+<pre><code>SW1# show platform hardware fed switch active qos queue stats interface Te1/1/1
+
+ Queue Buffers   Enqueue-TH0  Enqueue-TH1  Enqueue-TH2  Drop-TH0 Drop-TH1 Drop-TH2
+   0      0        184291028            0            0         0        0        0
+   1      0                0    481029384            0         0        0  <span class="bad">4829104</span>
+   2      0                0            0            0         0        0        0</code></pre>
+    <p>All drops in one queue, at the highest threshold. Combined with low average utilisation, this is a <strong>microburst</strong>: a sub-millisecond spike exceeding line rate that overflows the egress buffer before any averaging window notices.</p>
+<pre><code><span class="cmt">! What is bursting?</span>
+SW1# show interface Te1/1/1 counters | include broadcast|multicast
+
+<span class="cmt">! Correlate with the application — here, 40 servers backing up</span>
+<span class="cmt">! simultaneously to one target through this uplink: classic incast</span></code></pre>
+
+    <span class="step">Root cause</span>
+    <p>Many-to-one incast. Forty 1 Gbps sources briefly converging on one 10 Gbps uplink produce instantaneous demand far above 10 Gbps, and the buffer cannot absorb it.</p>
+
+    <span class="step">Fix &mdash; in order of effectiveness</span>
+<pre><code><span class="cmt">! 1. Give the affected queue more buffer</span>
+interface TenGigabitEthernet1/1/1
+ service-policy output UPLINK-OUT
+!
+policy-map UPLINK-OUT
+ class BULK
+  bandwidth remaining percent 20
+  queue-limit 2048 packets          <span class="cmt">! deeper buffer for bursty bulk</span>
+ class VOICE
+  priority level 1
+  queue-limit 64 packets            <span class="cmt">! keep real-time shallow</span>
+
+<span class="cmt">! 2. Separate the bursty traffic so it cannot hurt others</span>
+class-map match-any BULK
+ match dscp af11 af12 af13 cs1
+
+<span class="cmt">! 3. Stagger the backups — the actual root cause</span></code></pre>
+
+    <div class="verdict"><b>Takeaway</b>Output drops at low average utilisation are microbursts, and no five-minute counter will ever show them. Look at per-queue hardware statistics, and correlate with what the application is doing. The buffer is the constraint, not the scheduler &mdash; so QoS classes help only by isolating the bursty traffic from traffic you care about. The real fix is usually in the application's timing.</div>
+  </div></details>
+</section>
+
+<!-- ============ 19 ============ -->
+<section class="block" id="commands">
+  <div class="sechead">
+    <h2><span class="num">19</span>Command reference</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="commands"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Verification</h3>
+<pre><code>show policy-map interface Gi0/0
+show policy-map interface Gi0/0 output class VOICE
+show policy-map
+show class-map
+show table-map
+show interface Gi0/0 | include drops|queue|rate
+show queueing interface Gi0/0
+show mls qos
+show mls qos interface Gi1/0/10
+show mls qos interface Gi1/0/1 statistics
+show platform hardware fed switch active qos queue stats interface Te1/1/1
+show policy-map multipoint                   <span class="cmt">! DMVPN per-tunnel QoS</span>
+show ip nbar protocol-discovery interface Gi0/1
+show ip sla statistics</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Capture and measure</h3>
+<pre><code>monitor capture CAP interface Gi0/0 in match ipv4 any any
+monitor capture CAP start
+show monitor capture CAP buffer detail | include DSCP
+monitor capture CAP stop
+no monitor capture CAP
+
+clear counters
+clear policy-map interface Gi0/0</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Useful conversions</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>From</th><th>To</th><th>How</th></tr></thead>
+          <tbody>
+            <tr><td>DSCP</td><td>ToS byte</td><td>Multiply by 4 (shift left 2). EF 46 &rarr; 184</td></tr>
+            <tr><td>DSCP</td><td>IP Precedence</td><td>Divide by 8. EF 46 &rarr; 5</td></tr>
+            <tr><td>AFxy</td><td>DSCP</td><td>8x + 2y</td></tr>
+            <tr><td>CIR and Bc</td><td>Tc</td><td>Tc = Bc / CIR</td></tr>
+            <tr><td>CIR and target Tc</td><td>Bc</td><td>Bc = CIR &times; Tc. For Tc = 10 ms, Bc = CIR / 100</td></tr>
+            <tr><td>G.711 calls</td><td>Bandwidth</td><td>~90 kbps each way with overhead</td></tr>
+            <tr><td>G.729 calls</td><td>Bandwidth</td><td>~30 kbps each way with overhead</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+</div>
+
+<footer>
+  <p>Command syntax, defaults and platform capability vary widely across IOS, IOS-XE, NX-OS and IOS-XR, and switch QoS in particular is hardware-dependent. Verify against the configuration guide for the exact platform and version before applying anything here to production.</p>
+  <p>Key standards: RFC 2474 (DSCP), RFC 2475 (DiffServ architecture), RFC 2597 (AF), RFC 3246 (EF), RFC 4594 (configuration guidelines), RFC 5865 (voice-admit), RFC 3168 (ECN), RFC 2697 and RFC 2698 (token bucket policers), RFC 8325 (DSCP to 802.11 mapping).</p>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var q = document.getElementById('q');
+  var clearBtn = document.getElementById('clearq');
+  var countEl = document.getElementById('count');
+  var noResult = document.getElementById('noresult');
+  var sections = Array.prototype.slice.call(document.querySelectorAll('section.block'));
+  var navLinks = Array.prototype.slice.call(document.querySelectorAll('nav.index a'));
+
+  var items = [];
+  sections.forEach(function(sec){
+    Array.prototype.slice.call(sec.querySelectorAll('.term, .scn')).forEach(function(el){
+      items.push({el: el, sec: sec, text: (el.textContent || '').toLowerCase()});
+    });
+  });
+
+  var tables = [];
+  sections.forEach(function(sec){
+    Array.prototype.slice.call(sec.querySelectorAll('.tablewrap')).forEach(function(w){
+      if(w.closest('.term') || w.closest('.scn')){ return; }
+      var rows = Array.prototype.slice.call(w.querySelectorAll('tbody tr')).map(function(tr){
+        return {tr: tr, text: (tr.textContent || '').toLowerCase()};
+      });
+      tables.push({wrap: w, sec: sec, rows: rows});
+    });
+  });
+
+  var totalItems = items.length + tables.reduce(function(n, t){ return n + t.rows.length; }, 0);
+
+  function applyFilter(raw){
+    var term = (raw || '').trim().toLowerCase();
+    var filtering = term.length > 0;
+    document.body.classList.toggle('filtering', filtering);
+    clearBtn.hidden = !filtering;
+
+    if(!filtering){
+      items.forEach(function(it){ it.el.style.display = ''; });
+      tables.forEach(function(t){
+        t.wrap.style.display = '';
+        t.rows.forEach(function(r){ r.tr.style.display = ''; });
+      });
+      sections.forEach(function(s){ s.style.display = ''; });
+      noResult.style.display = 'none';
+      countEl.textContent = totalItems + ' entries';
+      return;
+    }
+
+    var shown = 0;
+    var live = {};
+
+    items.forEach(function(it){
+      var hit = it.text.indexOf(term) !== -1;
+      it.el.style.display = hit ? '' : 'none';
+      if(hit){
+        shown++; live[it.sec.id] = true;
+        if(it.el.tagName === 'DETAILS'){ it.el.open = true; }
+      }
+    });
+
+    tables.forEach(function(t){
+      var any = false;
+      t.rows.forEach(function(r){
+        var hit = r.text.indexOf(term) !== -1;
+        r.tr.style.display = hit ? '' : 'none';
+        if(hit){ any = true; shown++; }
+      });
+      t.wrap.style.display = any ? '' : 'none';
+      if(any){ live[t.sec.id] = true; }
+    });
+
+    sections.forEach(function(s){ s.style.display = live[s.id] ? '' : 'none'; });
+    noResult.style.display = shown ? 'none' : 'block';
+    countEl.textContent = shown + ' of ' + totalItems + ' entries';
+  }
+
+  q.addEventListener('input', function(){ applyFilter(q.value); });
+  clearBtn.addEventListener('click', function(){ q.value = ''; applyFilter(''); q.focus(); });
+  q.addEventListener('keydown', function(e){
+    if(e.key === 'Escape'){ q.value = ''; applyFilter(''); }
+  });
+  document.addEventListener('keydown', function(e){
+    if(e.key === '/' && document.activeElement !== q){
+      e.preventDefault(); q.focus(); q.select();
+    }
+  });
+
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('.reviewed input'));
+  var fill = document.getElementById('progfill');
+  var ptxt = document.getElementById('progtxt');
+  var KEY = 'qos-ref-reviewed-v1';
+
+  function load(){
+    try{
+      var raw = window.localStorage.getItem(KEY);
+      return raw ? JSON.parse(raw) : {};
+    }catch(err){ return {}; }
+  }
+  function save(state){
+    try{ window.localStorage.setItem(KEY, JSON.stringify(state)); }catch(err){ /* storage unavailable */ }
+  }
+  function paint(){
+    var done = boxes.filter(function(b){ return b.checked; }).length;
+    ptxt.textContent = done + '/' + boxes.length;
+    fill.style.width = (boxes.length ? (done / boxes.length * 100) : 0) + '%';
+  }
+  var state = load();
+  boxes.forEach(function(b){
+    if(state[b.dataset.sec]){ b.checked = true; }
+    b.addEventListener('change', function(){
+      var s = load();
+      if(b.checked){ s[b.dataset.sec] = 1; } else { delete s[b.dataset.sec]; }
+      save(s);
+      paint();
+    });
+  });
+  paint();
+
+  var tbtn = document.getElementById('themebtn');
+  var TKEY = 'qos-ref-theme-v1';
+  try{
+    var saved = window.localStorage.getItem(TKEY);
+    if(saved === 'dark' || saved === 'light'){ document.documentElement.setAttribute('data-theme', saved); }
+  }catch(err){ /* ignore */ }
+  tbtn.addEventListener('click', function(){
+    var cur = document.documentElement.getAttribute('data-theme');
+    var isDark;
+    if(cur){ isDark = cur === 'dark'; }
+    else { isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches; }
+    var next = isDark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try{ window.localStorage.setItem(TKEY, next); }catch(err){ /* ignore */ }
+  });
+
+  if('IntersectionObserver' in window){
+    var obs = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(!en.isIntersecting){ return; }
+        navLinks.forEach(function(a){
+          a.classList.toggle('on', a.getAttribute('href') === '#' + en.target.id);
+        });
+      });
+    }, {rootMargin: '-72px 0px -70% 0px', threshold: 0});
+    sections.forEach(function(s){ obs.observe(s); });
+  }
+
+  applyFilter('');
+})();
+</script>
+</body>
+</html>
