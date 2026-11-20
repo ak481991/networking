@@ -192,7 +192,7 @@ footer a{color:var(--accent-ink)}
     <div class="progwrap">
       <span>Reviewed</span>
       <span class="progbar"><span class="progfill" id="progfill"></span></span>
-      <span class="num-col" id="progtxt">0/19</span>
+      <span class="num-col" id="progtxt">0/20</span>
     </div>
   </div>
 </div>
@@ -202,6 +202,7 @@ footer a{color:var(--accent-ink)}
   <h2>Sections</h2>
   <ol>
     <li><a href="#architecture">Architecture</a></li>
+    <li><a href="#ha">Deployment &amp; HA</a></li>
     <li><a href="#topology">Lab topology</a></li>
     <li><a href="#capwap">CAPWAP</a></li>
     <li><a href="#apmodes">AP modes</a></li>
@@ -329,10 +330,322 @@ show redundancy summary</code></pre>
   </div>
 </section>
 
-<!-- ============ 2 ============ -->
+<!-- ============ HA ============ -->
+<section class="block" id="ha">
+  <div class="sechead">
+    <h2><span class="num">02</span>Deployment and HA models</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="ha"> Reviewed</label>
+  </div>
+  <p class="lede">Five ways to deploy controllers, differing mainly in how much state survives a failure and how long clients notice. Pick the model first &mdash; it decides licensing, capacity planning and every upgrade procedure afterwards.</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>The five models compared</caption>
+      <thead><tr><th>Model</th><th>Failover time</th><th>State preserved</th><th>Capacity rule</th><th>Licence cost</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Standalone</strong></td>
+          <td>None &mdash; outage until repaired</td>
+          <td>Nothing</td>
+          <td>Size for full load</td>
+          <td>1 controller</td>
+        </tr>
+        <tr>
+          <td><strong>N+1</strong></td>
+          <td>Minutes. APs rejoin the spare</td>
+          <td>Nothing. Clients fully reconnect</td>
+          <td>Spare must hold the largest primary's APs</td>
+          <td>Spare can be an HA SKU, licence-free</td>
+        </tr>
+        <tr>
+          <td><strong>N+N</strong></td>
+          <td>Minutes. APs rejoin the peer</td>
+          <td>Nothing</td>
+          <td><strong>Each runs at 50% or less</strong></td>
+          <td>Both fully licensed</td>
+        </tr>
+        <tr>
+          <td><strong>N+N+1</strong></td>
+          <td>Minutes</td>
+          <td>Nothing</td>
+          <td>50% each, plus a shared spare for a double failure</td>
+          <td>Pairs licensed, spare as HA SKU</td>
+        </tr>
+        <tr>
+          <td><strong>HA SSO</strong></td>
+          <td><strong>Sub-second to a few seconds</strong></td>
+          <td><strong>AP CAPWAP and client sessions both</strong></td>
+          <td>The pair is one logical controller</td>
+          <td>Standby is licence-free</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Standalone</h3>
+      <p>One controller, no backup. Entirely reasonable for a lab, a small single-site deployment, or a branch running an Embedded Wireless Controller where the business can tolerate a rebuild.</p>
+      <p>What it actually means in an outage: every AP falls out of CAPWAP. Local-mode APs stop serving clients completely. FlexConnect APs with local switching and local authentication keep existing clients and can admit new ones &mdash; which is why a standalone controller plus FlexConnect branches is a more defensible design than it first appears.</p>
+      <div class="tip"><b>Standalone plus FlexConnect is a real HA strategy</b>If branches are locally switched with local auth configured, a controller outage degrades management and new centrally-authenticated connections but does not take the branches off the air. For many organisations that is a better value trade than a second controller.</div>
+    </div>
+
+    <div class="term">
+      <h3>N+1</h3>
+      <p>Several primary controllers, one spare. APs are configured with the spare as their secondary (or tertiary) controller. When a primary fails, its APs discover the spare and rejoin it.</p>
+<pre><code><span class="cmt">! Point APs at a backup — per AP</span>
+ap name AP-CAMPUS-01 controller primary WLC-01 10.50.0.10
+ap name AP-CAMPUS-01 controller secondary WLC-SPARE 10.50.0.30
+ap name AP-CAMPUS-01 controller tertiary WLC-02 10.50.0.20
+
+<span class="cmt">! Or for every AP joining a profile</span>
+ap profile CAMPUS-PROFILE
+ backup-controller primary WLC-SPARE 10.50.0.30
+ backup-controller secondary WLC-02 10.50.0.20
+ <span class="cmt">! how long before falling back to the primary</span>
+ fallback-enabled
+
+show ap name AP-CAMPUS-01 config general | include Controller
+show wireless stats ap join summary</code></pre>
+      <ul>
+        <li>Failover is a full AP rejoin: discovery, DTLS, join, config download &mdash; typically <strong>two to five minutes</strong> per AP, and they do not all go at once.</li>
+        <li>No client state survives. Every client reauthenticates from scratch.</li>
+        <li>The spare needs capacity for the largest single primary, not for all of them.</li>
+        <li>An <strong>HA SKU</strong> controller is sold as a licence-free standby for exactly this role, provided it is only ever active during a failure.</li>
+      </ul>
+      <div class="gotcha"><b>AP fallback can cause a second outage</b>With <code>fallback-enabled</code>, APs return to their primary as soon as it reappears &mdash; including a primary that is flapping. Each return is another full rejoin. On an unstable controller this produces repeated outages that look worse than the original failure. Consider disabling automatic fallback and returning APs deliberately during a window.</div>
+    </div>
+
+    <div class="term">
+      <h3>N+N and N+N+1</h3>
+      <p><strong>N+N</strong> pairs controllers so each backs up the other. Both carry production APs, so both must run at 50% capacity or less &mdash; otherwise a failure overruns the survivor and APs are refused on join.</p>
+      <p><strong>N+N+1</strong> adds a shared spare across several pairs, covering the case where both halves of a pair are lost or where a pair is already degraded during maintenance.</p>
+      <div class="gotcha"><b>The 50% rule is routinely violated</b>A pair sized at 50% each gradually grows to 70% as APs are added, and nobody recalculates. The design still looks redundant on paper and is not: on failure the survivor accepts APs until it hits its limit and then rejects the rest, which stay down until someone intervenes. Audit AP counts against single-controller capacity quarterly, not just at design time.</div>
+<pre><code>show ap summary | count
+show wireless summary
+show license summary
+show license usage</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>HA SSO &mdash; how it actually works</h3>
+      <p>Two physical controllers behave as a single logical one. One is Active, one is Hot Standby. The Active continuously replicates configuration, AP CAPWAP state and client session state across a dedicated link, so a failure is almost invisible.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>What is replicated</th><th>Effect on failover</th></tr></thead>
+          <tbody>
+            <tr><td><strong>AP SSO</strong> &mdash; CAPWAP tunnels and AP state</td><td>APs never notice. No rejoin, no discovery</td></tr>
+            <tr><td><strong>Client SSO</strong> &mdash; associated clients in RUN state</td><td>Clients stay connected. No reauthentication</td></tr>
+            <tr><td>Configuration</td><td>Standby is always in sync; no manual copy</td></tr>
+            <tr><td><em>Not</em> replicated: clients mid-authentication</td><td>A client in 8021X_REQD at the moment of failover restarts</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The pair shares one management IP, one set of licences and one AP capacity figure. To the network, to the APs and to ISE it is a single controller.</p>
+    </div>
+  </div>
+
+  <div class="figure">
+    <div class="figscroll">
+      <svg viewBox="0 0 760 438" role="img" aria-label="HA SSO pair showing the redundancy port, redundancy management interface, uplinks and service ports" font-size="13" font-family="var(--font-body)">
+        <text x="24" y="28" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--font-display)">Four link types, and only one of them carries client traffic</text>
+        <text x="24" y="48" font-size="11.5" fill="var(--ink-3)">The RP link is what makes the pair one controller. Lose it and both can go active.</text>
+
+        <g stroke="var(--line-strong)" stroke-width="1.5" fill="none">
+          <path d="M190 184V152H330V124"></path>
+          <path d="M570 184V152H430V124"></path>
+          <path d="M190 268V300H330V326"></path>
+          <path d="M570 268V300H430V326"></path>
+        </g>
+        <g stroke="var(--accent)" stroke-width="2.5" fill="none">
+          <path d="M300 226H460"></path>
+        </g>
+
+        <g>
+          <rect x="280" y="76" width="200" height="48" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="380" y="98" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--ink)">Core switch pair</text>
+          <text x="380" y="115" text-anchor="middle" font-size="10.5" fill="var(--ink-3)">VLAN 50 management, client VLANs</text>
+        </g>
+
+        <g>
+          <rect x="80" y="184" width="220" height="84" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"></rect>
+          <text x="190" y="208" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--ink)">C9800 &mdash; ACTIVE</text>
+          <text x="190" y="227" text-anchor="middle" font-size="10.5" fill="var(--ink-2)" font-family="var(--font-mono)">WMI 10.50.0.10</text>
+          <text x="190" y="243" text-anchor="middle" font-size="10.5" fill="var(--ink-2)" font-family="var(--font-mono)">RMI 10.50.0.11</text>
+          <text x="190" y="259" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="var(--font-mono)">svc 192.168.99.1</text>
+        </g>
+
+        <g>
+          <rect x="460" y="184" width="220" height="84" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.5"></rect>
+          <text x="570" y="208" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--ink)">C9800 &mdash; HOT STANDBY</text>
+          <text x="570" y="227" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="var(--font-mono)">WMI shared, inactive</text>
+          <text x="570" y="243" text-anchor="middle" font-size="10.5" fill="var(--ink-2)" font-family="var(--font-mono)">RMI 10.50.0.12</text>
+          <text x="570" y="259" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="var(--font-mono)">svc 192.168.99.2</text>
+        </g>
+
+        <g>
+          <rect x="280" y="326" width="200" height="48" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25" stroke-dasharray="4 3"></rect>
+          <text x="380" y="348" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--ink)">OOB management switch</text>
+          <text x="380" y="365" text-anchor="middle" font-size="10.5" fill="var(--ink-3)">separate from the data path</text>
+        </g>
+
+        <text x="380" y="218" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--accent-ink)">RP</text>
+        <text x="380" y="248" text-anchor="middle" font-size="10.5" fill="var(--accent-ink)">state sync + keepalive</text>
+
+        <text x="196" y="146" font-size="10.5" fill="var(--ink-3)">uplink Po</text>
+        <text x="482" y="146" font-size="10.5" fill="var(--ink-3)">uplink Po</text>
+        <text x="196" y="318" font-size="10.5" fill="var(--ink-3)">service port</text>
+        <text x="482" y="318" font-size="10.5" fill="var(--ink-3)">service port</text>
+
+        <text x="24" y="404" font-size="11.5" fill="var(--ink-2)">WMI terminates CAPWAP and sources RADIUS. RMI exists only so each unit can test its own gateway independently.</text>
+        <text x="24" y="422" font-size="11.5" fill="var(--ink-2)">The service port is out-of-band and routes nowhere &mdash; it cannot reach APs or RADIUS.</text>
+      </svg>
+    </div>
+    <p class="figcap">HA SSO pair &middot; RP, RMI, uplink and service port, and what each is for.</p>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Controller links and what each is for</h3>
+      <div class="tablewrap">
+        <table>
+          <caption>Catalyst 9800</caption>
+          <thead><tr><th>Link</th><th>Carries</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><strong>WMI</strong> &mdash; Wireless Management Interface</td><td>CAPWAP from APs, RADIUS source, mobility tunnels, GUI and SSH</td><td><strong>The one that matters.</strong> An SVI or a physical interface. APs point at this address</td></tr>
+            <tr><td><strong>RP</strong> &mdash; Redundancy Port</td><td>SSO state replication and peer keepalives</td><td>Dedicated port on appliances, a vNIC on 9800-CL. Never carries user traffic</td></tr>
+            <tr><td><strong>RMI</strong> &mdash; Redundancy Management Interface</td><td>Per-unit gateway reachability checks</td><td>One IP per chassis on the management VLAN, separate from the shared WMI</td></tr>
+            <tr><td><strong>Service port</strong> (GigabitEthernet0)</td><td>Out-of-band management only</td><td>Lives in the <code>Mgmt-intf</code> VRF. <strong>Not routable to APs or RADIUS</strong></td></tr>
+            <tr><td><strong>Data ports / port-channel</strong></td><td>Client traffic, AP traffic, everything else</td><td>Trunk carrying management and centrally-switched client VLANs</td></tr>
+            <tr><td><strong>Client VLAN SVIs</strong></td><td>Gateway for centrally switched clients, if the WLC routes</td><td>Usually the WLC bridges and the core routes instead</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tablewrap">
+        <table>
+          <caption>AireOS equivalents</caption>
+          <thead><tr><th>Interface</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Management</strong></td><td>In-band management, CAPWAP termination on modern models, RADIUS source, mobility</td></tr>
+            <tr><td><strong>AP-Manager</strong></td><td>Terminated CAPWAP on older platforms. Merged into management on 5520/8540 and later</td></tr>
+            <tr><td><strong>Virtual</strong></td><td>A non-routable address, conventionally <code>192.0.2.1</code>. Used for DHCP relay to clients, web-auth redirection and mobility. Must be identical on every controller in a mobility group</td></tr>
+            <tr><td><strong>Service port</strong></td><td>Out-of-band management. Separate physical port, no routing</td></tr>
+            <tr><td><strong>Dynamic interfaces</strong></td><td>One per centrally switched client VLAN</td></tr>
+            <tr><td><strong>Redundancy port / RMI</strong></td><td>As on the 9800</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="gotcha"><b>The service port is the most misunderstood interface</b>It is deliberately isolated &mdash; in its own VRF, with no route to the rest of the network. People configure it as a backup management path, then discover it cannot reach RADIUS, cannot reach APs, and cannot be used for the GUI from a normal subnet. It is for console-adjacent, out-of-band access only. Do not design around it.</div>
+    </div>
+
+    <div class="term">
+      <h3>RP and RMI, concretely</h3>
+      <p>These two do different jobs and solve different failure modes.</p>
+      <ul>
+        <li><strong>RP</strong> carries the state. It is a direct connection between the two chassis &mdash; a back-to-back cable on appliances, or a dedicated vNIC on a virtual pair. It must be low-latency and reliable; it is not a general network link.</li>
+        <li><strong>RMI</strong> solves a specific problem: how does a controller know whether <em>it</em> has lost the network, rather than its peer failing? Each unit has its own RMI address on the management VLAN and uses it to test the default gateway. If the Active cannot reach its gateway but the Standby can, the pair switches over deliberately.</li>
+      </ul>
+<pre><code><span class="cmt">! 9800 — configure the RMI and the peer</span>
+chassis redundancy ha-interface GigabitEthernet0/0/4
+chassis 1 priority 2
+chassis 2 priority 1
+!
+<span class="cmt">! RMI plus a default-gateway check</span>
+redun-management interface Vlan50 chassis 1 address 10.50.0.11
+             chassis 2 address 10.50.0.12
+redun-management garp-retransmit burst 10 interval 50
+
+show chassis
+show chassis rmi
+show redundancy
+show redundancy states
+show wireless stats redundancy-mgr detail</code></pre>
+      <div class="tip"><b>Without RMI, a gateway failure on the Active is invisible</b>Pre-RMI designs relied on the RP link alone. If the Active lost its uplink but kept the RP, it believed it was healthy and stayed active &mdash; while serving nothing. The RMI gateway check exists exactly to catch that, and it is the main reason to be on a release that supports it.</div>
+    </div>
+
+    <div class="term">
+      <h3>Split brain</h3>
+      <p>If the RP link fails while both chassis are otherwise healthy, each may conclude its peer has died and go active. Two controllers then share one management IP, which breaks APs, mobility and RADIUS simultaneously.</p>
+      <p>The RMI is the main defence: a unit that cannot reach the gateway will not promote itself. Beyond that:</p>
+      <ul>
+        <li>Use a <strong>direct cable</strong> for the RP wherever possible &mdash; no switch in between, so there is less to fail.</li>
+        <li>Where the RP must traverse a switch (common with 9800-CL), give it a dedicated VLAN and verify there is no spanning-tree event that can interrupt it.</li>
+        <li>Monitor RP link state explicitly, not just controller reachability.</li>
+      </ul>
+<pre><code>show chassis
+<span class="cmt">! healthy pair shows one Active, one Standby Hot</span>
+Chassis/Stack Mac Address : 0042.68xx.xxxx
+Chassis#  Role     Mac Address      Priority  Version  State
+1         Active   0042.68xx.xxxx   2         V02      Ready
+2         Standby  0042.68yy.yyyy   1         V02      Ready
+
+show redundancy states | include peer|my state</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>SSO requirements</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Must match</th><th>Consequence if not</th></tr></thead>
+          <tbody>
+            <tr><td>Hardware model</td><td>Pair will not form</td></tr>
+            <tr><td>Software version</td><td>Pair will not form, except transiently during ISSU</td></tr>
+            <tr><td>Licence level and AP count</td><td>Standby may refuse APs after switchover</td></tr>
+            <tr><td>RP connectivity, low latency</td><td>Flapping redundancy, risk of split brain</td></tr>
+            <tr><td>Same management VLAN reachable by both</td><td>RMI checks fail</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Priority decides which unit is Active at initial formation. It is <strong>not preemptive</strong> by default &mdash; after a switchover the new Active stays active until you move it back deliberately.</p>
+<pre><code><span class="cmt">! planned switchover, for maintenance</span>
+redundancy force-switchover
+
+<span class="cmt">! check before and after</span>
+show redundancy
+show ap summary | count
+show wireless client summary | count</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Upgrading an SSO pair</h3>
+      <p>Two approaches, with different outage profiles:</p>
+      <ol>
+        <li><strong>ISSU</strong> &mdash; In-Service Software Upgrade. The standby is upgraded, a switchover occurs, then the old active is upgraded. Close to hitless, but supported only between specific version pairs and worth testing first.</li>
+        <li><strong>AP predownload plus a reload</strong> &mdash; stage the new image on every AP in advance, then reload the pair. APs reboot into the new image without a download, so the outage is minutes rather than tens of minutes.</li>
+      </ol>
+<pre><code>ap image predownload
+show ap image
+show ap image summary
+
+install add file bootflash:C9800-universalk9_wlc.17.xx.xx.SPA.bin
+install activate
+install commit</code></pre>
+      <div class="gotcha"><b>Predownload is the difference between a short window and a long one</b>Without it, every AP downloads its image from the controller after the reload &mdash; serialised, over whatever link it has. On a few hundred branch APs across WAN links that turns a ten-minute reload into hours. Always predownload, and verify with <code>show ap image summary</code> that every AP has the new image staged before you start.</div>
+    </div>
+
+    <div class="term">
+      <h3>Choosing a model</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Situation</th><th>Model</th><th>Reasoning</th></tr></thead>
+          <tbody>
+            <tr><td>Single campus, voice and critical wireless</td><td><strong>HA SSO</strong></td><td>Only model where clients survive a failure</td></tr>
+            <tr><td>Several sites, each with its own controller</td><td><strong>N+1</strong> with a central spare</td><td>One licence-free HA SKU covers them all</td></tr>
+            <tr><td>Two data centres, geographic redundancy</td><td><strong>N+N</strong>, or SSO if the RP can be extended</td><td>SSO across sites needs a reliable low-latency RP; check the supported distance</td></tr>
+            <tr><td>Many FlexConnect branches</td><td><strong>Standalone or N+1</strong></td><td>Local switching and local auth already provide site survivability</td></tr>
+            <tr><td>Lab, pilot, small office</td><td><strong>Standalone</strong> or EWC</td><td>Redundancy cost is not justified</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tip"><b>HA SSO and N+1 are not alternatives &mdash; they compose</b>A common large design is an SSO pair at each major site for intra-site resilience, plus a single N+1 spare that every site's APs carry as tertiary for the case where an entire pair is lost. The SSO pair handles the likely failure; the spare handles the unlikely one.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3 ============ -->
 <section class="block" id="topology">
   <div class="sechead">
-    <h2><span class="num">02</span>Lab topology</h2>
+    <h2><span class="num">03</span>Lab topology</h2>
     <label class="reviewed"><input type="checkbox" data-sec="topology"> Reviewed</label>
   </div>
   <p class="lede">A campus in local mode and a branch in FlexConnect, against one 9800 controller. Every example below uses this.</p>
@@ -414,10 +727,10 @@ show redundancy summary</code></pre>
   </div>
 </section>
 
-<!-- ============ 3 ============ -->
+<!-- ============ 4 ============ -->
 <section class="block" id="capwap">
   <div class="sechead">
-    <h2><span class="num">03</span>CAPWAP</h2>
+    <h2><span class="num">04</span>CAPWAP</h2>
     <label class="reviewed"><input type="checkbox" data-sec="capwap"> Reviewed</label>
   </div>
   <p class="lede">The tunnel between AP and controller. Two UDP ports, one of them always encrypted, and an MTU problem waiting to happen.</p>
@@ -488,10 +801,10 @@ show logging | include CAPWAP</code></pre>
   </div>
 </section>
 
-<!-- ============ 4 ============ -->
+<!-- ============ 5 ============ -->
 <section class="block" id="apmodes">
   <div class="sechead">
-    <h2><span class="num">04</span>AP modes</h2>
+    <h2><span class="num">05</span>AP modes</h2>
     <label class="reviewed"><input type="checkbox" data-sec="apmodes"> Reviewed</label>
   </div>
 
@@ -541,10 +854,10 @@ show ap name AP-CAMPUS-01 config dot11 5ghz | include Channel Scan</code></pre>
   </div>
 </section>
 
-<!-- ============ 5 ============ -->
+<!-- ============ 6 ============ -->
 <section class="block" id="apjoin">
   <div class="sechead">
-    <h2><span class="num">05</span>AP join process</h2>
+    <h2><span class="num">06</span>AP join process</h2>
     <label class="reviewed"><input type="checkbox" data-sec="apjoin"> Reviewed</label>
   </div>
   <p class="lede">Four phases. An AP that will not join has failed at exactly one of them, and knowing which narrows the cause to two or three possibilities.</p>
@@ -695,10 +1008,10 @@ debug capwap errors enable</code></pre>
   </div>
 </section>
 
-<!-- ============ 6 ============ -->
+<!-- ============ 7 ============ -->
 <section class="block" id="switch">
   <div class="sechead">
-    <h2><span class="num">06</span>Switch configuration</h2>
+    <h2><span class="num">07</span>Switch configuration</h2>
     <label class="reviewed"><input type="checkbox" data-sec="switch"> Reviewed</label>
   </div>
   <p class="lede">The switchport config differs completely between local mode and FlexConnect. Getting it wrong is a top-three cause of wireless problems that look like RF problems.</p>
@@ -796,10 +1109,10 @@ interface range TenGigabitEthernet1/0/1-2
   </div>
 </section>
 
-<!-- ============ 7 ============ -->
+<!-- ============ 8 ============ -->
 <section class="block" id="tags">
   <div class="sechead">
-    <h2><span class="num">07</span>The 9800 tag model</h2>
+    <h2><span class="num">08</span>The 9800 tag model</h2>
     <label class="reviewed"><input type="checkbox" data-sec="tags"> Reviewed</label>
   </div>
   <p class="lede">The biggest conceptual change from AireOS. Nothing is applied to an AP directly &mdash; everything arrives through three tags.</p>
@@ -882,10 +1195,10 @@ show ap tag-sources-all</code></pre>
   </div>
 </section>
 
-<!-- ============ 8 ============ -->
+<!-- ============ 9 ============ -->
 <section class="block" id="clientjoin">
   <div class="sechead">
-    <h2><span class="num">08</span>Client join flow</h2>
+    <h2><span class="num">09</span>Client join flow</h2>
     <label class="reviewed"><input type="checkbox" data-sec="clientjoin"> Reviewed</label>
   </div>
   <p class="lede">What actually happens between a laptop and the network. The 802.11 part is identical for every security type; only what follows association differs.</p>
@@ -1022,10 +1335,10 @@ show wireless client summary | include IP Learn</code></pre>
   </div>
 </section>
 
-<!-- ============ 9 ============ -->
+<!-- ============ 10 ============ -->
 <section class="block" id="keys">
   <div class="sechead">
-    <h2><span class="num">09</span>Keys and the 4-way handshake</h2>
+    <h2><span class="num">10</span>Keys and the 4-way handshake</h2>
     <label class="reviewed"><input type="checkbox" data-sec="keys"> Reviewed</label>
   </div>
 
@@ -1085,10 +1398,10 @@ PTK splits into:
   </div>
 </section>
 
-<!-- ============ 10 ============ -->
+<!-- ============ 11 ============ -->
 <section class="block" id="roaming">
   <div class="sechead">
-    <h2><span class="num">10</span>Roaming and mobility</h2>
+    <h2><span class="num">11</span>Roaming and mobility</h2>
     <label class="reviewed"><input type="checkbox" data-sec="roaming"> Reviewed</label>
   </div>
   <p class="lede">The client decides when to roam, not the network. Everything the controller offers is either information to help that decision or a way to make the move cheaper once taken.</p>
@@ -1171,10 +1484,10 @@ ap dot11 24ghz rate RATE_11M disable</code></pre>
   </div>
 </section>
 
-<!-- ============ 11 ============ -->
+<!-- ============ 12 ============ -->
 <section class="block" id="flex">
   <div class="sechead">
-    <h2><span class="num">11</span>FlexConnect</h2>
+    <h2><span class="num">12</span>FlexConnect</h2>
     <label class="reviewed"><input type="checkbox" data-sec="flex"> Reviewed</label>
   </div>
 
@@ -1246,10 +1559,10 @@ show wireless flexconnect summary</code></pre>
   </div>
 </section>
 
-<!-- ============ 12 ============ -->
+<!-- ============ 13 ============ -->
 <section class="block" id="rf">
   <div class="sechead">
-    <h2><span class="num">12</span>RF fundamentals</h2>
+    <h2><span class="num">13</span>RF fundamentals</h2>
     <label class="reviewed"><input type="checkbox" data-sec="rf"> Reviewed</label>
   </div>
   <p class="lede">Four numbers decide whether wireless works: signal strength, noise floor, the gap between them, and how busy the channel is. Everything else is detail.</p>
@@ -1400,10 +1713,10 @@ show ap name AP-CAMPUS-01 auto-rf dot11 5ghz | include Noise|Interference|Utiliz
   </div>
 </section>
 
-<!-- ============ 13 ============ -->
+<!-- ============ 14 ============ -->
 <section class="block" id="channels">
   <div class="sechead">
-    <h2><span class="num">13</span>Channels and interference</h2>
+    <h2><span class="num">14</span>Channels and interference</h2>
     <label class="reviewed"><input type="checkbox" data-sec="channels"> Reviewed</label>
   </div>
 
@@ -1496,10 +1809,10 @@ show ap name AP-CAMPUS-01 dot11 24ghz cleanair device type all</code></pre>
   </div>
 </section>
 
-<!-- ============ 14 ============ -->
+<!-- ============ 15 ============ -->
 <section class="block" id="rrm">
   <div class="sechead">
-    <h2><span class="num">14</span>RRM</h2>
+    <h2><span class="num">15</span>RRM</h2>
     <label class="reviewed"><input type="checkbox" data-sec="rrm"> Reviewed</label>
   </div>
   <p class="lede">Radio Resource Management picks channels and power automatically. It works well by default and badly when people tune it without understanding the inputs.</p>
@@ -1576,10 +1889,10 @@ show ap rf-profile name HIGH-DENSITY detail</code></pre>
   </div>
 </section>
 
-<!-- ============ 15 ============ -->
+<!-- ============ 16 ============ -->
 <section class="block" id="security">
   <div class="sechead">
-    <h2><span class="num">15</span>Security</h2>
+    <h2><span class="num">16</span>Security</h2>
     <label class="reviewed"><input type="checkbox" data-sec="security"> Reviewed</label>
   </div>
 
@@ -1654,10 +1967,10 @@ show wireless stats client delete reasons | include Exclusion</code></pre>
   </div>
 </section>
 
-<!-- ============ 16 ============ -->
+<!-- ============ 17 ============ -->
 <section class="block" id="troubleshooting">
   <div class="sechead">
-    <h2><span class="num">16</span>Troubleshooting</h2>
+    <h2><span class="num">17</span>Troubleshooting</h2>
     <label class="reviewed"><input type="checkbox" data-sec="troubleshooting"> Reviewed</label>
   </div>
 
@@ -1789,10 +2102,10 @@ ap name AP-SPARE-01 sniff 36 10.50.1.99</code></pre>
   </div>
 </section>
 
-<!-- ============ 17 ============ -->
+<!-- ============ 18 ============ -->
 <section class="block" id="scenarios">
   <div class="sechead">
-    <h2><span class="num">17</span>Real-world scenarios</h2>
+    <h2><span class="num">18</span>Real-world scenarios</h2>
     <label class="reviewed"><input type="checkbox" data-sec="scenarios"> Reviewed</label>
   </div>
   <p class="lede">Ten incidents on the lab topology, from reported symptom to fix. Work out the cause before expanding the diagnosis.</p>
@@ -2259,10 +2572,10 @@ SW# show env power</code></pre>
   </div></details>
 </section>
 
-<!-- ============ 18 ============ -->
+<!-- ============ 19 ============ -->
 <section class="block" id="commands">
   <div class="sechead">
-    <h2><span class="num">18</span>Command reference</h2>
+    <h2><span class="num">19</span>Command reference</h2>
     <label class="reviewed"><input type="checkbox" data-sec="commands"> Reviewed</label>
   </div>
 
@@ -2329,10 +2642,10 @@ SW# show env power</code></pre>
   </div>
 </section>
 
-<!-- ============ 19 ============ -->
+<!-- ============ 20 ============ -->
 <section class="block" id="checklist">
   <div class="sechead">
-    <h2><span class="num">19</span>Design checklist</h2>
+    <h2><span class="num">20</span>Design checklist</h2>
     <label class="reviewed"><input type="checkbox" data-sec="checklist"> Reviewed</label>
   </div>
   <p class="lede">What to confirm before a wireless deployment carries production traffic.</p>
