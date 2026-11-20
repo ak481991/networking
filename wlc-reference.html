@@ -1,0 +1,2528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wireless LAN Controller Deep Dive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: fixed left index, scrolling reference column, live filter across terms, scenarios and table rows. */
+:root{
+  --bg:#f5f7f9; --surface:#ffffff; --surface-2:#eceff4; --surface-3:#e3e8ee;
+  --ink:#141e28; --ink-2:#4e6070; --ink-3:#7c8d9b;
+  --line:#d9e0e7; --line-strong:#c3cdd6;
+  --accent:#0d7a84; --accent-ink:#0a5e66; --accent-soft:rgba(13,122,132,.10);
+  --amber:#9a5c08; --amber-soft:rgba(154,92,8,.10);
+  --good:#1a7347; --good-soft:rgba(26,115,71,.09);
+  --crit:#a92a20; --crit-soft:rgba(169,42,32,.09);
+  --font-display:"IBM Plex Serif",Georgia,"Times New Roman",serif;
+  --font-body:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d141a; --surface:#141d25; --surface-2:#1a242d; --surface-3:#212d37;
+    --ink:#e4ecf2; --ink-2:#9db0be; --ink-3:#6f8393;
+    --line:#253239; --line-strong:#334450;
+    --accent:#3ab8c0; --accent-ink:#5fd0d6; --accent-soft:rgba(58,184,192,.14);
+    --amber:#dda550; --amber-soft:rgba(221,165,80,.13);
+    --good:#48c184; --good-soft:rgba(72,193,132,.12);
+    --crit:#ef7065; --crit-soft:rgba(239,112,101,.13);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d141a; --surface:#141d25; --surface-2:#1a242d; --surface-3:#212d37;
+  --ink:#e4ecf2; --ink-2:#9db0be; --ink-3:#6f8393;
+  --line:#253239; --line-strong:#334450;
+  --accent:#3ab8c0; --accent-ink:#5fd0d6; --accent-soft:rgba(58,184,192,.14);
+  --amber:#dda550; --amber-soft:rgba(221,165,80,.13);
+  --good:#48c184; --good-soft:rgba(72,193,132,.12);
+  --crit:#ef7065; --crit-soft:rgba(239,112,101,.13);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.6}
+h1,h2,h3{font-family:var(--font-display);text-wrap:balance;margin:0}
+a{color:var(--accent-ink)}
+code,kbd{font-family:var(--font-mono);font-size:.88em}
+code{background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:.08em .34em;white-space:nowrap}
+pre{background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:13px 15px;overflow-x:auto;margin:0 0 11px;font-family:var(--font-mono);font-size:12.5px;line-height:1.62;color:var(--ink)}
+pre code{background:none;border:0;padding:0;white-space:pre;font-size:inherit}
+.cmt{color:var(--ink-3)}
+.hl{color:var(--accent-ink);font-weight:500}
+.bad{color:var(--crit);font-weight:500}
+
+.masthead{background:var(--surface);border-bottom:1px solid var(--line)}
+.masthead-in{max-width:1200px;margin:0 auto;padding:26px 20px 22px;display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;justify-content:space-between}
+.brand h1{font-size:27px;line-height:1.2;letter-spacing:-.01em}
+.brand p{margin:6px 0 0;color:var(--ink-2);font-size:14px;max-width:64ch}
+.eyebrow{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--accent-ink);background:var(--accent-soft);border-radius:3px;padding:3px 8px;margin-bottom:10px}
+.themebtn{font:inherit;font-size:13px;font-weight:500;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:7px 13px;cursor:pointer;white-space:nowrap}
+.themebtn:hover{border-color:var(--line-strong);color:var(--ink)}
+
+.toolbar{position:sticky;top:0;z-index:30;background:var(--bg);border-bottom:1px solid var(--line)}
+.toolbar-in{max-width:1200px;margin:0 auto;padding:12px 20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.searchwrap{position:relative;flex:1 1 300px;min-width:0}
+#q{width:100%;font:inherit;font-size:14px;color:var(--ink);background:var(--surface);border:1px solid var(--line-strong);border-radius:7px;padding:9px 34px 9px 12px}
+#q::placeholder{color:var(--ink-3)}
+#q:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+.clearq{position:absolute;right:5px;top:50%;transform:translateY(-50%);border:0;background:none;color:var(--ink-3);font-size:17px;line-height:1;cursor:pointer;padding:5px 7px;border-radius:4px}
+.clearq:hover{color:var(--ink)}
+.count{font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.progwrap{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink-2);white-space:nowrap}
+.progbar{width:92px;height:6px;border-radius:3px;background:var(--surface-3);overflow:hidden}
+.progfill{height:100%;width:0;background:var(--accent);transition:width .25s ease}
+
+.shell{max-width:1200px;margin:0 auto;padding:0 20px 80px;display:flex;gap:34px;align-items:flex-start}
+nav.index{position:sticky;top:64px;flex:0 0 236px;width:236px;max-height:calc(100vh - 84px);overflow-y:auto;padding:22px 0 20px}
+nav.index h2{font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);font-family:var(--font-body);font-weight:600;margin:0 0 9px}
+nav.index ol{list-style:none;margin:0;padding:0;counter-reset:nav}
+nav.index li{counter-increment:nav}
+nav.index a{display:flex;gap:9px;padding:5px 9px;border-radius:5px;color:var(--ink-2);text-decoration:none;font-size:13.5px;line-height:1.35}
+nav.index a::before{content:counter(nav,decimal-leading-zero);color:var(--ink-3);font-variant-numeric:tabular-nums;font-size:11.5px;padding-top:2px}
+nav.index a:hover{background:var(--surface-2);color:var(--ink)}
+nav.index a.on{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
+nav.index a.on::before{color:var(--accent-ink)}
+main{flex:1 1 auto;min-width:0;padding:22px 0 0}
+
+section.block{margin-bottom:38px;scroll-margin-top:72px}
+.sechead{display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap;padding-bottom:9px;border-bottom:2px solid var(--line-strong);margin-bottom:16px}
+.sechead h2{font-size:21px;letter-spacing:-.005em}
+.sechead .num{color:var(--ink-3);font-family:var(--font-mono);font-size:12.5px;margin-right:9px}
+.lede{color:var(--ink-2);font-size:14.5px;margin:0 0 16px;max-width:68ch}
+.reviewed{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-3);cursor:pointer;user-select:none}
+.reviewed input{accent-color:var(--accent);width:14px;height:14px;cursor:pointer}
+
+.terms{display:grid;gap:11px}
+.term{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--line-strong);border-radius:7px;padding:13px 16px}
+.term h3{font-family:var(--font-body);font-size:14.5px;font-weight:700;letter-spacing:-.003em;margin:0 0 5px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+.term h3 .exp{font-weight:400;font-size:12.5px;color:var(--ink-3);font-family:var(--font-mono)}
+.term p{margin:0 0 7px;color:var(--ink-2);font-size:14px}
+.term p:last-child{margin-bottom:0}
+.term strong{color:var(--ink);font-weight:600}
+.term ul,.term ol{margin:6px 0 0;padding-left:20px;color:var(--ink-2);font-size:14px}
+.term li{margin-bottom:4px}
+.term li::marker{color:var(--ink-3)}
+.term .tablewrap,.term pre{margin-top:10px}
+
+.tip{margin-top:9px;padding:8px 11px;border-radius:5px;background:var(--amber-soft);border-left:2px solid var(--amber);font-size:13.3px;color:var(--ink-2)}
+.tip b{color:var(--amber);font-weight:600;letter-spacing:.02em;font-size:11px;text-transform:uppercase;display:block;margin-bottom:2px}
+.gotcha{margin-top:9px;padding:8px 11px;border-radius:5px;background:var(--crit-soft);border-left:2px solid var(--crit);font-size:13.3px;color:var(--ink-2)}
+.gotcha b{color:var(--crit);font-weight:600;letter-spacing:.02em;font-size:11px;text-transform:uppercase;display:block;margin-bottom:2px}
+
+.scn{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:7px;padding:0;margin-bottom:12px;overflow:hidden}
+.scn > summary{cursor:pointer;padding:13px 16px;font-weight:700;font-size:14.5px;color:var(--ink);list-style:none;display:flex;gap:11px;align-items:flex-start}
+.scn > summary::-webkit-details-marker{display:none}
+.scn > summary::before{content:attr(data-n);flex:0 0 22px;height:22px;border-radius:5px;background:var(--accent-soft);color:var(--accent-ink);font-size:11.5px;font-weight:700;display:grid;place-items:center;margin-top:1px;font-family:var(--font-mono)}
+.scn > summary:hover{color:var(--accent-ink)}
+.scn[open] > summary{border-bottom:1px solid var(--line);background:var(--surface-2)}
+.scn .body{padding:14px 16px 16px}
+.scn .body p{margin:0 0 8px;color:var(--ink-2);font-size:14px}
+.scn .body ul,.scn .body ol{margin:6px 0 10px;padding-left:20px;color:var(--ink-2);font-size:14px}
+.scn .body li{margin-bottom:4px}
+.scn .body strong{color:var(--ink);font-weight:600}
+.step{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin:14px 0 6px;display:block}
+.step:first-child{margin-top:0}
+.verdict{margin-top:10px;padding:9px 12px;border-radius:5px;background:var(--good-soft);border-left:2px solid var(--good);font-size:13.5px;color:var(--ink-2)}
+.verdict b{color:var(--good);font-weight:600;letter-spacing:.02em;font-size:11px;text-transform:uppercase;display:block;margin-bottom:2px}
+
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:7px;background:var(--surface);margin:0 0 11px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:540px}
+caption{text-align:left;padding:11px 14px 0;font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+th,td{text-align:left;padding:8px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+thead th{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:600;background:var(--surface-2);white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+td code{white-space:nowrap}
+.num-col{font-variant-numeric:tabular-nums;white-space:nowrap}
+.mono-col{font-family:var(--font-mono);font-size:12.5px;white-space:nowrap}
+
+.figure{background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:6px 6px 0;margin:0 0 11px}
+.figscroll{overflow-x:auto}
+.figscroll svg{display:block;width:100%;min-width:680px;height:auto}
+.figcap{padding:6px 12px 11px;font-size:12.5px;color:var(--ink-3)}
+
+.noresult{display:none;padding:26px;text-align:center;color:var(--ink-2);background:var(--surface);border:1px dashed var(--line-strong);border-radius:7px}
+body.filtering .lede,body.filtering .reviewed,body.filtering .figure{display:none}
+
+footer{max-width:1200px;margin:0 auto;padding:22px 20px 40px;border-top:1px solid var(--line);color:var(--ink-3);font-size:12.5px}
+footer p{margin:0 0 5px;max-width:78ch}
+footer a{color:var(--accent-ink)}
+
+@media (max-width:900px){
+  .shell{flex-direction:column;gap:0;padding-bottom:56px}
+  nav.index{position:sticky;top:57px;z-index:20;width:auto;flex:none;max-height:none;padding:9px 0;background:var(--bg);border-bottom:1px solid var(--line);overflow-x:auto;overflow-y:hidden}
+  nav.index h2{display:none}
+  nav.index ol{display:flex;gap:5px;white-space:nowrap}
+  nav.index a{border:1px solid var(--line);background:var(--surface);padding:5px 11px}
+  section.block{scroll-margin-top:118px}
+  .toolbar-in{padding:9px 20px}
+  .progwrap{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+@media print{.toolbar,nav.index,.themebtn{display:none}.shell{display:block}.scn .body{display:block !important}}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-in">
+    <div class="brand">
+      <span class="eyebrow">Wireless deep dive</span>
+      <h1>Wireless LAN Controllers</h1>
+      <p>Split-MAC architecture and CAPWAP, the AP join process step by step, what actually happens when a client associates, the RF numbers that decide whether any of it works, and ten real incidents from symptom to fix.</p>
+    </div>
+    <button class="themebtn" id="themebtn" type="button">Switch theme</button>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="toolbar-in">
+    <div class="searchwrap">
+      <input id="q" type="search" placeholder="Filter: try CAPWAP, SNR, option 43, 4-way, DFS, RUN state&hellip;" autocomplete="off" aria-label="Filter content">
+      <button class="clearq" id="clearq" type="button" aria-label="Clear filter" hidden>&times;</button>
+    </div>
+    <span class="count" id="count"></span>
+    <div class="progwrap">
+      <span>Reviewed</span>
+      <span class="progbar"><span class="progfill" id="progfill"></span></span>
+      <span class="num-col" id="progtxt">0/19</span>
+    </div>
+  </div>
+</div>
+
+<div class="shell">
+<nav class="index" aria-label="Sections">
+  <h2>Sections</h2>
+  <ol>
+    <li><a href="#architecture">Architecture</a></li>
+    <li><a href="#topology">Lab topology</a></li>
+    <li><a href="#capwap">CAPWAP</a></li>
+    <li><a href="#apmodes">AP modes</a></li>
+    <li><a href="#apjoin">AP join process</a></li>
+    <li><a href="#switch">Switch configuration</a></li>
+    <li><a href="#tags">The 9800 tag model</a></li>
+    <li><a href="#clientjoin">Client join flow</a></li>
+    <li><a href="#keys">Keys &amp; 4-way handshake</a></li>
+    <li><a href="#roaming">Roaming &amp; mobility</a></li>
+    <li><a href="#flex">FlexConnect</a></li>
+    <li><a href="#rf">RF fundamentals</a></li>
+    <li><a href="#channels">Channels &amp; interference</a></li>
+    <li><a href="#rrm">RRM</a></li>
+    <li><a href="#security">Security</a></li>
+    <li><a href="#troubleshooting">Troubleshooting</a></li>
+    <li><a href="#scenarios">Real-world scenarios</a></li>
+    <li><a href="#commands">Command reference</a></li>
+    <li><a href="#checklist">Design checklist</a></li>
+  </ol>
+</nav>
+
+<main>
+<div class="noresult" id="noresult">Nothing matches that filter. Try a shorter word, or a term such as <code>DTLS</code>, <code>RSSI</code>, <code>anchor</code>.</div>
+
+<!-- ============ 1 ============ -->
+<section class="block" id="architecture">
+  <div class="sechead">
+    <h2><span class="num">01</span>Architecture</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="architecture"> Reviewed</label>
+  </div>
+  <p class="lede">A lightweight AP is not a small wireless router. It is half of a radio system whose other half lives on the controller, and knowing which half does what explains most of wireless troubleshooting.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Split MAC</h3>
+      <p>802.11 MAC functions are divided between the AP and the WLC. The AP keeps everything that must happen in microseconds; the WLC takes everything that can tolerate a round trip.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Stays on the AP (real-time)</th><th>Moves to the WLC (non-real-time)</th></tr></thead>
+          <tbody>
+            <tr><td>Beacons and probe responses</td><td>Association and re-association processing</td></tr>
+            <tr><td>Packet acknowledgement and retransmission</td><td>802.1X / EAP authentication relay to RADIUS</td></tr>
+            <tr><td>Frame queuing and prioritisation</td><td>Key management and distribution</td></tr>
+            <tr><td>MAC-layer encryption and decryption</td><td>Client association database and mobility</td></tr>
+            <tr><td>Data rate selection, RTS/CTS</td><td>RRM decisions: channel, power</td></tr>
+            <tr><td>Collecting RF measurements</td><td>Security policy, rogue classification, QoS policy</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tip"><b>Why this matters when troubleshooting</b>If a client cannot see the SSID or gets no probe response, the problem is at the AP or in RF. If it associates but fails authentication or never gets policy applied, the problem is on the controller or beyond it. The split tells you which half to look at first.</div>
+    </div>
+
+    <div class="term">
+      <h3>Centrally switched versus locally switched</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>&nbsp;</th><th>Local mode (central switching)</th><th>FlexConnect (local switching)</th></tr></thead>
+          <tbody>
+            <tr><td>Client data path</td><td>Tunnelled in CAPWAP to the WLC, then onto the wired network there</td><td>Bridged onto the local switch at the AP</td></tr>
+            <tr><td>AP switchport</td><td>Access port, one VLAN</td><td><strong>Trunk</strong>, carrying every client VLAN</td></tr>
+            <tr><td>WAN impact</td><td>All client traffic crosses the WAN twice at a branch</td><td>Local traffic stays local</td></tr>
+            <tr><td>Survives WLC loss</td><td>No</td><td>Yes, in standalone mode</td></tr>
+            <tr><td>Typical use</td><td>Campus, where the WLC is local</td><td>Branches behind a WAN</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>This single choice drives the switchport configuration, the VLAN plan, the failure behaviour and the troubleshooting approach. Establish which mode an AP is in before anything else.</p>
+    </div>
+
+    <div class="term">
+      <h3>Controller platforms</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Platform</th><th>OS</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Catalyst 9800</strong> (9800-80/40/L/CL)</td><td>IOS-XE</td><td>Current generation. Model-driven config, tag-based. 9800-CL is the virtual form</td></tr>
+            <tr><td><strong>Embedded Wireless Controller</strong></td><td>IOS-XE</td><td>Runs on a Catalyst 9000 switch or on an AP. Small sites</td></tr>
+            <tr><td>AireOS (5520, 8540, 3504)</td><td>AireOS</td><td>Previous generation. Still very widely deployed; different CLI entirely</td></tr>
+            <tr><td>Mobility Express</td><td>AireOS</td><td>Controller function on an AP. Superseded by EWC</td></tr>
+            <tr><td>Meraki MR</td><td>Cloud</td><td>Controller-less data plane, cloud management</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="gotcha"><b>AireOS and 9800 are genuinely different products</b>Not just different syntax &mdash; a different configuration model. AireOS binds settings to WLANs and interfaces; the 9800 binds them through tags to APs. Commands, logs and troubleshooting tools all differ. Confirm which you are on before following any procedure, including this page's.</div>
+    </div>
+
+    <div class="term">
+      <h3>High availability</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Model</th><th>What survives</th><th>Failover time</th></tr></thead>
+          <tbody>
+            <tr><td><strong>HA SSO</strong> (AP and client SSO)</td><td>AP CAPWAP sessions and client state are both preserved</td><td>Sub-second to a few seconds</td></tr>
+            <tr><td><strong>N+1</strong></td><td>Nothing. APs rejoin the backup WLC from scratch</td><td>Minutes</td></tr>
+            <tr><td><strong>N+1 with HA SKU</strong></td><td>As N+1, with a licence-free standby</td><td>Minutes</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>SSO pairs two identical controllers with a dedicated <strong>redundancy port</strong> (RP) and a <strong>redundancy management interface</strong> (RMI). The active replicates AP and client state continuously, so a failure is close to invisible. The two units must match in model, software version and licensing.</p>
+<pre><code><span class="cmt">! 9800 — check HA state</span>
+show chassis
+show redundancy
+show wireless stats redundancy-mgr detail
+
+<span class="cmt">! AireOS</span>
+show redundancy summary</code></pre>
+      <p>Independently of HA, every AP can hold a <strong>primary, secondary and tertiary</strong> controller, which is what directs it during a rejoin.</p>
+    </div>
+
+    <div class="term">
+      <h3>Groups you will meet</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Group</th><th>Purpose</th><th>Must match</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Mobility group</strong></td><td>Controllers that exchange client context so roaming is seamless</td><td>Group name, and each other in the member list</td></tr>
+            <tr><td><strong>Mobility domain</strong></td><td>Wider set of controllers that can tunnel to each other</td><td>Reachability and compatible versions</td></tr>
+            <tr><td><strong>RF group</strong></td><td>Controllers whose APs hear each other, sharing one RRM calculation</td><td>RF group name, and a common leader</td></tr>
+            <tr><td><strong>AP group / site tag</strong></td><td>Which WLANs and settings a set of APs receives</td><td>&mdash;</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="gotcha"><b>Mobility group name is case-sensitive and must match exactly</b>A typo produces controllers that see each other as "control path down", roaming between them falls back to a full reauthentication, and guest anchoring stops working entirely. Verify with <code>show wireless mobility summary</code> on both ends, not just one.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section class="block" id="topology">
+  <div class="sechead">
+    <h2><span class="num">02</span>Lab topology</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="topology"> Reviewed</label>
+  </div>
+  <p class="lede">A campus in local mode and a branch in FlexConnect, against one 9800 controller. Every example below uses this.</p>
+
+  <div class="figure">
+    <div class="figscroll">
+      <svg viewBox="0 0 760 428" role="img" aria-label="Campus APs in local mode and branch APs in FlexConnect, against one controller" font-size="13" font-family="var(--font-body)">
+        <text x="24" y="28" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--font-display)">Campus traffic reaches the wire at the controller, branch traffic at the AP</text>
+        <text x="24" y="48" font-size="11.5" fill="var(--ink-3)">Same controller, two switching modes, two completely different switchport configs.</text>
+
+        <text x="24" y="84" font-size="10.5" font-weight="600" fill="var(--accent-ink)" letter-spacing="0.05em">CAMPUS &mdash; LOCAL MODE</text>
+
+        <g stroke="var(--line-strong)" stroke-width="1.5" fill="none">
+          <path d="M134 122H180"></path>
+          <path d="M300 122H346"></path>
+          <path d="M456 122H502"></path>
+          <path d="M557 148V196"></path>
+          <path d="M681 148V196"></path>
+          <path d="M401 148V220"></path>
+          <path d="M401 268V320H300"></path>
+          <path d="M134 320H180"></path>
+        </g>
+
+        <g>
+          <rect x="24" y="96" width="110" height="52" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"></rect>
+          <text x="79" y="118" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--ink)">Campus APs</text>
+          <text x="79" y="135" text-anchor="middle" font-size="10.5" fill="var(--accent-ink)">local mode</text>
+        </g>
+        <g>
+          <rect x="180" y="96" width="120" height="52" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="240" y="118" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--ink)">Access SW</text>
+          <text x="240" y="135" text-anchor="middle" font-size="10.5" fill="var(--ink-3)">access port, VLAN 50</text>
+        </g>
+        <g>
+          <rect x="346" y="96" width="110" height="52" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="401" y="126" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--ink)">Core</text>
+        </g>
+        <g>
+          <rect x="502" y="96" width="234" height="52" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"></rect>
+          <text x="619" y="118" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--ink)">C9800 &middot; HA SSO pair</text>
+          <text x="619" y="135" text-anchor="middle" font-size="10.5" fill="var(--ink-2)" font-family="var(--font-mono)">mgmt 10.50.0.10</text>
+        </g>
+
+        <g>
+          <rect x="502" y="196" width="110" height="48" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="557" y="217" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ink)">ISE</text>
+          <text x="557" y="233" text-anchor="middle" font-size="10.5" fill="var(--ink-2)" font-family="var(--font-mono)">10.50.1.20</text>
+        </g>
+        <g>
+          <rect x="626" y="196" width="110" height="48" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="681" y="217" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ink)">DHCP / DNS</text>
+          <text x="681" y="233" text-anchor="middle" font-size="10.5" fill="var(--ink-2)" font-family="var(--font-mono)">10.50.1.5</text>
+        </g>
+
+        <g>
+          <rect x="346" y="220" width="110" height="48" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25" stroke-dasharray="4 3"></rect>
+          <text x="401" y="249" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ink)">WAN</text>
+        </g>
+
+        <text x="24" y="284" font-size="10.5" font-weight="600" fill="var(--amber)" letter-spacing="0.05em">BRANCH &mdash; FLEXCONNECT</text>
+
+        <g>
+          <rect x="24" y="294" width="110" height="52" rx="8" fill="var(--amber-soft)" stroke="var(--amber)" stroke-width="2"></rect>
+          <text x="79" y="316" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--ink)">Branch APs</text>
+          <text x="79" y="333" text-anchor="middle" font-size="10.5" fill="var(--amber)">local switching</text>
+        </g>
+        <g>
+          <rect x="180" y="294" width="120" height="52" rx="8" fill="none" stroke="var(--line-strong)" stroke-width="1.25"></rect>
+          <text x="240" y="316" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--ink)">Branch SW</text>
+          <text x="240" y="333" text-anchor="middle" font-size="10.5" fill="var(--amber)">trunk, VLANs 60-62</text>
+        </g>
+
+        <text x="24" y="382" font-size="11.5" fill="var(--ink-3)">AP management VLAN 50 (10.50.0.0/24) &middot; campus clients VLAN 51-52 &middot; branch clients VLAN 61-62 locally</text>
+        <text x="24" y="400" font-size="11.5" fill="var(--ink-3)">Campus client traffic rides CAPWAP to the 9800 and exits there. Branch client traffic never leaves the branch.</text>
+        <text x="24" y="418" font-size="11.5" fill="var(--ink-3)">Both AP sets build CAPWAP control to 10.50.0.10 on UDP 5246.</text>
+      </svg>
+    </div>
+    <p class="figcap">WLC lab topology &middot; one controller, two switching modes.</p>
+  </div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section class="block" id="capwap">
+  <div class="sechead">
+    <h2><span class="num">03</span>CAPWAP</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="capwap"> Reviewed</label>
+  </div>
+  <p class="lede">The tunnel between AP and controller. Two UDP ports, one of them always encrypted, and an MTU problem waiting to happen.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The two channels</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Channel</th><th class="mono-col">Port</th><th>Carries</th><th>Encryption</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Control</strong></td><td class="mono-col">UDP 5246</td><td>Join, configuration, keepalives, client state, RRM data</td><td><strong>DTLS, always</strong></td></tr>
+            <tr><td><strong>Data</strong></td><td class="mono-col">UDP 5247</td><td>Client traffic, in local mode only</td><td>DTLS optional, off by default</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Legacy LWAPP used UDP 12222 for data and 12223 for control. You will still see those ports in old firewall rules and old documentation.</p>
+      <p>The AP always initiates. The controller never dials out to an AP, which means the AP must be able to reach the WLC management address, but not the reverse.</p>
+    </div>
+
+    <div class="term">
+      <h3>MTU and fragmentation</h3>
+      <p>CAPWAP adds overhead to every encapsulated frame &mdash; outer IP, UDP, the CAPWAP header, and in local mode the original 802.11 or Ethernet frame inside. A full-size client packet plus CAPWAP overhead exceeds 1500 bytes and must be fragmented.</p>
+      <div class="gotcha"><b>Blocked fragments is the classic silent failure</b>If anything in the path drops IP fragments or blocks ICMP "fragmentation needed", the AP joins fine (small control packets) and then client traffic breaks for larger frames, or the AP joins and drops repeatedly during image download. Symptoms look nothing like an MTU problem until you test for it.</div>
+<pre><code><span class="cmt">! From the AP CLI — test the real path</span>
+AP# ping 10.50.0.10 size 1500 df-bit
+
+<span class="cmt">! 9800 — check the configured path MTU</span>
+show ap name AP-BR-01 config general | include MTU
+show wireless stats ap join summary
+
+<span class="cmt">! Where supported, lower the AP's CAPWAP MTU</span>
+ap profile BRANCH-PROFILE
+ capwap-mtu 1400</code></pre>
+      <p>On WAN paths with tunnelling of their own &mdash; DMVPN, IPsec, MPLS with extra labels &mdash; budget for the overhead explicitly rather than hoping path MTU discovery works.</p>
+    </div>
+
+    <div class="term">
+      <h3>DTLS and certificates</h3>
+      <p>The control channel is protected by DTLS, authenticated with certificates on both ends. Three certificate types appear on APs:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Type</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><strong>MIC</strong> &mdash; Manufacturer Installed Certificate</td><td>Burned in at the factory. What almost every modern AP uses</td></tr>
+            <tr><td><strong>SSC</strong> &mdash; Self-Signed Certificate</td><td>Older APs, or field-converted units</td></tr>
+            <tr><td><strong>LSC</strong> &mdash; Locally Significant Certificate</td><td>Issued by your own PKI, for environments that require it</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="gotcha"><b>Certificate validity makes the clock load-bearing</b>MIC certificates have a validity window. If the controller's clock is wrong &mdash; after a power loss with no NTP, say &mdash; it rejects every AP certificate as not-yet-valid or expired, and no AP joins. The log says the certificate failed, which sends people hunting for a PKI problem rather than checking the time. Scenario 01.</div>
+<pre><code>show clock
+show ntp associations
+show wireless certificate status</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Keepalives and timers</h3>
+<pre><code>ap profile DEFAULT-PROFILE
+ heartbeat-timeout 30
+ capwap retransmit count 5
+ capwap retransmit interval 3</code></pre>
+      <p>The AP sends a CAPWAP echo at the heartbeat interval. Missing a configurable number of them tears the tunnel down and the AP restarts discovery. On a lossy WAN, raising the retransmit count prevents a brief loss event from causing a full rejoin and the outage that goes with it.</p>
+<pre><code>show ap name AP-BR-01 config general | include Heartbeat|Retransmit
+show wireless stats ap discovery
+show logging | include CAPWAP</code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section class="block" id="apmodes">
+  <div class="sechead">
+    <h2><span class="num">04</span>AP modes</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="apmodes"> Reviewed</label>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <caption>Every AP mode and when to use it</caption>
+      <thead><tr><th>Mode</th><th>Serves clients</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Local</strong></td><td>Yes</td><td>The default. Client traffic tunnelled to the WLC. Off-channel scans periodically for RRM and rogues</td></tr>
+        <tr><td><strong>FlexConnect</strong></td><td>Yes</td><td>Client traffic switched locally at the AP. Survives WLC loss</td></tr>
+        <tr><td><strong>Monitor</strong></td><td>No</td><td>Radios in receive only. Full-time scanning for rogues, location and wIPS</td></tr>
+        <tr><td><strong>Sniffer</strong></td><td>No</td><td>Captures all frames on one channel and streams them to a wired analyser. <strong>The best wireless troubleshooting tool there is</strong></td></tr>
+        <tr><td><strong>Rogue Detector</strong></td><td>No</td><td>Radios off; listens on the wire for rogue MACs. Largely superseded</td></tr>
+        <tr><td><strong>Bridge / Mesh</strong></td><td>Yes</td><td>RAP or MAP in a mesh. Backhaul over wireless</td></tr>
+        <tr><td><strong>Flex + Bridge</strong></td><td>Yes</td><td>Mesh with FlexConnect local switching</td></tr>
+        <tr><td><strong>SE-Connect</strong></td><td>No</td><td>Dedicates the radios to Spectrum Analysis with Spectrum Expert / CleanAir</td></tr>
+        <tr><td><strong>Sensor</strong></td><td>No</td><td>Acts as a test client for Catalyst Center assurance, running synthetic tests</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Changing mode</h3>
+<pre><code><span class="cmt">! 9800 — the AP reboots on a mode change</span>
+ap name AP-CAMPUS-01 mode sniffer
+ap name AP-CAMPUS-01 sniff 36 10.50.1.99    <span class="cmt">! channel, analyser IP</span>
+ap name AP-CAMPUS-01 mode local
+
+<span class="cmt">! AireOS</span>
+config ap mode sniffer AP-CAMPUS-01
+config ap sniff enable 36 10.50.1.99 AP-CAMPUS-01
+
+show ap summary
+show ap name AP-CAMPUS-01 config general | include AP Mode</code></pre>
+      <div class="tip"><b>Keep a spare AP for sniffer mode</b>An over-the-air capture settles arguments that no controller log can. Keep one AP per site that you are willing to flip to sniffer mode, and have Wireshark ready to receive the stream. For any client-side problem that the controller cannot explain, this is the next step &mdash; and often the only one that works.</div>
+    </div>
+
+    <div class="term">
+      <h3>Off-channel scanning</h3>
+      <p>A local-mode AP leaves its serving channel briefly to scan others &mdash; roughly 50 ms every 180 seconds per channel by default. That is how it finds rogues and feeds RRM. The cost is a short gap in service, usually harmless but occasionally visible to sensitive real-time traffic.</p>
+<pre><code><span class="cmt">! Monitor mode changes what gets scanned and how often</span>
+ap monitor-mode fast-channel-scan
+show ap name AP-CAMPUS-01 config dot11 5ghz | include Channel Scan</code></pre>
+      <p>If you need full-time scanning without the service gap, dedicate an AP in Monitor mode rather than tuning local-mode scanning aggressively.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section class="block" id="apjoin">
+  <div class="sechead">
+    <h2><span class="num">05</span>AP join process</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="apjoin"> Reviewed</label>
+  </div>
+  <p class="lede">Four phases. An AP that will not join has failed at exactly one of them, and knowing which narrows the cause to two or three possibilities.</p>
+
+  <div class="figure">
+    <div class="figscroll">
+      <svg viewBox="0 0 760 530" role="img" aria-label="AP join process from DHCP through discovery, DTLS, join and configuration" font-size="13" font-family="var(--font-body)">
+        <defs>
+          <marker id="jarrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="var(--line-strong)"></path>
+          </marker>
+        </defs>
+        <text x="24" y="28" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--font-display)">An AP that will not join has failed at one of these four phases</text>
+        <text x="24" y="48" font-size="11.5" fill="var(--ink-3)">Find which phase stops, and the cause narrows to two or three things.</text>
+
+        <g>
+          <rect x="24" y="100" width="712" height="70" rx="8" fill="var(--surface-2)"></rect>
+          <rect x="24" y="180" width="712" height="70" rx="8" fill="var(--surface-2)"></rect>
+          <rect x="24" y="260" width="712" height="92" rx="8" fill="var(--surface-2)"></rect>
+          <rect x="24" y="362" width="712" height="110" rx="8" fill="var(--surface-2)"></rect>
+        </g>
+
+        <g stroke="var(--line-strong)" stroke-width="1" stroke-dasharray="3 3">
+          <line x1="160" y1="92" x2="160" y2="480"></line>
+          <line x1="400" y1="92" x2="400" y2="480"></line>
+          <line x1="640" y1="92" x2="640" y2="480"></line>
+        </g>
+
+        <text x="160" y="84" text-anchor="middle" font-weight="600" fill="var(--ink)">AP</text>
+        <text x="400" y="84" text-anchor="middle" font-weight="600" fill="var(--ink)">DHCP / DNS</text>
+        <text x="640" y="84" text-anchor="middle" font-weight="600" fill="var(--ink)">WLC</text>
+
+        <text x="32" y="122" font-size="10.5" font-weight="600" fill="var(--ink-3)">1 &middot; ADDRESS</text>
+        <text x="32" y="202" font-size="10.5" font-weight="600" fill="var(--ink-3)">2 &middot; DISCOVER</text>
+        <text x="32" y="282" font-size="10.5" font-weight="600" fill="var(--ink-3)">3 &middot; JOIN</text>
+        <text x="32" y="384" font-size="10.5" font-weight="600" fill="var(--ink-3)">4 &middot; CONFIGURE</text>
+
+        <g fill="none" stroke="var(--line-strong)" stroke-width="1.25" marker-end="url(#jarrow)">
+          <path d="M160 132H400"></path>
+          <path d="M400 160H160"></path>
+          <path d="M160 212H640"></path>
+          <path d="M640 240H160"></path>
+          <path d="M160 292H640" stroke-dasharray="4 3"></path>
+          <path d="M160 320H640"></path>
+          <path d="M640 344H160"></path>
+          <path d="M640 396H160" stroke-dasharray="4 3"></path>
+          <path d="M640 424H160"></path>
+          <path d="M160 452H640" stroke-dasharray="4 3"></path>
+        </g>
+
+        <text x="280" y="126" text-anchor="middle" font-size="11.5" fill="var(--ink)">DHCP Discover</text>
+        <text x="280" y="154" text-anchor="middle" font-size="11.5" fill="var(--accent-ink)" font-weight="500">Offer: IP + option 43</text>
+        <text x="400" y="206" text-anchor="middle" font-size="11.5" fill="var(--ink)">CAPWAP Discovery Request</text>
+        <text x="400" y="234" text-anchor="middle" font-size="11.5" fill="var(--ink)">Discovery Response &middot; AP count, capacity</text>
+        <text x="400" y="286" text-anchor="middle" font-size="11.5" fill="var(--ink-2)">DTLS handshake &middot; certificate validation</text>
+        <text x="400" y="314" text-anchor="middle" font-size="11.5" fill="var(--ink)">Join Request</text>
+        <text x="400" y="338" text-anchor="middle" font-size="11.5" fill="var(--ink)">Join Response</text>
+        <text x="400" y="390" text-anchor="middle" font-size="11.5" fill="var(--amber)">Image check &mdash; mismatch means download and reboot</text>
+        <text x="400" y="418" text-anchor="middle" font-size="11.5" fill="var(--ink)">Configuration download</text>
+        <text x="400" y="446" text-anchor="middle" font-size="11.5" fill="var(--accent-ink)" font-weight="500">CAPWAP echo every 30 s &mdash; Run state</text>
+
+        <text x="24" y="504" font-size="11.5" fill="var(--ink-2)">Stuck at 1: DHCP or PoE. At 2: option 43, DNS or reachability. At 3: certificate, clock, capacity or AP authorisation.</text>
+        <text x="24" y="522" font-size="11.5" fill="var(--ink-2)">At 4: usually MTU, because the image transfer is the first thing to send large packets.</text>
+      </svg>
+    </div>
+    <p class="figcap">AP join &middot; four phases, with the usual failure cause of each.</p>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>How an AP finds a controller</h3>
+      <p>The AP tries these in order and builds a candidate list from everything that answers:</p>
+      <ol>
+        <li><strong>Previously joined controllers</strong> &mdash; stored in NVRAM, including the primary, secondary and tertiary names it was given.</li>
+        <li><strong>DHCP option 43</strong> &mdash; one or more WLC management addresses handed out with the lease.</li>
+        <li><strong>DNS</strong> &mdash; resolves <code>CISCO-CAPWAP-CONTROLLER.&lt;local-domain&gt;</code>, with the domain coming from DHCP option 15.</li>
+        <li><strong>Layer 3 broadcast</strong> &mdash; a subnet broadcast discovery, which only reaches a WLC on the same subnet.</li>
+        <li><strong>Statically configured</strong> &mdash; primed over the AP console.</li>
+        <li><strong>Mobility group members</strong> &mdash; a controller that answers will share its mobility peers as further candidates.</li>
+      </ol>
+      <p>Having found candidates, the AP picks one: a configured primary, secondary or tertiary first; then a controller configured as master; then, failing both, the <strong>least loaded</strong> controller by AP count relative to capacity.</p>
+      <div class="tip"><b>Priming an AP from the console beats guessing</b>When discovery is the problem, connect to the AP console and set the controller directly. If it then joins, discovery was the issue; if it still fails, the problem is further along. That single test splits the problem space in half.</div>
+<pre><code>AP# capwap ap controller ip address 10.50.0.10
+AP# capwap ap primary-base WLC-01 10.50.0.10
+AP# capwap ap hostname AP-BR-01
+AP# show capwap client rcb
+AP# show capwap client ha</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>DHCP option 43</h3>
+      <p>The most common discovery method, and the most commonly mis-encoded. For Cisco APs it is a TLV: type <code>f1</code>, length = 4 &times; number of controllers, then each management IP in hex.</p>
+<pre><code><span class="cmt">! One controller at 10.50.0.10</span>
+<span class="cmt">!   10 = 0a, 50 = 32, 0 = 00, 10 = 0a   ->  0a32000a</span>
+<span class="cmt">!   type f1, length 04</span>
+
+ip dhcp pool AP-MGMT
+ network 10.50.0.0 255.255.255.0
+ default-router 10.50.0.1
+ option 43 hex f1040a32000a
+ option 60 ascii "Cisco AP c9130"
+
+<span class="cmt">! Two controllers, 10.50.0.10 and 10.50.0.11</span>
+<span class="cmt">!   length 08, then both addresses</span>
+ option 43 hex f1080a32000a0a32000b</code></pre>
+      <div class="gotcha"><b>Getting the length byte wrong is the usual error</b>The length is the number of <em>bytes of address data</em>, not the number of controllers. One controller is <code>04</code>, two is <code>08</code>, three is <code>0c</code>. A wrong length makes the AP discard the option silently &mdash; no log, no error, it simply falls through to DNS and then fails. Decode your own hex before blaming anything else.</div>
+      <p>On a Windows DHCP server the same value is entered as a hex string on the scope option, and on Infoblox or similar it is usually entered as a vendor-encapsulated option. The encoding is identical; only the entry form differs.</p>
+    </div>
+
+    <div class="term">
+      <h3>DNS discovery</h3>
+<pre><code><span class="cmt">! A record resolving to each controller management IP</span>
+CISCO-CAPWAP-CONTROLLER.corp.example.com.   IN A   10.50.0.10
+CISCO-CAPWAP-CONTROLLER.corp.example.com.   IN A   10.50.0.11</code></pre>
+      <p>Simpler to maintain than option 43 across many scopes, and it fails more visibly &mdash; you can test it from any host. The AP needs DHCP option 6 (DNS server) and option 15 (domain name) for this to work.</p>
+    </div>
+
+    <div class="term">
+      <h3>Why a join fails</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Cause</th><th>How it presents</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Clock wrong on WLC or AP</strong></td><td>Certificate validation fails. Join rejected at DTLS</td></tr>
+            <tr><td><strong>Regulatory domain mismatch</strong></td><td>AP joins then is rejected, or radios stay down. A <code>-E</code> AP on an <code>-A</code> controller country setting</td></tr>
+            <tr><td><strong>Max AP count or licensing</strong></td><td>Join response refuses. <code>show wireless stats ap join summary</code> gives the reason</td></tr>
+            <tr><td><strong>AP authorisation list</strong></td><td>If AP auth-list is enabled, an unlisted AP MAC is rejected</td></tr>
+            <tr><td><strong>MTU / fragments blocked</strong></td><td>Joins, then fails during image download. Repeats forever</td></tr>
+            <tr><td><strong>Option 43 malformed</strong></td><td>Never reaches discovery at all</td></tr>
+            <tr><td><strong>Image download failure</strong></td><td>AP reboots in a loop. Check the predownload and the path</td></tr>
+            <tr><td><strong>PoE insufficient</strong></td><td>AP boots, radios do not come up, or it reboots under load</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code><span class="cmt">! 9800 — the single most useful join command</span>
+show wireless stats ap join summary
+show wireless stats ap join detail
+show ap join stats summary all
+
+<span class="cmt">! why did a specific AP fail?</span>
+show wireless stats ap join summary | include AP-BR-01
+
+<span class="cmt">! AireOS</span>
+show ap join stats summary all
+debug capwap events enable
+debug capwap errors enable</code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section class="block" id="switch">
+  <div class="sechead">
+    <h2><span class="num">06</span>Switch configuration</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="switch"> Reviewed</label>
+  </div>
+  <p class="lede">The switchport config differs completely between local mode and FlexConnect. Getting it wrong is a top-three cause of wireless problems that look like RF problems.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Local-mode AP port &mdash; access</h3>
+      <p>All client traffic is inside CAPWAP, so the AP needs exactly one VLAN: its own management VLAN.</p>
+<pre><code>interface GigabitEthernet1/0/10
+ description AP-CAMPUS-01
+ switchport mode access
+ switchport access vlan 50
+ switchport nonegotiate
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+ power inline auto
+ <span class="cmt">! trust the AP's markings — it copies client DSCP to the CAPWAP header</span>
+ trust device cisco-ap
+ no shutdown</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>FlexConnect AP port &mdash; trunk</h3>
+      <p>Client traffic is bridged locally, so every client VLAN must reach the AP. The AP management VLAN becomes the native VLAN.</p>
+<pre><code>interface GigabitEthernet1/0/10
+ description AP-BRANCH-01 FlexConnect
+ switchport mode trunk
+ switchport trunk native vlan 60
+ switchport trunk allowed vlan 60,61,62
+ switchport nonegotiate
+ spanning-tree portfast trunk
+ spanning-tree bpduguard enable
+ power inline auto
+ trust device cisco-ap
+ no shutdown</code></pre>
+      <div class="gotcha"><b>The native VLAN must match the AP's FlexConnect native VLAN setting</b>If the switch native VLAN is 60 and the AP's FlexConnect profile says native VLAN 1, the AP's own management traffic is tagged when the switch expects it untagged. The AP never joins, or joins and drops. Both ends must agree, and the mapping lives in the flex profile on the controller.</div>
+<pre><code><span class="cmt">! 9800 flex profile</span>
+wireless profile flex BRANCH-FLEX
+ native-vlan-id 60
+ vlan-name CLIENT-DATA
+  vlan-id 61
+ vlan-name CLIENT-VOICE
+  vlan-id 62
+
+show wireless profile flex detailed BRANCH-FLEX</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Power</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Standard</th><th>Power at PD</th><th>Typically needed for</th></tr></thead>
+          <tbody>
+            <tr><td>802.3af (PoE)</td><td>12.95 W</td><td>Older 802.11n APs. Modern APs run degraded</td></tr>
+            <tr><td>802.3at (PoE+)</td><td>25.5 W</td><td>Most 802.11ac and many Wi-Fi 6 APs</td></tr>
+            <tr><td>802.3bt Type 3 (PoE++)</td><td>51 W</td><td>Wi-Fi 6E and 7 APs with all radios and USB active</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="gotcha"><b>Under-powering an AP produces baffling symptoms</b>The AP boots and joins, but disables a radio, drops to fewer spatial streams, disables the USB port, or reduces transmit power &mdash; often without an obvious alarm. Users report poor coverage on one band only. Always check the negotiated power before investigating RF.</div>
+<pre><code>show power inline GigabitEthernet1/0/10 detail
+show power inline module 1
+
+<span class="cmt">! On the controller</span>
+show ap name AP-CAMPUS-01 config general | include Power|PoE
+show ap summary | include AP-CAMPUS-01</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Controller uplink</h3>
+<pre><code>interface Port-channel10
+ description C9800-01 uplink
+ switchport mode trunk
+ switchport trunk allowed vlan 50,51,52
+ no shutdown
+!
+interface range TenGigabitEthernet1/0/1-2
+ channel-group 10 mode active
+ switchport mode trunk
+ switchport trunk allowed vlan 50,51,52</code></pre>
+      <p>On AireOS the equivalent LAG is a static etherchannel &mdash; <strong>mode on</strong>, no LACP &mdash; which is a frequent mismatch when replacing an AireOS controller with a 9800. The 9800 supports LACP properly.</p>
+      <p>Allow only the VLANs the controller actually needs: management, and every centrally switched client VLAN. Branch client VLANs never reach the controller in FlexConnect.</p>
+    </div>
+
+    <div class="term">
+      <h3>Other switch-side things that matter</h3>
+      <ul>
+        <li><strong>IGMP snooping</strong> &mdash; needed on client VLANs if you run multicast applications or mDNS discovery.</li>
+        <li><strong>DHCP snooping</strong> &mdash; if enabled, trust the uplink toward the DHCP server or client leases fail.</li>
+        <li><strong>Storm control</strong> &mdash; a broadcast storm on a client VLAN will saturate every AP on it.</li>
+        <li><strong>Port security</strong> &mdash; do not use it on an AP port. Many client MACs appear behind one port in FlexConnect.</li>
+        <li><strong>802.1X on the AP port</strong> &mdash; supported, but adds a dependency; the AP must authenticate before it can reach the WLC.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 7 ============ -->
+<section class="block" id="tags">
+  <div class="sechead">
+    <h2><span class="num">07</span>The 9800 tag model</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="tags"> Reviewed</label>
+  </div>
+  <p class="lede">The biggest conceptual change from AireOS. Nothing is applied to an AP directly &mdash; everything arrives through three tags.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Three tags, and what each carries</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Tag</th><th>Contains</th><th>Answers</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Policy tag</strong></td><td>WLAN profile + policy profile pairs</td><td>Which SSIDs does this AP broadcast, and what policy applies to clients on them?</td></tr>
+            <tr><td><strong>Site tag</strong></td><td>AP join profile, flex profile, local-site flag</td><td>Is this AP local mode or FlexConnect, and what AP-level settings apply?</td></tr>
+            <tr><td><strong>RF tag</strong></td><td>RF profiles for 2.4, 5 and 6 GHz</td><td>What radio settings apply &mdash; channels, power, data rates?</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Every AP has exactly one of each. Change a tag and every AP carrying it changes with it, which is both the power and the hazard of the model.</p>
+    </div>
+
+    <div class="term">
+      <h3>The split that trips people up</h3>
+      <p>A WLAN is defined in <strong>two</strong> objects, not one:</p>
+      <ul>
+        <li><strong>WLAN profile</strong> &mdash; the over-the-air part: SSID name, security, 802.11 settings, PMF.</li>
+        <li><strong>Policy profile</strong> &mdash; the wired-side part: VLAN, central or local switching, ACLs, QoS, AAA override, session timeout.</li>
+      </ul>
+      <p>The policy tag is what binds a WLAN profile to a policy profile. On AireOS all of this lived on the WLAN itself, which is why AireOS engineers go looking for the VLAN setting on the WLAN and cannot find it.</p>
+<pre><code><span class="cmt">! 1. WLAN profile — the air</span>
+wlan CORP-WLAN 1 CORP
+ security dot1x authentication-list ISE-AUTH
+ security wpa wpa2 ciphers aes
+ security pmf optional
+ no shutdown
+
+<span class="cmt">! 2. Policy profile — the wire</span>
+wireless profile policy CORP-POLICY
+ vlan 51
+ aaa-override
+ accounting-list ISE-ACCT
+ no shutdown
+
+<span class="cmt">! 3. Policy tag binds them</span>
+wireless tag policy CAMPUS-POLICY-TAG
+ wlan CORP-WLAN policy CORP-POLICY
+
+<span class="cmt">! 4. Site tag — local mode here</span>
+wireless tag site CAMPUS-SITE-TAG
+ <span class="cmt">! "local-site" present = local mode; "no local-site" = FlexConnect</span>
+
+<span class="cmt">! 5. RF tag</span>
+wireless tag rf CAMPUS-RF-TAG
+ 24ghz-rf-policy CAMPUS-24
+ 5ghz-rf-policy CAMPUS-5
+
+<span class="cmt">! 6. Apply all three to an AP</span>
+ap F4DB.E6xx.xxxx
+ policy-tag CAMPUS-POLICY-TAG
+ site-tag CAMPUS-SITE-TAG
+ rf-tag CAMPUS-RF-TAG</code></pre>
+      <div class="gotcha"><b>Changing an AP's site tag reboots the AP</b>Policy tag and RF tag changes apply live. A site tag change forces a CAPWAP restart because it can switch the AP between local and FlexConnect mode. Plan site tag changes as disruptive, and never bulk-apply one during business hours.</div>
+    </div>
+
+    <div class="term">
+      <h3>Assigning tags at scale</h3>
+<pre><code><span class="cmt">! Filter by AP name regex — the practical method</span>
+wireless tag filter BRANCH-FILTER 1
+ ap-name-regex ^AP-BR-.*
+ policy-tag BRANCH-POLICY-TAG
+ site-tag BRANCH-SITE-TAG
+ rf-tag BRANCH-RF-TAG
+
+<span class="cmt">! Or by location / AP group via the GUI's static assignment</span>
+show wireless tag summary
+show ap tag summary
+show ap name AP-BR-01 tag detail
+show ap tag-sources-all</code></pre>
+      <div class="tip"><b>show ap tag summary is the first command on any 9800 problem</b>An AP with the wrong tags has the wrong SSIDs, the wrong VLAN, or the wrong mode &mdash; and every downstream symptom follows from that. Check tags before checking anything else. The default tag set applies silently to any AP you have not explicitly tagged.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 8 ============ -->
+<section class="block" id="clientjoin">
+  <div class="sechead">
+    <h2><span class="num">08</span>Client join flow</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="clientjoin"> Reviewed</label>
+  </div>
+  <p class="lede">What actually happens between a laptop and the network. The 802.11 part is identical for every security type; only what follows association differs.</p>
+
+  <div class="figure">
+    <div class="figscroll">
+      <svg viewBox="0 0 760 642" role="img" aria-label="Client association and 802.1X authentication from probe through to RUN state" font-size="13" font-family="var(--font-body)">
+        <defs>
+          <marker id="carrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="var(--line-strong)"></path>
+          </marker>
+        </defs>
+        <text x="24" y="28" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--font-display)">Association always succeeds first &mdash; security comes after</text>
+        <text x="24" y="48" font-size="11.5" fill="var(--ink-3)">WPA2-Enterprise shown. Open and PSK share phase 1 and skip or shorten phase 2.</text>
+
+        <g>
+          <rect x="24" y="104" width="712" height="158" rx="8" fill="var(--surface-2)"></rect>
+          <rect x="24" y="272" width="712" height="190" rx="8" fill="var(--surface-2)"></rect>
+          <rect x="24" y="472" width="712" height="108" rx="8" fill="var(--surface-2)"></rect>
+        </g>
+
+        <g stroke="var(--line-strong)" stroke-width="1" stroke-dasharray="3 3">
+          <line x1="130" y1="94" x2="130" y2="572"></line>
+          <line x1="310" y1="94" x2="310" y2="572"></line>
+          <line x1="500" y1="94" x2="500" y2="572"></line>
+          <line x1="690" y1="94" x2="690" y2="572"></line>
+        </g>
+
+        <text x="130" y="86" text-anchor="middle" font-weight="600" fill="var(--ink)">Client</text>
+        <text x="310" y="86" text-anchor="middle" font-weight="600" fill="var(--ink)">AP</text>
+        <text x="500" y="86" text-anchor="middle" font-weight="600" fill="var(--ink)">WLC</text>
+        <text x="690" y="86" text-anchor="middle" font-weight="600" fill="var(--ink)">RADIUS</text>
+
+        <text x="32" y="122" font-size="10.5" font-weight="600" fill="var(--ink-3)">1 &middot; ASSOCIATE</text>
+        <text x="32" y="290" font-size="10.5" font-weight="600" fill="var(--ink-3)">2 &middot; 802.1X</text>
+        <text x="32" y="490" font-size="10.5" font-weight="600" fill="var(--ink-3)">3 &middot; KEYS, IP</text>
+
+        <g fill="none" stroke="var(--line-strong)" stroke-width="1.25" marker-end="url(#carrow)">
+          <path d="M130 144H310"></path>
+          <path d="M310 170H130"></path>
+          <path d="M130 196H310"></path>
+          <path d="M310 222H130"></path>
+          <path d="M130 248H310"></path>
+          <path d="M500 312H130"></path>
+          <path d="M130 338H500"></path>
+          <path d="M500 364H690"></path>
+          <path d="M500 390H690" stroke-dasharray="4 3"></path>
+          <path d="M690 416H500"></path>
+          <path d="M500 442H130"></path>
+          <path d="M130 512H310" stroke-dasharray="4 3"></path>
+          <path d="M130 538H500"></path>
+        </g>
+
+        <text x="220" y="138" text-anchor="middle" font-size="11.5" fill="var(--ink)">Probe Request</text>
+        <text x="220" y="164" text-anchor="middle" font-size="11.5" fill="var(--ink)">Probe Response</text>
+        <text x="220" y="190" text-anchor="middle" font-size="11.5" fill="var(--ink)">802.11 Auth (Open)</text>
+        <text x="220" y="216" text-anchor="middle" font-size="11.5" fill="var(--ink)">802.11 Auth success</text>
+        <text x="220" y="242" text-anchor="middle" font-size="11.5" fill="var(--ink)">Association Request</text>
+        <text x="220" y="268" text-anchor="middle" font-size="11.5" fill="var(--accent-ink)" font-weight="500">Assoc Response + AID</text>
+
+        <text x="315" y="306" text-anchor="middle" font-size="11.5" fill="var(--ink)">EAP Request / Identity</text>
+        <text x="315" y="332" text-anchor="middle" font-size="11.5" fill="var(--ink)">EAP Response / Identity</text>
+        <text x="595" y="358" text-anchor="middle" font-size="11.5" fill="var(--ink)">Access-Request</text>
+        <text x="595" y="384" text-anchor="middle" font-size="11.5" fill="var(--ink-2)">EAP method exchange</text>
+        <text x="595" y="410" text-anchor="middle" font-size="11.5" fill="var(--accent-ink)" font-weight="500">Access-Accept + MSK</text>
+        <text x="315" y="436" text-anchor="middle" font-size="11.5" fill="var(--ink)">EAP-Success</text>
+
+        <text x="220" y="506" text-anchor="middle" font-size="11.5" fill="var(--accent-ink)" font-weight="500">4-way handshake</text>
+        <text x="315" y="532" text-anchor="middle" font-size="11.5" fill="var(--ink)">DHCP Discover / Offer / Request / Ack</text>
+
+        <g>
+          <rect x="430" y="548" width="140" height="24" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"></rect>
+          <text x="500" y="565" text-anchor="middle" font-size="11" font-weight="700" fill="var(--ink)">RUN state</text>
+        </g>
+
+        <text x="24" y="606" font-size="11.5" fill="var(--ink-2)">Phase 1 is the same for every security type. 802.11 Auth here is the legacy Open System exchange, not security.</text>
+        <text x="24" y="624" font-size="11.5" fill="var(--ink-2)">PSK skips phase 2 entirely and derives the PMK from the passphrase. WPA3-Personal replaces it with SAE.</text>
+      </svg>
+    </div>
+    <p class="figcap">Client join &middot; WPA2-Enterprise, probe through to RUN state.</p>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Phase 1 &mdash; discovery and association</h3>
+      <ol>
+        <li><strong>Scanning.</strong> Passive: the client listens for beacons, sent every 102.4 ms by default. Active: the client sends probe requests and collects responses.</li>
+        <li><strong>802.11 Authentication.</strong> A two-frame Open System exchange. Despite the name it authenticates nothing &mdash; it is a legacy handshake retained for compatibility. Shared Key authentication (WEP) is long dead.</li>
+        <li><strong>Association.</strong> The client sends an Association Request listing its capabilities and chosen security suite; the AP replies with an Association Response and an <strong>AID</strong> (association identifier).</li>
+      </ol>
+      <p>At this point the client is associated but has no data access. The controller holds it in a pre-RUN state until security and addressing complete.</p>
+      <div class="tip"><b>If a client fails before association, it is RF or capability</b>Association failures are about what the client and AP can agree on: a data rate the client cannot do, a security suite it does not support, a band it has no radio for, or simply too weak a signal. Nothing on the controller's policy side has been consulted yet.</div>
+    </div>
+
+    <div class="term">
+      <h3>Phase 2 &mdash; by security type</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Security</th><th>What happens after association</th><th>PMK comes from</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Open</strong></td><td>Nothing. Straight to DHCP</td><td>No keys at all</td></tr>
+            <tr><td><strong>OWE</strong></td><td>Diffie-Hellman during association</td><td>The DH exchange. Encryption with no password</td></tr>
+            <tr><td><strong>WPA2-Personal (PSK)</strong></td><td>4-way handshake only</td><td>PBKDF2 over passphrase + SSID</td></tr>
+            <tr><td><strong>WPA3-Personal (SAE)</strong></td><td>SAE commit/confirm, then 4-way</td><td>SAE, resistant to offline dictionary attack</td></tr>
+            <tr><td><strong>WPA2-Enterprise</strong></td><td>Full 802.1X / EAP to RADIUS, then 4-way</td><td>MSK from the EAP method</td></tr>
+            <tr><td><strong>WPA3-Enterprise</strong></td><td>As above with SHA-256 and mandatory PMF</td><td>MSK from the EAP method</td></tr>
+            <tr><td><strong>Central Web Auth</strong></td><td>MAB to RADIUS, redirect URL returned, user authenticates on a portal, CoA re-applies policy</td><td>None, or PSK underneath</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>For 802.1X the AP and controller act purely as a relay: EAP over LAN on the wireless side, EAP inside RADIUS on the wired side. The controller never sees the user's credentials in a form it can use &mdash; it only learns the result and the MSK.</p>
+    </div>
+
+    <div class="term">
+      <h3>Controller client states</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>State</th><th>Meaning</th><th>Stuck here means</th></tr></thead>
+          <tbody>
+            <tr><td><code>Associating</code> / <code>Authenticating</code></td><td>802.11 association in progress</td><td>RF, capability or rate mismatch</td></tr>
+            <tr><td><code>8021X_REQD</code></td><td>Waiting for EAP to complete</td><td>RADIUS unreachable, wrong secret, supplicant misconfigured, certificate rejected</td></tr>
+            <tr><td><code>IP Learn</code> / <code>DHCP_REQD</code></td><td>Authenticated, waiting for an address</td><td>DHCP scope exhausted, wrong VLAN, relay missing, DHCP required enforced</td></tr>
+            <tr><td><code>WEBAUTH_REQD</code></td><td>Waiting for portal login</td><td>Redirect ACL wrong, portal unreachable, DNS failing</td></tr>
+            <tr><td><code>RUN</code></td><td>Fully authorised, forwarding</td><td>&mdash;</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code>show wireless client summary
+show wireless client mac-address aaaa.bbbb.cccc detail
+show wireless client mac-address aaaa.bbbb.cccc policy
+show wireless client summary | include IP Learn</code></pre>
+      <div class="gotcha"><b>IP Learn is the most under-diagnosed stuck state</b>The client authenticated perfectly, so logs look healthy, and the user reports "connected but no internet". It is a VLAN, DHCP or policy-profile problem, not a wireless one. Check which VLAN the policy profile actually assigned before touching anything radio-related.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 9 ============ -->
+<section class="block" id="keys">
+  <div class="sechead">
+    <h2><span class="num">09</span>Keys and the 4-way handshake</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="keys"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The key hierarchy</h3>
+<pre><code>802.1X:   EAP method  ->  MSK (64 bytes)  ->  PMK = first 32 bytes
+PSK:      passphrase + SSID  ->  PBKDF2  ->  PMK directly
+SAE:      Dragonfly exchange  ->  PMK
+
+PMK + ANonce + SNonce + AP MAC + client MAC  ->  PTK
+
+PTK splits into:
+  KCK  16 bytes   key confirmation — MICs on handshake frames
+  KEK  16 bytes   key encryption — protects the GTK in transit
+  TK   16 bytes   temporal key — encrypts actual unicast data</code></pre>
+      <p>The PMK is never transmitted. Both sides derive it independently &mdash; the client from the EAP method or passphrase, the controller from the RADIUS Access-Accept. The 4-way handshake then proves both ends really do hold the same PMK, without ever sending it.</p>
+    </div>
+
+    <div class="term">
+      <h3>The four messages</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Msg</th><th>Direction</th><th>Carries</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><strong>M1</strong></td><td>AP &rarr; Client</td><td>ANonce</td><td>Gives the client what it needs to compute the PTK</td></tr>
+            <tr><td><strong>M2</strong></td><td>Client &rarr; AP</td><td>SNonce + MIC</td><td>AP can now compute the PTK; the MIC proves the client has the right PMK</td></tr>
+            <tr><td><strong>M3</strong></td><td>AP &rarr; Client</td><td>GTK (encrypted with KEK) + MIC + install flag</td><td>Delivers the group key and proves the AP's PMK</td></tr>
+            <tr><td><strong>M4</strong></td><td>Client &rarr; AP</td><td>ACK</td><td>Confirms installation. Both sides start encrypting</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The <strong>GTK</strong> is shared by every client on that AP and encrypts broadcast and multicast. It is rotated when a client leaves, if GTK randomisation is enabled.</p>
+      <div class="gotcha"><b>M1 sent, no M2 back, repeatedly &mdash; the PSK is wrong</b>This is the signature of a mismatched passphrase. The client computes a PTK from the wrong PMK, its MIC fails, and the AP retries M1 until it gives up. In a capture you see M1 four times and nothing else. For 802.1X the same pattern means the MSK did not match, usually a PMKID caching or fast-roaming problem.</div>
+    </div>
+
+    <div class="term">
+      <h3>PMF &mdash; 802.11w</h3>
+      <p>Protected Management Frames cryptographically protect deauthentication and disassociation frames, which are otherwise unauthenticated and trivially spoofed. Without PMF, anyone can knock any client off any network with a deauth flood.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Setting</th><th>Behaviour</th></tr></thead>
+          <tbody>
+            <tr><td><code>disabled</code></td><td>No protection. Legacy only</td></tr>
+            <tr><td><code>optional</code></td><td>Clients that support it use it; others still connect</td></tr>
+            <tr><td><code>required</code></td><td>Clients without PMF <strong>cannot associate</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code>wlan CORP-WLAN 1 CORP
+ security pmf optional
+ <span class="cmt">! WPA3 requires it</span>
+ security wpa wpa3
+ security pmf mandatory</code></pre>
+      <div class="tip"><b>Start at optional</b>Setting PMF to required on an existing SSID silently excludes every older client &mdash; IoT devices, medical equipment, older printers. The symptom is "some devices stopped connecting after the change" with no useful log on the client side. Run optional, check <code>show wireless client summary</code> for which clients negotiated it, then tighten.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 10 ============ -->
+<section class="block" id="roaming">
+  <div class="sechead">
+    <h2><span class="num">10</span>Roaming and mobility</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="roaming"> Reviewed</label>
+  </div>
+  <p class="lede">The client decides when to roam, not the network. Everything the controller offers is either information to help that decision or a way to make the move cheaper once taken.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Roam types</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Type</th><th>What moves</th><th>Client impact</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Intra-controller</strong></td><td>AP changes, same WLC. Client entry updated internally</td><td>Fastest. Usually imperceptible</td></tr>
+            <tr><td><strong>Inter-controller L2</strong></td><td>Client context handed to the new WLC. Same client VLAN both sides</td><td>Fast if a mobility tunnel exists</td></tr>
+            <tr><td><strong>Inter-controller L3</strong></td><td>Client stays anchored to the original WLC; traffic tunnels back</td><td>Keeps the IP address, adds a tunnel hop</td></tr>
+            <tr><td><strong>Guest anchor</strong></td><td>Deliberate L3 anchoring to a DMZ controller for every guest</td><td>By design, not a roam event</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The anchor is the controller the client first joined; the foreign is whichever it has roamed to. Traffic reaches the wire at the anchor, which is why a broken mobility tunnel breaks guest access entirely.</p>
+<pre><code>show wireless mobility summary
+show wireless mobility statistics
+show wireless client mac-address aaaa.bbbb.cccc detail | include Anchor|Mobility
+ping 10.60.0.10                        <span class="cmt">! peer management IP</span></code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Fast roaming methods</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Method</th><th>Standard</th><th>Saves</th><th>Caveat</th></tr></thead>
+          <tbody>
+            <tr><td><strong>PMKID caching</strong></td><td>802.11i</td><td>Full EAP, on return to a previously visited AP</td><td>Per-AP cache only</td></tr>
+            <tr><td><strong>OKC</strong></td><td>De facto</td><td>Full EAP across all APs on the controller</td><td>Not in any standard; client support varies</td></tr>
+            <tr><td><strong>CCKM</strong></td><td>Cisco</td><td>Full EAP</td><td>Cisco clients only. Legacy</td></tr>
+            <tr><td><strong>802.11r (FT)</strong></td><td>IEEE</td><td>Full EAP <em>and</em> most of the 4-way handshake</td><td>Some older clients refuse to associate to an FT-enabled SSID</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>802.11r is the right answer for voice. It brings roam time down to the tens of milliseconds a call needs, whereas a full reauthentication can take hundreds and will be audible.</p>
+<pre><code>wlan VOICE-WLAN 2 VOICE
+ security ft adaptive          <span class="cmt">! FT when supported, normal otherwise</span>
+ security ft over-the-ds       <span class="cmt">! or over-the-air</span>
+ security dot1x authentication-list ISE-AUTH</code></pre>
+      <div class="gotcha"><b>Adaptive FT exists because strict FT breaks old clients</b>Enabling 802.11r in pure mode changes the advertised AKM, and some older or embedded clients then will not associate at all &mdash; they do not understand the element and give up. <code>adaptive</code> advertises FT only to clients that indicate support. If devices stop connecting right after you enabled fast roaming, this is why.</div>
+    </div>
+
+    <div class="term">
+      <h3>802.11k and 802.11v</h3>
+      <ul>
+        <li><strong>802.11k</strong> &mdash; neighbour reports. The AP tells the client which other APs are nearby and on which channels, so the client does not have to scan the whole band to find a roam target.</li>
+        <li><strong>802.11v</strong> &mdash; BSS Transition Management. The network can <em>suggest</em> a client move to a better AP, and with the disassociation imminent flag, apply real pressure.</li>
+      </ul>
+      <p>Neither forces anything. A client is always free to ignore both, and many do. Together they are the best available answer to sticky clients, but they are a nudge rather than a control.</p>
+<pre><code>wlan CORP-WLAN 1 CORP
+ dot11k neighbor-list
+ dot11v BSS-transition
+ dot11v BSS-transition disassoc-imminent
+
+show wireless client mac-address aaaa.bbbb.cccc detail | include 11k|11v|11r</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Sticky clients</h3>
+      <p>A client that holds on to a distant AP at &minus;80 dBm while standing under one at &minus;45. The client's roaming algorithm is the cause and you cannot change it, but you can change the environment it decides in:</p>
+      <ul>
+        <li><strong>Disable low data rates.</strong> If 1, 2, 5.5 and 11 Mbps are disabled, a far AP becomes unusable sooner and the client is forced to look elsewhere. The single most effective lever.</li>
+        <li><strong>Reduce transmit power</strong> so cells are smaller and the signal gradient steeper.</li>
+        <li><strong>Enable 802.11k and v</strong> to inform and nudge.</li>
+        <li><strong>Optimised roaming</strong> &mdash; the controller deauthenticates a client whose RSSI falls below a threshold, forcing a fresh decision. Blunt, and it will disconnect clients that had nowhere better to go, so set the threshold conservatively.</li>
+      </ul>
+<pre><code>ap dot11 5ghz rrm optimized-roam
+ap dot11 5ghz rrm optimized-roam rssi-threshold -75
+ap dot11 5ghz rate RATE_6M mandatory
+ap dot11 5ghz rate RATE_9M disable
+ap dot11 24ghz rate RATE_1M disable
+ap dot11 24ghz rate RATE_2M disable
+ap dot11 24ghz rate RATE_5_5M disable
+ap dot11 24ghz rate RATE_11M disable</code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section class="block" id="flex">
+  <div class="sechead">
+    <h2><span class="num">11</span>FlexConnect</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="flex"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Four combinations</h3>
+      <p>Switching and authentication are independent choices, which gives four modes of operation:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Switching</th><th>Authentication</th><th>Behaviour</th></tr></thead>
+          <tbody>
+            <tr><td>Central</td><td>Central</td><td>Identical to local mode. Used for a guest SSID at a branch</td></tr>
+            <tr><td><strong>Local</strong></td><td><strong>Central</strong></td><td>The common branch design. Data stays local, auth goes to the WLC</td></tr>
+            <tr><td>Local</td><td>Local</td><td>AP authenticates clients itself. Needed for standalone survivability</td></tr>
+            <tr><td>Central</td><td>Local</td><td>Rare and generally not useful</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="term">
+      <h3>Connected versus standalone</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>&nbsp;</th><th>Connected</th><th>Standalone (WLC unreachable)</th></tr></thead>
+          <tbody>
+            <tr><td>Existing clients</td><td>Normal</td><td>Keep working if locally switched</td></tr>
+            <tr><td>New clients</td><td>Normal</td><td>Only on WLANs with local auth configured</td></tr>
+            <tr><td>Central-auth WLANs</td><td>Normal</td><td><strong>Stop accepting new clients</strong></td></tr>
+            <tr><td>Centrally switched WLANs</td><td>Normal</td><td>Shut down entirely</td></tr>
+            <tr><td>RRM, rogue detection</td><td>Active</td><td>Frozen at last known</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>For a branch to survive a WAN outage, it needs local switching <em>and</em> local authentication with a backup RADIUS the AP can reach, or local EAP on the AP itself.</p>
+<pre><code>wireless profile flex BRANCH-FLEX
+ native-vlan-id 60
+ vlan-name DATA
+  vlan-id 61
+ vlan-name VOICE
+  vlan-id 62
+ <span class="cmt">! local RADIUS for standalone survivability</span>
+ local-auth ap eap-fast profile BRANCH-EAP
+ <span class="cmt">! or a branch-local RADIUS server</span>
+ radius-server-group BRANCH-RADIUS
+
+show wireless profile flex detailed BRANCH-FLEX
+show ap name AP-BR-01 config general | include Flex|Standalone</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>VLAN mapping</h3>
+      <p>In local switching the controller tells the AP which VLAN to bridge each WLAN into. That mapping must exist in the flex profile, and the VLAN must be allowed on the switch trunk.</p>
+      <div class="gotcha"><b>A missing VLAN mapping sends clients to the native VLAN</b>No error, no alarm &mdash; clients authenticate, get an address from the wrong scope, and land in the wrong security zone. On a guest SSID that means guests on the corporate VLAN. Always verify the applied mapping with <code>show ap name &lt;ap&gt; config general</code> rather than trusting the profile.</div>
+    </div>
+
+    <div class="term">
+      <h3>Efficient image upgrade</h3>
+      <p>Fifty branch APs each pulling a 70 MB image across the same WAN link is an outage in itself. FlexConnect image upgrade elects one AP per site as the <strong>master</strong>; it downloads once from the controller and the rest pull from it locally.</p>
+<pre><code>wireless profile flex BRANCH-FLEX
+ <span class="cmt">! enable efficient AP image upgrade</span>
+ ap-image-predownload
+
+ap image predownload
+show ap image
+show wireless flexconnect summary</code></pre>
+      <p>Combine it with predownload so the image is staged before the maintenance window and the actual upgrade is just a reboot.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 12 ============ -->
+<section class="block" id="rf">
+  <div class="sechead">
+    <h2><span class="num">12</span>RF fundamentals</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="rf"> Reviewed</label>
+  </div>
+  <p class="lede">Four numbers decide whether wireless works: signal strength, noise floor, the gap between them, and how busy the channel is. Everything else is detail.</p>
+
+  <div class="figure">
+    <div class="figscroll">
+      <svg viewBox="0 0 760 344" role="img" aria-label="Signal strength scale in dBm with quality bands, noise floor and SNR" font-size="13" font-family="var(--font-body)">
+        <defs>
+          <marker id="snrL" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M10 0L0 5L10 10z" fill="var(--accent)"></path>
+          </marker>
+          <marker id="snrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0 0L10 5L0 10z" fill="var(--accent)"></path>
+          </marker>
+        </defs>
+        <text x="24" y="28" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--font-display)">SNR is the gap, and the gap is what actually matters</text>
+        <text x="24" y="48" font-size="11.5" fill="var(--ink-3)">A strong signal on a noisy channel performs worse than a weaker one on a quiet channel.</text>
+
+        <g stroke="var(--line-strong)" stroke-width="1">
+          <rect x="60" y="86" width="137" height="30" fill="var(--crit-soft)"></rect>
+          <rect x="197" y="86" width="92" height="30" fill="var(--amber-soft)"></rect>
+          <rect x="289" y="86" width="73" height="30" fill="var(--surface-2)"></rect>
+          <rect x="362" y="86" width="338" height="30" fill="var(--accent-soft)"></rect>
+        </g>
+        <g font-size="11" text-anchor="middle" fill="var(--ink-2)">
+          <text x="128" y="105">unusable</text>
+          <text x="243" y="105">poor</text>
+          <text x="325" y="105">data</text>
+          <text x="531" y="105">good &mdash; voice capable</text>
+        </g>
+
+        <line x1="60" y1="132" x2="700" y2="132" stroke="var(--line-strong)" stroke-width="1.25"></line>
+        <g stroke="var(--line-strong)" stroke-width="1">
+          <line x1="60" y1="132" x2="60" y2="139"></line>
+          <line x1="151" y1="132" x2="151" y2="139"></line>
+          <line x1="243" y1="132" x2="243" y2="139"></line>
+          <line x1="334" y1="132" x2="334" y2="139"></line>
+          <line x1="426" y1="132" x2="426" y2="139"></line>
+          <line x1="517" y1="132" x2="517" y2="139"></line>
+          <line x1="609" y1="132" x2="609" y2="139"></line>
+          <line x1="700" y1="132" x2="700" y2="139"></line>
+        </g>
+        <g font-size="10.5" text-anchor="middle" fill="var(--ink-3)" font-family="var(--font-mono)">
+          <text x="60" y="154">-100</text><text x="151" y="154">-90</text><text x="243" y="154">-80</text>
+          <text x="334" y="154">-70</text><text x="426" y="154">-60</text><text x="517" y="154">-50</text>
+          <text x="609" y="154">-40</text><text x="700" y="154">-30</text>
+        </g>
+        <text x="716" y="136" font-size="10.5" fill="var(--ink-3)">dBm</text>
+
+        <g stroke="var(--ink-2)" stroke-width="1.5" stroke-dasharray="4 3">
+          <line x1="133" y1="184" x2="133" y2="258"></line>
+        </g>
+        <g stroke="var(--accent)" stroke-width="2">
+          <line x1="471" y1="184" x2="471" y2="258"></line>
+        </g>
+        <line x1="133" y1="222" x2="471" y2="222" stroke="var(--accent)" stroke-width="1.5" marker-start="url(#snrL)" marker-end="url(#snrR)"></line>
+
+        <text x="302" y="214" text-anchor="middle" font-size="13" font-weight="700" fill="var(--accent-ink)">SNR = 37 dB</text>
+        <text x="133" y="274" text-anchor="middle" font-size="11" fill="var(--ink-2)">noise floor</text>
+        <text x="133" y="289" text-anchor="middle" font-size="11" fill="var(--ink-2)" font-family="var(--font-mono)">-92 dBm</text>
+        <text x="471" y="274" text-anchor="middle" font-size="11" fill="var(--accent-ink)" font-weight="600">signal</text>
+        <text x="471" y="289" text-anchor="middle" font-size="11" fill="var(--accent-ink)" font-family="var(--font-mono)">-55 dBm</text>
+
+        <text x="24" y="322" font-size="11.5" fill="var(--ink-2)">Targets: RSSI better than &minus;67 dBm and SNR above 25 dB for voice; &minus;70 dBm and 20 dB for data.</text>
+        <text x="24" y="340" font-size="11.5" fill="var(--ink-2)">A raised noise floor shrinks the gap without changing the signal &mdash; which is why interference feels like weak coverage.</text>
+      </svg>
+    </div>
+    <p class="figcap">Signal, noise and SNR &middot; the gap is what determines usable data rate.</p>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>RSSI</h3>
+      <p>Received Signal Strength Indicator, in <strong>dBm</strong> &mdash; decibels relative to one milliwatt. Always negative in Wi-Fi, and closer to zero is stronger.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th class="mono-col">RSSI</th><th>Quality</th><th>Supports</th></tr></thead>
+          <tbody>
+            <tr><td class="mono-col">-30 to -50</td><td>Excellent</td><td>Everything. Usually means you are standing under the AP</td></tr>
+            <tr><td class="mono-col">-50 to -60</td><td>Very good</td><td>High data rates, voice, video</td></tr>
+            <tr><td class="mono-col">-60 to -67</td><td>Good</td><td><strong>Voice design target</strong></td></tr>
+            <tr><td class="mono-col">-67 to -70</td><td>Fair</td><td>Data. Marginal for voice</td></tr>
+            <tr><td class="mono-col">-70 to -80</td><td>Poor</td><td>Low rates, retries, poor experience</td></tr>
+            <tr><td class="mono-col">below -80</td><td>Unusable</td><td>Association may hold but nothing works well</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tip"><b>The decibel shortcuts worth memorising</b>+3 dB is double the power, &minus;3 dB is half. +10 dB is ten times. So &minus;60 dBm is ten times the power of &minus;70 dBm, and &minus;67 dBm is roughly half of &minus;64. This makes coverage maths quick: adding 3 dB of antenna gain doubles effective radiated power.</div>
+    </div>
+
+    <div class="term">
+      <h3>Noise floor</h3>
+      <p>The background RF energy on a channel with no Wi-Fi transmission in progress. A clean environment sits around <strong>&minus;92 to &minus;95 dBm</strong>. Anything above roughly &minus;85 dBm means something is injecting energy.</p>
+      <p>Raised noise comes from non-Wi-Fi sources &mdash; microwave ovens, cordless phones, video senders, Bluetooth, wireless cameras, bad power supplies, faulty fluorescent ballasts. Other Wi-Fi networks mostly show as channel utilisation rather than noise, because the radio demodulates them as valid frames.</p>
+<pre><code>show ap dot11 5ghz summary
+show ap auto-rf dot11 5ghz
+show ap name AP-CAMPUS-01 auto-rf dot11 5ghz | include Noise|Interference|Utilization</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>SNR</h3>
+      <p>Signal minus noise floor, expressed in dB. This is what determines the modulation and coding scheme the radio can use, and therefore the actual throughput.</p>
+<pre><code>SNR = RSSI - noise floor
+
+  -55 dBm signal, -92 dBm noise  ->  37 dB SNR   excellent
+  -70 dBm signal, -92 dBm noise  ->  22 dB SNR   data only
+  -70 dBm signal, -80 dBm noise  ->  10 dB SNR   barely functional</code></pre>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th class="num-col">SNR</th><th>Supports</th></tr></thead>
+          <tbody>
+            <tr><td class="num-col">40 dB+</td><td>Maximum rates, highest MCS</td></tr>
+            <tr><td class="num-col">25 dB</td><td><strong>Voice minimum</strong></td></tr>
+            <tr><td class="num-col">20 dB</td><td>Data minimum for a reasonable experience</td></tr>
+            <tr><td class="num-col">15 dB</td><td>Low rates only, high retry count</td></tr>
+            <tr><td class="num-col">below 10 dB</td><td>Effectively unusable</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="gotcha"><b>Good RSSI with bad performance means the noise floor</b>The third example above is the one that confuses people. The client reports a perfectly acceptable &minus;70 dBm, so coverage looks fine on any heat map, but with a noise floor of &minus;80 the usable gap is only 10 dB. Always read RSSI and noise together &mdash; neither number means anything alone.</div>
+    </div>
+
+    <div class="term">
+      <h3>Channel utilisation</h3>
+      <p>The percentage of airtime already in use. Because Wi-Fi is a shared half-duplex medium with contention, a busy channel degrades everyone regardless of their signal quality.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th class="num-col">Utilisation</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td class="num-col">under 30%</td><td>Healthy</td></tr>
+            <tr><td class="num-col">30&ndash;50%</td><td>Busy but workable</td></tr>
+            <tr><td class="num-col">50&ndash;70%</td><td>Contention noticeable. Voice suffers</td></tr>
+            <tr><td class="num-col">over 70%</td><td>Saturated. Add capacity or reduce cell size</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>High utilisation with few clients usually means legacy slow clients consuming airtime, or co-channel interference from your own APs. Both are design problems rather than capacity problems.</p>
+    </div>
+
+    <div class="term">
+      <h3>Transmit power and EIRP</h3>
+<pre><code>EIRP = transmit power + antenna gain - cable loss
+
+  17 dBm radio + 6 dBi antenna - 1 dB cable  =  22 dBm EIRP</code></pre>
+      <p>Regulators cap EIRP, not radio power, so a high-gain antenna requires a corresponding reduction in transmit power. Controllers enforce this per regulatory domain automatically.</p>
+      <div class="tip"><b>Turning power up is usually the wrong fix</b>It extends the cell, which increases co-channel interference with your own APs and makes sticky clients worse. It also creates an asymmetry: the AP shouts further than the client can answer, so the client associates at a distance from which it cannot be heard. Match AP power roughly to client power &mdash; most laptops transmit at 15&ndash;17 dBm, phones often less.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 13 ============ -->
+<section class="block" id="channels">
+  <div class="sechead">
+    <h2><span class="num">13</span>Channels and interference</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="channels"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The bands</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Band</th><th>Usable channels</th><th>Character</th></tr></thead>
+          <tbody>
+            <tr><td><strong>2.4 GHz</strong></td><td>Only <strong>1, 6 and 11</strong> are non-overlapping at 20 MHz</td><td>Long range, poor capacity, heavily polluted. Treat as a compatibility band</td></tr>
+            <tr><td><strong>5 GHz</strong></td><td>UNII-1 (36&ndash;48), UNII-2A (52&ndash;64, DFS), UNII-2C (100&ndash;144, DFS), UNII-3 (149&ndash;165)</td><td>The workhorse. Up to 25 non-overlapping 20 MHz channels if DFS is enabled</td></tr>
+            <tr><td><strong>6 GHz</strong></td><td>UNII-5 through UNII-8, up to 59 channels at 20 MHz</td><td>Wi-Fi 6E and 7 only. Clean, no legacy clients, short range</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="gotcha"><b>Never use 40 MHz channels in 2.4 GHz</b>Bonding two channels in a band that only has three non-overlapping ones guarantees overlap with your own APs and with every neighbour. Some consumer gear still defaults to it. Set 2.4 GHz to 20 MHz everywhere, always.</div>
+    </div>
+
+    <div class="term">
+      <h3>Channel width &mdash; the trade-off</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th class="num-col">Width</th><th>Peak rate</th><th>Non-overlapping channels in 5 GHz</th><th>Use when</th></tr></thead>
+          <tbody>
+            <tr><td class="num-col">20 MHz</td><td>Baseline</td><td>Up to 25</td><td>High-density. The safe default</td></tr>
+            <tr><td class="num-col">40 MHz</td><td>~2&times;</td><td>12</td><td>Medium density, good channel reuse available</td></tr>
+            <tr><td class="num-col">80 MHz</td><td>~4&times;</td><td>6</td><td>Low density, few APs, throughput matters</td></tr>
+            <tr><td class="num-col">160 MHz</td><td>~8&times;</td><td>2</td><td>Almost never in enterprise. Fine in 6 GHz</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Wider channels raise the peak rate for one client but reduce how many channels you can reuse, which increases co-channel interference and lowers aggregate capacity. In a dense deployment, <strong>20 MHz usually delivers more total throughput than 80 MHz</strong> &mdash; a result that surprises people every time.</p>
+<pre><code>ap dot11 5ghz rrm channel dca chan-width 20
+ap dot11 24ghz rrm channel dca chan-width 20
+show ap dot11 5ghz summary | include Channel</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Co-channel versus adjacent-channel interference</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>&nbsp;</th><th>CCI</th><th>ACI</th></tr></thead>
+          <tbody>
+            <tr><td>Cause</td><td>Two APs on the <strong>same</strong> channel within earshot</td><td>Two APs on <strong>overlapping</strong> channels</td></tr>
+            <tr><td>Radio behaviour</td><td>Demodulates the other signal, defers politely</td><td>Cannot demodulate; treats it as raised noise</td></tr>
+            <tr><td>Effect</td><td>Shared airtime. Throughput divided</td><td>Corruption, retries, raised noise floor</td></tr>
+            <tr><td>Severity</td><td>Wasteful but orderly</td><td><strong>Worse.</strong> Breaks the contention mechanism</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>CCI is the unavoidable cost of reuse; you manage it by reducing cell size. ACI is a configuration error &mdash; in 2.4 GHz it means someone used a channel other than 1, 6 or 11.</p>
+    </div>
+
+    <div class="term">
+      <h3>DFS</h3>
+      <p>UNII-2A and UNII-2C are shared with radar. An AP must listen before using one (<strong>channel availability check</strong>, 60 seconds, or 10 minutes on the weather-radar channels 120&ndash;128), and must vacate within 10 seconds if it detects a radar pattern.</p>
+      <div class="gotcha"><b>A radar event drops every client on that AP instantly</b>The AP changes channel immediately, and clients have to find it again. Near airports, ports and weather radar this can happen several times a day, and the symptom is "everyone disconnected for twenty seconds" with nothing in the client logs. Check for radar detections before investigating anything else intermittent.</div>
+<pre><code>show ap dot11 5ghz summary | include DFS|Radar
+show logging | include RADAR|DFS
+show ap name AP-CAMPUS-01 config dot11 5ghz | include DFS
+
+<span class="cmt">! exclude a problem channel from DCA</span>
+ap dot11 5ghz rrm channel remove 120
+ap dot11 5ghz rrm channel remove 124</code></pre>
+      <p>Excluding DFS channels entirely is tempting but costs you more than half the 5 GHz spectrum. Exclude only the specific channels that actually see radar at that site.</p>
+    </div>
+
+    <div class="term">
+      <h3>Non-Wi-Fi interference</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Source</th><th>Band</th><th>Signature</th></tr></thead>
+          <tbody>
+            <tr><td>Microwave oven</td><td>2.4 GHz</td><td>Wide, intermittent, usually centred near channel 9. Bursts in step with the duty cycle</td></tr>
+            <tr><td>Bluetooth</td><td>2.4 GHz</td><td>Frequency hopping across the whole band</td></tr>
+            <tr><td>Video sender, wireless camera</td><td>2.4 / 5 GHz</td><td>Continuous carrier, fixed frequency</td></tr>
+            <tr><td>Cordless phone (DECT 6.0)</td><td>Near 1.9 GHz, some older in 2.4</td><td>Narrow and persistent</td></tr>
+            <tr><td>Radar</td><td>5 GHz DFS</td><td>Short pulses. Triggers a channel change</td></tr>
+            <tr><td>Faulty electrical equipment</td><td>Any</td><td>Broadband noise, often raising the floor everywhere</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code><span class="cmt">! CleanAir, where the AP supports it</span>
+show ap dot11 5ghz cleanair air-quality summary
+show ap dot11 24ghz cleanair device type all
+show ap name AP-CAMPUS-01 dot11 24ghz cleanair device type all</code></pre>
+      <p>CleanAir classifies non-Wi-Fi sources by signature and reports an Air Quality index. Where it is unavailable, a spectrum analyser or an AP in SE-Connect mode does the same job manually.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 14 ============ -->
+<section class="block" id="rrm">
+  <div class="sechead">
+    <h2><span class="num">14</span>RRM</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="rrm"> Reviewed</label>
+  </div>
+  <p class="lede">Radio Resource Management picks channels and power automatically. It works well by default and badly when people tune it without understanding the inputs.</p>
+
+  <div class="terms">
+    <div class="term">
+      <h3>RF groups and the leader</h3>
+      <p>APs that hear each other belong to one RF group; their controllers elect an <strong>RF group leader</strong> which runs the calculation for all of them. Without a common leader, each controller optimises in isolation and the results conflict.</p>
+<pre><code>show ap dot11 5ghz group
+show ap dot11 24ghz group
+
+<span class="cmt">! RF group name must match across controllers</span>
+wireless rf-network CAMPUS-RF</code></pre>
+      <div class="gotcha"><b>Split RF groups produce channel thrash</b>Two controllers each believing they lead will reassign channels against each other indefinitely. Symptom: APs changing channel every DCA interval, and clients dropping each time. Confirm one leader with <code>show ap dot11 5ghz group</code> on every controller &mdash; they must all name the same one.</div>
+    </div>
+
+    <div class="term">
+      <h3>The four algorithms</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Algorithm</th><th>Decides</th><th>Default interval</th></tr></thead>
+          <tbody>
+            <tr><td><strong>DCA</strong> &mdash; Dynamic Channel Assignment</td><td>Which channel each radio uses</td><td>10 minutes, with change thresholds</td></tr>
+            <tr><td><strong>TPC</strong> &mdash; Transmit Power Control</td><td>Power level, aiming for a target neighbour RSSI</td><td>10 minutes</td></tr>
+            <tr><td><strong>CHDM</strong> &mdash; Coverage Hole Detection</td><td>Raises power where clients report poor RSSI</td><td>180 seconds</td></tr>
+            <tr><td><strong>FRA</strong> &mdash; Flexible Radio Assignment</td><td>Whether a dual-band radio serves 2.4, 5, or monitors</td><td>Hourly</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code>show ap dot11 5ghz rrm dca
+show ap dot11 5ghz rrm txpower
+show ap auto-rf dot11 5ghz
+show ap dot11 5ghz rrm coverage
+
+<span class="cmt">! TPC target — how strongly APs should hear their third neighbour</span>
+ap dot11 5ghz rrm tpc-threshold -70
+
+<span class="cmt">! DCA sensitivity: low = change rarely, high = change readily</span>
+ap dot11 5ghz rrm channel dca sensitivity low</code></pre>
+      <div class="tip"><b>The TPC threshold is the main coverage lever</b>It sets how loudly each AP should hear its third-loudest neighbour. A value nearer &minus;60 shrinks cells and suits high density; nearer &minus;80 grows them and suits sparse coverage. Changing this is almost always better than setting fixed power levels per AP, which stops RRM adapting at all.</div>
+    </div>
+
+    <div class="term">
+      <h3>RF profiles</h3>
+      <p>Per-band settings applied through the RF tag, so different site types can have different radio behaviour on one controller.</p>
+<pre><code>ap dot11 5ghz rf-profile HIGH-DENSITY
+ channel width 20
+ tx-power-max 14
+ tx-power-min 5
+ rate RATE_6M disable
+ rate RATE_9M disable
+ rate RATE_12M mandatory
+ coverage data rssi threshold -75
+ coverage voice rssi threshold -70
+ high-density clients wlan 40
+!
+wireless tag rf OFFICE-RF-TAG
+ 5ghz-rf-policy HIGH-DENSITY
+
+show ap rf-profile summary
+show ap rf-profile name HIGH-DENSITY detail</code></pre>
+      <p>Disabling the lowest data rates in a high-density profile is the single most effective change: it shrinks effective cell size, forces earlier roaming, and stops distant clients consuming disproportionate airtime at 6 Mbps.</p>
+    </div>
+
+    <div class="term">
+      <h3>When to override RRM</h3>
+      <ul>
+        <li><strong>Static channels</strong> for a known-problem area, or where a DFS channel must be avoided.</li>
+        <li><strong>Static power</strong> only when the physical environment makes the automatic result wrong &mdash; an AP in a lift lobby, say.</li>
+        <li><strong>Exclude channels</strong> from DCA rather than fixing channels manually, so RRM still optimises what remains.</li>
+      </ul>
+      <div class="gotcha"><b>A manually fixed radio is invisible to RRM's optimisation</b>Its neighbours will still be adjusted around it, but it will never adapt to a change they make. A handful of fixed radios in an otherwise automatic deployment is a common cause of persistent, unexplained interference. Document every override and review them.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 15 ============ -->
+<section class="block" id="security">
+  <div class="sechead">
+    <h2><span class="num">15</span>Security</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="security"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>Security suites</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Suite</th><th>Auth</th><th>Cipher</th><th>PMF</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td>WEP</td><td>Shared key</td><td>RC4</td><td>No</td><td><strong>Broken.</strong> Never deploy</td></tr>
+            <tr><td>WPA</td><td>PSK or 802.1X</td><td>TKIP</td><td>No</td><td>Deprecated</td></tr>
+            <tr><td><strong>WPA2-Personal</strong></td><td>PSK</td><td>AES-CCMP</td><td>Optional</td><td>Still common. Vulnerable to offline dictionary attack on the passphrase</td></tr>
+            <tr><td><strong>WPA2-Enterprise</strong></td><td>802.1X / EAP</td><td>AES-CCMP</td><td>Optional</td><td>The enterprise baseline</td></tr>
+            <tr><td><strong>WPA3-Personal</strong></td><td>SAE</td><td>AES-CCMP</td><td><strong>Required</strong></td><td>Resists offline attack. Current best for PSK</td></tr>
+            <tr><td><strong>WPA3-Enterprise</strong></td><td>802.1X-SHA256</td><td>AES-CCMP / GCMP-256</td><td><strong>Required</strong></td><td>Current best. 192-bit mode for high security</td></tr>
+            <tr><td>OWE</td><td>None</td><td>AES-CCMP</td><td>Required</td><td>Encryption without a password. Replaces open guest networks</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tip"><b>Transition mode is how you migrate</b>WPA3 transition mode advertises both WPA2 and WPA3 on one SSID, so capable clients use WPA3 and the rest fall back. It avoids a second SSID, which costs airtime in beacons. Watch for older clients that mishandle the mixed advertisement &mdash; test a sample before a site-wide change.</div>
+    </div>
+
+    <div class="term">
+      <h3>Rogue classification</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>State</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Unclassified</strong></td><td>Detected, no rule has matched yet</td></tr>
+            <tr><td><strong>Friendly</strong></td><td>Known and accepted &mdash; a neighbour's network, or yours on another controller</td></tr>
+            <tr><td><strong>Malicious</strong></td><td>Matched a rule, or found on your wired network</td></tr>
+            <tr><td><strong>Custom</strong></td><td>Matched a user-defined rule with its own severity</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Rogue on wire</strong> is the serious case: an unknown SSID whose clients' MAC addresses also appear in your wired MAC tables, meaning someone has plugged an access point into your network.</p>
+<pre><code>show wireless wps rogue ap summary
+show wireless wps rogue ap detailed 00aa.bbcc.ddee
+show wireless wps rogue client summary
+
+<span class="cmt">! containment — use with care, see below</span>
+wireless wps rogue ap rldp alarm-only
+wireless wps rogue auto-contain level 1</code></pre>
+      <div class="gotcha"><b>Rogue containment can be unlawful</b>Containment works by sending spoofed deauthentication frames, which disrupts a network you may not own. In several jurisdictions, including under FCC enforcement in the US, doing this to a neighbour's or a guest's personal hotspot has drawn substantial fines. Use alarm-only unless you have a specific, documented justification and have verified the device is on your own wired network.</div>
+    </div>
+
+    <div class="term">
+      <h3>Client exclusion</h3>
+      <p>The controller can temporarily block a client that misbehaves. Useful, and a frequent cause of "my laptop randomly stops connecting" tickets.</p>
+<pre><code>wireless profile policy CORP-POLICY
+ exclusionlist timeout 180
+
+<span class="cmt">! what got excluded, and why</span>
+show wireless exclusionlist
+show wireless exclusionlist client mac-address aaaa.bbbb.cccc detail
+show wireless stats client delete reasons | include Exclusion</code></pre>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Exclusion reason</th><th>Usually means</th></tr></thead>
+          <tbody>
+            <tr><td>Excessive 802.11 association failures</td><td>Client bug, or weak signal</td></tr>
+            <tr><td>Excessive 802.11 authentication failures</td><td>Wrong PSK</td></tr>
+            <tr><td>Excessive 802.1X authentication failures</td><td>Bad credentials or expired certificate</td></tr>
+            <tr><td>IP theft or IP reuse</td><td>Static IP conflicting with a DHCP lease</td></tr>
+            <tr><td>Excessive web auth failures</td><td>Portal credential problems</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The exclusion is doing its job &mdash; the underlying credential or configuration problem is the thing to fix. Clear it to test, but if it returns, the client is still failing.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 16 ============ -->
+<section class="block" id="troubleshooting">
+  <div class="sechead">
+    <h2><span class="num">16</span>Troubleshooting</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="troubleshooting"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>The four questions</h3>
+      <ol>
+        <li><strong>Is the AP joined and healthy?</strong> &rarr; <code>show ap summary</code>, join stats, PoE, uptime.</li>
+        <li><strong>Can the client associate?</strong> &rarr; RF, rates, capabilities, PMF.</li>
+        <li><strong>Can it authenticate and get an address?</strong> &rarr; client state, RADIUS, VLAN, DHCP.</li>
+        <li><strong>Is the experience good once connected?</strong> &rarr; RSSI, SNR, utilisation, retries, roaming.</li>
+      </ol>
+      <p>These need different tools and different evidence. Establishing which one you are in saves most of the time.</p>
+    </div>
+
+    <div class="term">
+      <h3>RadioActive Trace &mdash; the 9800's best tool</h3>
+      <p>Per-client conditional debugging that captures the entire join across every internal process, with no impact on other clients. This replaces the old habit of enabling broad debugs.</p>
+<pre><code><span class="cmt">! start tracing one client MAC</span>
+debug wireless mac aaaa.bbbb.cccc monitor-time 600
+
+<span class="cmt">! reproduce the problem, then stop</span>
+no debug wireless mac aaaa.bbbb.cccc
+
+<span class="cmt">! the trace is written to bootflash</span>
+dir bootflash: | include ra_trace
+more bootflash:ra_trace_MAC_aaaabbbbcccc_*.txt
+
+<span class="cmt">! always-on internal trace, no setup needed</span>
+show logging profile wireless filter mac aaaa.bbbb.cccc to-file bootflash:client.txt
+show logging profile wireless last 30 minutes filter mac aaaa.bbbb.cccc</code></pre>
+      <div class="tip"><b>show logging profile wireless works retrospectively</b>Unlike a debug, it reads traces the controller was already keeping. If a client failed ten minutes ago and you cannot reproduce it, this still gets you the detail. It is the first thing to reach for on an intermittent problem.</div>
+    </div>
+
+    <div class="term">
+      <h3>Core commands &mdash; 9800</h3>
+<pre><code><span class="cmt">! APs</span>
+show ap summary
+show ap status
+show ap uptime
+show ap name AP-CAMPUS-01 config general
+show ap tag summary
+show wireless stats ap join summary
+
+<span class="cmt">! Clients</span>
+show wireless client summary
+show wireless client mac-address aaaa.bbbb.cccc detail
+show wireless client mac-address aaaa.bbbb.cccc policy
+show wireless client mac-address aaaa.bbbb.cccc mobility history
+show wireless client stats
+show wireless stats client delete reasons
+
+<span class="cmt">! RF</span>
+show ap dot11 5ghz summary
+show ap auto-rf dot11 5ghz
+show ap name AP-CAMPUS-01 auto-rf dot11 5ghz
+show ap dot11 5ghz cleanair air-quality summary
+
+<span class="cmt">! Services</span>
+show wireless mobility summary
+show aaa servers
+show wireless wps rogue ap summary</code></pre>
+    </div>
+
+    <div class="term">
+      <h3>Core commands &mdash; AireOS</h3>
+<pre><code>show ap summary
+show ap join stats summary all
+show client summary
+show client detail aa:bb:cc:dd:ee:ff
+show interface summary
+show wlan summary
+show advanced 802.11a summary
+show advanced 802.11a txpower
+show msglog
+show radius summary
+show mobility summary
+
+<span class="cmt">! the classic per-client debug</span>
+debug client aa:bb:cc:dd:ee:ff
+debug disable-all</code></pre>
+      <div class="gotcha"><b>debug client on AireOS is one client only, and it must be cleared</b>Leaving debugs running on a production AireOS controller degrades it. Always finish with <code>debug disable-all</code>. The 9800's RA trace has no such risk, which is one of the better reasons to prefer it.</div>
+    </div>
+
+    <div class="term">
+      <h3>From the AP itself</h3>
+<pre><code>AP# show capwap client rcb              <span class="cmt">! controller, state, mode</span>
+AP# show capwap client ha
+AP# show dot11 clients
+AP# show interfaces Dot11Radio1
+AP# show controllers Dot11Radio1 | include Noise|Util
+AP# show version | include uptime|reset
+AP# show logging
+AP# ping 10.50.0.10 size 1500 df-bit
+
+<span class="cmt">! live CAPWAP events during a join attempt</span>
+AP# debug capwap client event
+AP# debug capwap client error
+AP# undebug all</code></pre>
+      <p>Console access to the AP is worth having. When an AP will not join, the controller has no record of it at all, so the AP's own log is the only evidence available.</p>
+    </div>
+
+    <div class="term">
+      <h3>Packet capture</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Capture point</th><th>Shows</th><th>How</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Over the air</strong></td><td>Everything 802.11: probes, auth, assoc, 4-way, retries, rates</td><td>AP in sniffer mode, or a laptop in monitor mode</td></tr>
+            <tr><td><strong>On the controller</strong></td><td>CAPWAP, RADIUS, DHCP as the WLC sees them</td><td>Embedded Packet Capture</td></tr>
+            <tr><td><strong>On the switch</strong></td><td>Wired side of the AP or WLC</td><td>SPAN</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code><span class="cmt">! 9800 Embedded Packet Capture</span>
+monitor capture MYCAP interface TenGigabitEthernet0/0/0 both
+monitor capture MYCAP match ipv4 host 10.50.0.25 any
+monitor capture MYCAP buffer size 10
+monitor capture MYCAP start
+monitor capture MYCAP stop
+show monitor capture MYCAP buffer brief
+monitor capture MYCAP export bootflash:cap.pcap
+
+<span class="cmt">! AP in sniffer mode, streaming to Wireshark</span>
+ap name AP-SPARE-01 mode sniffer
+ap name AP-SPARE-01 sniff 36 10.50.1.99</code></pre>
+      <div class="tip"><b>The over-the-air capture is the one that settles arguments</b>Controller logs tell you what the controller saw. Only an OTA capture shows what actually happened in the air &mdash; the retries, the frames the AP never received, the deauth and who sent it. For any client problem the controller cannot explain, this is the answer, and it is worth the effort of setting up.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 17 ============ -->
+<section class="block" id="scenarios">
+  <div class="sechead">
+    <h2><span class="num">17</span>Real-world scenarios</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="scenarios"> Reviewed</label>
+  </div>
+  <p class="lede">Ten incidents on the lab topology, from reported symptom to fix. Work out the cause before expanding the diagnosis.</p>
+
+  <details class="scn"><summary data-n="01">No AP will join after a power outage</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>Site lost power overnight. Everything came back, switches are fine, APs have IP addresses and are reachable by ping. Not one AP has joined the controller.</p>
+
+    <span class="step">What you see</span>
+<pre><code>WLC# show ap summary
+Number of APs: <span class="bad">0</span>
+
+WLC# show wireless stats ap join summary
+AP Name   Ethernet MAC    Status      Last Failure Reason
+AP-C-01   f4db.e6aa.0001  Not joined  <span class="bad">DTLS handshake failure</span>
+AP-C-02   f4db.e6aa.0002  Not joined  <span class="bad">DTLS handshake failure</span></code></pre>
+    <p>Every AP, same failure, all at once. That pattern points at something global on the controller rather than anything per-AP.</p>
+
+    <span class="step">Diagnosis</span>
+<pre><code>AP# debug capwap client error
+CAPWAP: DTLS handshake failed
+CAPWAP: <span class="bad">Certificate verification failed: certificate is not yet valid</span>
+
+WLC# show clock
+<span class="bad">*00:14:22.391 UTC Mon Jan 1 2001</span>
+
+WLC# show ntp associations
+<span class="bad">%NTP is not enabled.</span></code></pre>
+    <p>The controller lost its clock during the outage and came back at the epoch default. AP manufacturer-installed certificates carry a validity window; against a 2001 clock every one of them is "not yet valid", so DTLS fails for all APs identically.</p>
+
+    <span class="step">Root cause</span>
+    <p>No NTP configured, and the hardware clock did not survive the outage. The certificates and the APs were never the problem.</p>
+
+    <span class="step">Fix</span>
+<pre><code>WLC(config)# clock timezone IST 5 30
+WLC(config)# ntp server 10.50.1.5
+WLC(config)# ntp server 10.50.1.6
+WLC# clock set 09:20:00 20 Nov 2026        <span class="cmt">! immediate, while NTP syncs</span>
+
+WLC# show clock
+WLC# show ntp status</code></pre>
+    <p>APs begin joining within a couple of minutes as their retry timers fire.</p>
+
+    <div class="verdict"><b>Takeaway</b>Every AP failing identically and simultaneously is a controller-wide cause, not an AP cause. Certificate errors after any power event mean check the clock first &mdash; the message says certificate, the problem is time. Configure NTP on controllers as a build standard, with at least two sources.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="02">Branch APs join, then reboot, forever</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>New branch over a DMVPN tunnel. APs get addresses, discover the controller, start to join, then reboot. The cycle repeats every few minutes. Campus APs on the same controller are fine.</p>
+
+    <span class="step">What you see</span>
+<pre><code>WLC# show ap summary | include AP-BR
+AP-BR-01   ...  <span class="bad">Downloading</span>
+<span class="cmt">! two minutes later, gone from the list entirely</span>
+
+AP# show logging
+%CAPWAP-5-DTLSREQSEND: DTLS connection request sent peer_ip: 10.50.0.10
+%CAPWAP-5-SENDJOIN: sending Join Request to 10.50.0.10
+%CAPWAP-5-IMAGE_DOWNLOAD_START
+<span class="bad">%CAPWAP-3-IMAGE_DOWNLOAD_ERROR: transfer timed out</span>
+%CAPWAP-3-ERRORLOG: Go join a capwap controller</code></pre>
+    <p>Control traffic works &mdash; discovery, DTLS and join all succeed. It fails at the image download, which is the first thing that sends large packets.</p>
+
+    <span class="step">Diagnosis</span>
+<pre><code>AP# ping 10.50.0.10
+!!!!! Success rate is 100 percent
+
+AP# ping 10.50.0.10 size 1500 df-bit
+<span class="bad">.....</span>
+Success rate is 0 percent
+
+AP# ping 10.50.0.10 size 1350 df-bit
+!!!!! Success rate is 100 percent</code></pre>
+    <p>Small packets pass, large ones do not. The DMVPN tunnel plus IPsec overhead leaves well under 1500 bytes of usable payload, and the path is dropping the fragments rather than signalling back.</p>
+
+    <span class="step">Root cause</span>
+    <p>Path MTU reduced by tunnel overhead, with ICMP fragmentation-needed filtered somewhere upstream so path MTU discovery cannot work. The CAPWAP control channel is small enough to survive; the image transfer is not.</p>
+
+    <span class="step">Fix</span>
+<pre><code><span class="cmt">! Reduce the AP's CAPWAP MTU for this site</span>
+WLC(config)# ap profile BRANCH-PROFILE
+WLC(config-ap-profile)# capwap-mtu 1300
+
+<span class="cmt">! And fix the underlying path — on the branch router</span>
+interface Tunnel0
+ ip mtu 1400
+ ip tcp adjust-mss 1360</code></pre>
+    <p>Predownloading the image during a window also avoids the loop while the MTU fix is deployed.</p>
+
+    <div class="verdict"><b>Takeaway</b>An AP that joins and then fails during image download is an MTU problem almost every time, because the download is the first large transfer. Test with <code>ping size 1500 df-bit</code> from the AP itself &mdash; not from a router nearby, since the AP's path may differ. Small-packet reachability proves nothing.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="03">Branch clients authenticate but get no address</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>A new SSID was added at the branch. Clients connect &mdash; the laptop shows connected &mdash; but get a 169.254 address and no network access. The same SSID works on campus.</p>
+
+    <span class="step">What you see</span>
+<pre><code>WLC# show wireless client mac-address aaaa.bbbb.cccc detail | include State|VLAN|AP Name
+          AP Name : AP-BR-01
+    Wireless LAN : GUEST-WLAN
+     Client State : <span class="bad">IP Learn</span>
+             VLAN : <span class="bad">60</span></code></pre>
+    <p>Authentication completed &mdash; the client reached IP Learn. VLAN 60 is the AP management VLAN, not the intended guest VLAN 62.</p>
+
+    <span class="step">Diagnosis</span>
+<pre><code>WLC# show wireless profile flex detailed BRANCH-FLEX
+ Native Vlan Id : 60
+ VLAN mappings:
+   DATA   61
+   VOICE  62
+<span class="cmt">! no mapping for the new guest WLAN</span>
+
+WLC# show ap name AP-BR-01 config general | include VLAN
+ Native VLAN ID : 60
+ FlexConnect VLAN mappings : DATA(61) VOICE(62)</code></pre>
+    <p>In local switching the AP must be told which VLAN to bridge each WLAN into. The new WLAN had no mapping, so the AP defaulted it to the native VLAN &mdash; which carries no DHCP scope for guests.</p>
+
+    <span class="step">Root cause</span>
+    <p>The WLAN was added to the policy tag but no corresponding VLAN mapping was added to the flex profile. On campus it worked because local mode takes its VLAN from the policy profile on the controller instead.</p>
+
+    <span class="step">Fix</span>
+<pre><code>WLC(config)# wireless profile flex BRANCH-FLEX
+WLC(config-wireless-flex-profile)# vlan-name GUEST
+WLC(config-wireless-flex-profile-vlan)# vlan-id 63
+
+<span class="cmt">! and the switch trunk must carry it</span>
+SW(config)# interface GigabitEthernet1/0/10
+SW(config-if)# switchport trunk allowed vlan add 63
+
+<span class="cmt">! verify the AP actually received the mapping</span>
+WLC# show ap name AP-BR-01 config general | include VLAN</code></pre>
+
+    <div class="verdict"><b>Takeaway</b>Adding a WLAN to a FlexConnect site needs three changes, not one: the policy tag, the flex profile VLAN mapping, and the switch trunk. Miss the mapping and clients land silently on the native VLAN &mdash; which on a guest SSID means guests on your AP management network. Always verify on the AP, not in the profile.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="04">All 802.1X clients fail at one site only</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>Corporate SSID stopped working at one branch this morning. PSK guest SSID at the same site is fine. Other branches are unaffected.</p>
+
+    <span class="step">What you see</span>
+<pre><code>WLC# show wireless client summary | include AP-BR-01
+<span class="cmt">! no clients at all</span>
+
+WLC# show wireless stats client delete reasons | include 8021X
+ 8021X authentication timeout                      <span class="bad">847</span>
+
+WLC# show logging profile wireless last 10 minutes filter mac aaaa.bbbb.cccc
+... CLIENT_STAGE_TIMEOUT: Client state L2AUTH_IN_PROGRESS
+... <span class="bad">RADIUS server 10.50.1.20 is not responding</span></code></pre>
+
+    <span class="step">Diagnosis</span>
+<pre><code>WLC# show aaa servers | begin 10.50.1.20
+RADIUS: id 1, priority 1, host 10.50.1.20, auth-port 1812, acct-port 1813
+     State: current <span class="bad">DEAD</span>, duration 2134s
+     Authen: request 847, timeouts <span class="bad">847</span>, retransmission 2541
+
+WLC# ping 10.50.1.20
+!!!!! Success rate is 100 percent</code></pre>
+    <p>RADIUS is reachable at IP level but not answering. Pings prove routing, not RADIUS. Checking ISE from the other side:</p>
+<pre><code><span class="cmt">! On ISE — Live Logs filtered by NAD</span>
+<span class="cmt">! No entries at all from this WLC for the branch APs</span>
+<span class="cmt">! But there ARE entries: "5405 RADIUS Request dropped"</span>
+<span class="cmt">!   Failure reason: 11038 RADIUS Accounting-Request header</span>
+<span class="cmt">!   contains invalid Authenticator field</span></code></pre>
+    <p>Invalid authenticator means the shared secret does not match. Which raises the question of why only one site &mdash; until you check how authentication is sourced at a FlexConnect branch using local authentication with a branch RADIUS entry of its own.</p>
+<pre><code>WLC# show wireless profile flex detailed BRANCH-FLEX | include radius
+ Radius server group : BRANCH-RADIUS
+
+WLC# show run | section aaa group server radius BRANCH-RADIUS
+aaa group server radius BRANCH-RADIUS
+ server name ISE-BRANCH
+<span class="cmt">! and ISE-BRANCH has its own key, rotated last night</span></code></pre>
+
+    <span class="step">Root cause</span>
+    <p>A scheduled RADIUS shared-secret rotation updated the main server definition but missed the separate branch server entry used by the FlexConnect profile.</p>
+
+    <span class="step">Fix</span>
+<pre><code>WLC(config)# radius server ISE-BRANCH
+WLC(config-radius-server)# key <span class="cmt">&lt;new-secret&gt;</span>
+WLC# test aaa group BRANCH-RADIUS username password new-code</code></pre>
+
+    <div class="verdict"><b>Takeaway</b>Ping proves routing, never RADIUS. Use <code>test aaa</code> and check both sides &mdash; the WLC's view and ISE's Live Logs. A fault at one site only, with others fine, points at site-specific configuration: a FlexConnect profile, a local RADIUS group, or a site tag. And any credential rotation needs an inventory of every place that credential appears.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="05">Wi-Fi is slow, and the signal is excellent</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>Open-plan office. Users report slow Wi-Fi all afternoon. Signal bars are full. The heat map shows &minus;55 dBm or better everywhere.</p>
+
+    <span class="step">What you see</span>
+<pre><code>WLC# show ap name AP-CAMPUS-07 auto-rf dot11 5ghz | include Util|Noise|Clients
+ Channel Utilization................... <span class="bad">82%</span>
+ Noise Floor.......................... -91 dBm
+ Number of Clients.................... 31</code></pre>
+    <p>Signal and noise are both fine. The channel is 82% occupied &mdash; the medium is busy, so everyone waits regardless of how strong their signal is.</p>
+
+    <span class="step">Diagnosis</span>
+<pre><code>WLC# show ap dot11 5ghz summary
+AP Name        Channel  Width  TxPwr   Clients
+AP-CAMPUS-05   <span class="bad">36</span>       <span class="bad">80</span>     1 (23dBm)   28
+AP-CAMPUS-06   <span class="bad">36</span>       <span class="bad">80</span>     1 (23dBm)   34
+AP-CAMPUS-07   <span class="bad">36</span>       <span class="bad">80</span>     1 (23dBm)   31
+AP-CAMPUS-08   149      80     1 (23dBm)   12</code></pre>
+    <p>Three adjacent APs on the same channel at maximum power. With 80 MHz channels there are only six non-overlapping options in 5 GHz, and DCA could not find a clean assignment. The APs are shouting over each other &mdash; textbook co-channel interference.</p>
+<pre><code>WLC# show ap auto-rf dot11 5ghz | include Co-Channel
+ Co-Channel Interference.............. <span class="bad">-61 dBm</span>
+<span class="cmt">! neighbours heard at -61 dBm on the same channel is very loud</span></code></pre>
+
+    <span class="step">Root cause</span>
+    <p>80 MHz channel width in a dense deployment, combined with maximum transmit power. Both choices were made to "improve performance" and did the opposite: wide channels removed the reuse options, and high power made every AP audible to every other.</p>
+
+    <span class="step">Fix</span>
+<pre><code>WLC(config)# ap dot11 5ghz rrm channel dca chan-width 20
+WLC(config)# ap dot11 5ghz rrm tpc-threshold -65
+
+<span class="cmt">! and disable the low rates to shrink effective cell size</span>
+WLC(config)# ap dot11 5ghz rate RATE_6M disable
+WLC(config)# ap dot11 5ghz rate RATE_9M disable
+WLC(config)# ap dot11 5ghz rate RATE_12M mandatory
+
+<span class="cmt">! let DCA re-run</span>
+WLC# ap dot11 5ghz rrm channel dca restart</code></pre>
+<pre><code>WLC# show ap name AP-CAMPUS-07 auto-rf dot11 5ghz | include Util
+ Channel Utilization................... <span class="hl">34%</span></code></pre>
+
+    <div class="verdict"><b>Takeaway</b>Full signal bars say nothing about capacity. In high density, 20 MHz channels deliver more aggregate throughput than 80 MHz, because channel reuse matters more than per-client peak rate. Check utilisation and co-channel interference before anyone suggests adding APs &mdash; more APs on the same wide channels makes it worse.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="06">Voice calls drop when people walk between floors</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>Wi-Fi handsets drop or go silent for two to three seconds while users walk. Stationary calls are perfect. Coverage survey shows no gaps.</p>
+
+    <span class="step">What you see</span>
+<pre><code>WLC# show wireless client mac-address aaaa.bbbb.cccc mobility history
+Time            AP Name          Type       RSSI
+09:14:02        AP-F2-04         Associate  -58
+09:16:41        AP-F2-09         <span class="bad">Associate</span>   -71
+09:19:03        AP-F3-02         <span class="bad">Associate</span>   -73
+
+<span class="cmt">! "Associate", not "Roam" — each move is a full reconnection</span></code></pre>
+
+    <span class="step">Diagnosis</span>
+<pre><code>WLC# show wireless client mac-address aaaa.bbbb.cccc detail | include 11r|11k|11v|Key
+       Fast Roam : <span class="bad">Not supported</span>
+          11k/11v : <span class="bad">Disabled</span>
+   Key Management : <span class="bad">WPA2 802.1X (full)</span>
+
+WLC# show run | section wlan VOICE-WLAN
+wlan VOICE-WLAN 2 VOICE
+ security dot1x authentication-list ISE-AUTH
+ security wpa wpa2 ciphers aes
+<span class="bad">! no FT, no 11k, no 11v</span></code></pre>
+    <p>Every roam is a complete 802.1X reauthentication to ISE &mdash; EAP exchange plus RADIUS round trips plus a full 4-way handshake. That takes hundreds of milliseconds and is plainly audible on a call. It is also why the handsets cling on until the signal is poor: with no neighbour report, they only scan when things get bad.</p>
+<pre><code>WLC# show ap dot11 5ghz rate | include RATE_6M|RATE_12M
+ RATE_6M .... <span class="bad">mandatory</span>
+<span class="cmt">! lowest rate still enabled, so a far AP stays "good enough"</span></code></pre>
+
+    <span class="step">Root cause</span>
+    <p>No fast-roaming method enabled on the voice SSID, no 802.11k neighbour reports to guide the client, and low data rates keeping distant APs viable so the handset roams late and at poor RSSI.</p>
+
+    <span class="step">Fix</span>
+<pre><code>WLC(config)# wlan VOICE-WLAN 2 VOICE
+WLC(config-wlan)# shutdown
+WLC(config-wlan)# security ft adaptive
+WLC(config-wlan)# dot11k neighbor-list
+WLC(config-wlan)# dot11v BSS-transition
+WLC(config-wlan)# no shutdown
+
+<span class="cmt">! make distant APs genuinely unattractive</span>
+WLC(config)# ap dot11 5ghz rate RATE_6M disable
+WLC(config)# ap dot11 5ghz rate RATE_9M disable
+WLC(config)# ap dot11 5ghz rate RATE_12M mandatory</code></pre>
+<pre><code>WLC# show wireless client mac-address aaaa.bbbb.cccc mobility history
+09:42:11        AP-F2-09   <span class="hl">FT Roam</span>   -62
+09:44:55        AP-F3-02   <span class="hl">FT Roam</span>   -59</code></pre>
+
+    <div class="verdict"><b>Takeaway</b>A coverage survey measures where signal exists, not how well clients move between cells. For voice you need 802.11r so the roam is cheap, 802.11k so the client knows where to go, and disabled low data rates so it goes before the call degrades. Use <code>mobility history</code> to tell a real roam from a full reassociation &mdash; the word in that column is the diagnosis.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="07">Everyone drops for twenty seconds, several times a day</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>Intermittent mass disconnects, 15&ndash;30 seconds, affecting one wing of the building. No pattern anyone can identify. Nothing in the client logs.</p>
+
+    <span class="step">What you see</span>
+<pre><code>WLC# show logging | include DFS|RADAR
+*Nov 20 11:04:17: %DOT11-4-<span class="bad">RADAR_DETECTED</span>: Radar signal detected
+   on AP AP-W-03 radio 1 channel 120, moving to channel 36
+*Nov 20 13:41:52: %DOT11-4-<span class="bad">RADAR_DETECTED</span>: Radar signal detected
+   on AP AP-W-05 radio 1 channel 124, moving to channel 44</code></pre>
+
+    <span class="step">Diagnosis</span>
+<pre><code>WLC# show ap dot11 5ghz summary | include AP-W-
+AP-W-03    36    20   ...
+AP-W-05    44    20   ...
+AP-W-07    <span class="bad">120</span>   20   ...
+AP-W-09    <span class="bad">128</span>   20   ...</code></pre>
+    <p>Channels 120&ndash;128 are the weather-radar sub-band. On detecting radar the AP must vacate within 10 seconds and cannot return for 30 minutes; clients lose the BSS and must find the AP again on its new channel. The site turns out to be near an airport.</p>
+<pre><code>WLC# show ap auto-rf dot11 5ghz | include DFS
+ DFS Channels in use.................. 100,104,120,124,128,132</code></pre>
+
+    <span class="step">Root cause</span>
+    <p>DCA was free to use the full DFS range including the weather-radar channels, at a site with genuine radar nearby. Every detection evicted a cell's worth of clients.</p>
+
+    <span class="step">Fix</span>
+<pre><code><span class="cmt">! Remove only the channels that actually see radar here</span>
+WLC(config)# ap dot11 5ghz rrm channel remove 120
+WLC(config)# ap dot11 5ghz rrm channel remove 124
+WLC(config)# ap dot11 5ghz rrm channel remove 128
+
+WLC# ap dot11 5ghz rrm channel dca restart
+WLC# show ap dot11 5ghz rrm dca | include Channel List</code></pre>
+    <div class="tip"><b>Do not disable all DFS channels</b>That would remove more than half of 5 GHz and push every AP into UNII-1 and UNII-3, recreating the co-channel problem from scenario 05. Exclude the specific channels with observed detections, keep the rest, and review the logs monthly.</div>
+
+    <div class="verdict"><b>Takeaway</b>Intermittent mass disconnects affecting one area, with nothing on the client side, is a radar event until proven otherwise. The controller logs it clearly &mdash; but only if you think to grep for it. Near airports, ports and weather installations, treat channels 120&ndash;128 as suspect from the design stage.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="08">A few devices stopped connecting after a security change</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>WPA3 was enabled on the corporate SSID over the weekend. Most laptops are fine. Barcode scanners, a few printers and some older tablets no longer connect at all. They show "cannot connect to network" with no detail.</p>
+
+    <span class="step">What you see</span>
+<pre><code>WLC# show wireless client summary | count
+Number of clients: 412        <span class="cmt">! was 460</span>
+
+WLC# show logging profile wireless last 1 hours filter mac 0024.d7xx.xxxx
+... Association request from 0024.d7xx.xxxx
+... <span class="bad">Rejecting association: RSN IE mismatch — PMF required, client does not support</span></code></pre>
+
+    <span class="step">Diagnosis</span>
+<pre><code>WLC# show run | section wlan CORP-WLAN
+wlan CORP-WLAN 1 CORP
+ security wpa wpa3
+ security wpa akm sae
+ <span class="bad">security pmf mandatory</span></code></pre>
+    <p>WPA3 mandates Protected Management Frames. Clients without 802.11w support cannot negotiate the RSN information element and are rejected at association &mdash; before any authentication, which is why nothing useful appears in the client's own logs.</p>
+<pre><code><span class="cmt">! which clients negotiated PMF before the change?</span>
+WLC# show wireless client summary | include PMF</code></pre>
+
+    <span class="step">Root cause</span>
+    <p>A hard cutover to WPA3 on an SSID carrying a mixed device population, including embedded and industrial devices that will never support PMF.</p>
+
+    <span class="step">Fix &mdash; two options</span>
+<pre><code><span class="cmt">! A. Transition mode — WPA2 and WPA3 on one SSID</span>
+WLC(config)# wlan CORP-WLAN 1 CORP
+WLC(config-wlan)# shutdown
+WLC(config-wlan)# security wpa wpa2
+WLC(config-wlan)# security wpa wpa3
+WLC(config-wlan)# security wpa akm dot1x
+WLC(config-wlan)# security wpa akm sae
+WLC(config-wlan)# security pmf optional
+WLC(config-wlan)# no shutdown
+
+<span class="cmt">! B. Separate SSID for legacy devices, on its own VLAN</span>
+<span class="cmt">!    with tighter network-side controls to compensate</span></code></pre>
+    <p>Option B is better security practice where the legacy devices can be segmented. Option A is the fast recovery.</p>
+
+    <div class="verdict"><b>Takeaway</b>Clients rejected at association fail before authentication, so neither the client nor the RADIUS logs explain anything &mdash; only the controller's association reject does. Before any security tightening, inventory what actually connects: <code>show wireless client summary</code> with PMF and capability columns tells you who will survive. Move to optional first, measure, then make it mandatory.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="09">Guest Wi-Fi stopped working everywhere</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>Guests associate to the guest SSID, get the portal, log in successfully, and then have no internet. Corporate SSIDs are unaffected. Started after a DMZ firewall change.</p>
+
+    <span class="step">What you see</span>
+<pre><code>WLC# show wireless client mac-address aaaa.bbbb.cccc detail | include State|Anchor
+     Client State : <span class="bad">IP Learn</span>
+   Mobility State : <span class="bad">Anchor Request Pending</span>
+   Anchor Address : 10.60.0.10</code></pre>
+
+    <span class="step">Diagnosis</span>
+<pre><code>WLC# show wireless mobility summary
+Mobility Group Name  : CORP-MOBILITY
+Mobility Keepalive   : 10 sec
+
+IP Address    Group Name       Status           PMTU
+10.60.0.10    CORP-MOBILITY    <span class="bad">Control and Data Path Down</span>   -
+
+WLC# ping 10.60.0.10
+!!!!! Success rate is 100 percent</code></pre>
+    <p>The anchor is reachable at IP level but the mobility tunnel is down. Guest traffic is supposed to tunnel to the DMZ anchor and exit there; with no tunnel, clients authenticate but their traffic has nowhere to go.</p>
+<pre><code>WLC# show wireless mobility statistics | include Discard|Error
+ Control message discards : <span class="bad">4812</span>
+
+<span class="cmt">! mobility uses CAPWAP on UDP 16666/16667</span>
+<span class="cmt">! the firewall change removed those rules</span></code></pre>
+
+    <span class="step">Root cause</span>
+    <p>A DMZ firewall rule cleanup removed the UDP 16666 and 16667 permits between the foreign and anchor controllers. ICMP was still permitted, so ping gave a false sense of reachability.</p>
+
+    <span class="step">Fix</span>
+<pre><code><span class="cmt">! Restore the mobility ports on the firewall</span>
+<span class="cmt">!   UDP 16666 — mobility control</span>
+<span class="cmt">!   UDP 16667 — mobility data (CAPWAP)</span>
+
+<span class="cmt">! then confirm from both ends</span>
+WLC# show wireless mobility summary
+IP Address    Group Name       Status
+10.60.0.10    CORP-MOBILITY    <span class="hl">Up</span>
+
+ANCHOR# show wireless mobility summary</code></pre>
+
+    <div class="verdict"><b>Takeaway</b>Guest anchoring depends entirely on the mobility tunnel, and ping does not test it. Check <code>show wireless mobility summary</code> on <em>both</em> controllers &mdash; one side can report up while the other does not. The mobility group name must match exactly, case included, and UDP 16666/16667 must be open in both directions.</div>
+  </div></details>
+
+  <details class="scn"><summary data-n="10">One AP keeps dropping its 5 GHz radio</summary>
+  <div class="body">
+    <span class="step">Reported</span>
+    <p>A single AP in a conference room loses its 5 GHz radio several times a day. 2.4 GHz stays up. The AP itself never leaves the controller. Replacing the AP did not help.</p>
+
+    <span class="step">What you see</span>
+<pre><code>WLC# show ap summary | include AP-CONF-01
+AP-CONF-01   2       <span class="bad">1</span>      10.50.0.74    Registered
+
+<span class="cmt">! 2 radios configured, 1 up</span>
+
+WLC# show logging | include AP-CONF-01
+%APF-4-RADIO_DOWN: Radio 1 on AP AP-CONF-01 is down
+%APF-6-RADIO_UP:   Radio 1 on AP AP-CONF-01 is up</code></pre>
+    <p>Replacing the AP ruled out the hardware. That leaves the switch port, the cable, or power.</p>
+
+    <span class="step">Diagnosis</span>
+<pre><code>SW# show power inline GigabitEthernet1/0/22 detail
+ Interface: Gi1/0/22
+ Inline Power Mode: auto
+ Operational status: on
+ Device Detected: yes
+ <span class="bad">Power Granted (watts): 15.4</span>
+ Class: <span class="bad">3</span>
+ <span class="cmt">! a Wi-Fi 6 AP asking for 802.3at got only 802.3af</span>
+
+SW# show power inline module 1
+Module   Available   Used   Remaining
+1        370.0(w)    <span class="bad">368.2(w)</span>  1.8(w)</code></pre>
+    <p>The switch's PoE budget is exhausted. This port negotiated down to 15.4 W, and the AP sheds load by shutting a radio when it cannot sustain both. It is the last port added to a fully loaded switch.</p>
+<pre><code>WLC# show ap name AP-CONF-01 config general | include Power
+ PoE Pre-Standard Switch............ Disabled
+ Power Type/Mode.................... <span class="bad">PoE/Low Power (degraded mode)</span></code></pre>
+
+    <span class="step">Root cause</span>
+    <p>Switch PoE budget exceeded. The AP received only 802.3af power and disabled its 5 GHz radio to stay within it. No alarm fired because nothing failed &mdash; the AP did exactly what it is designed to do.</p>
+
+    <span class="step">Fix</span>
+<pre><code><span class="cmt">! Immediate — prioritise this port over something less critical</span>
+SW(config)# interface GigabitEthernet1/0/22
+SW(config-if)# power inline port priority high
+
+<span class="cmt">! Or cap a lower-value device to free budget</span>
+SW(config)# interface GigabitEthernet1/0/40
+SW(config-if)# power inline maximum 7000
+
+<span class="cmt">! Real fix — add a power supply or redistribute APs</span>
+SW# show power inline module 1
+SW# show env power</code></pre>
+
+    <div class="verdict"><b>Takeaway</b>An AP in degraded power mode disables radios, drops spatial streams or reduces transmit power, usually without raising an alarm &mdash; and it looks exactly like an RF or hardware problem. Check <code>show power inline ... detail</code> and the module budget before investigating anything radio-related, especially on a switch where APs have been added over time. <code>Power Type/Mode</code> on the controller tells you the same story in one line.</div>
+  </div></details>
+</section>
+
+<!-- ============ 18 ============ -->
+<section class="block" id="commands">
+  <div class="sechead">
+    <h2><span class="num">18</span>Command reference</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="commands"> Reviewed</label>
+  </div>
+
+  <div class="terms">
+    <div class="term">
+      <h3>AireOS to 9800 translation</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Task</th><th>AireOS</th><th>Catalyst 9800</th></tr></thead>
+          <tbody>
+            <tr><td>AP list</td><td><code>show ap summary</code></td><td><code>show ap summary</code></td></tr>
+            <tr><td>AP join failures</td><td><code>show ap join stats summary all</code></td><td><code>show wireless stats ap join summary</code></td></tr>
+            <tr><td>Client list</td><td><code>show client summary</code></td><td><code>show wireless client summary</code></td></tr>
+            <tr><td>Client detail</td><td><code>show client detail &lt;mac&gt;</code></td><td><code>show wireless client mac-address &lt;mac&gt; detail</code></td></tr>
+            <tr><td>Per-client debug</td><td><code>debug client &lt;mac&gt;</code></td><td><code>debug wireless mac &lt;mac&gt;</code> (RA trace)</td></tr>
+            <tr><td>Retrospective logs</td><td>&mdash;</td><td><code>show logging profile wireless filter mac &lt;mac&gt;</code></td></tr>
+            <tr><td>RF summary</td><td><code>show advanced 802.11a summary</code></td><td><code>show ap dot11 5ghz summary</code></td></tr>
+            <tr><td>RRM detail</td><td><code>show advanced 802.11a txpower</code></td><td><code>show ap auto-rf dot11 5ghz</code></td></tr>
+            <tr><td>Mobility</td><td><code>show mobility summary</code></td><td><code>show wireless mobility summary</code></td></tr>
+            <tr><td>RADIUS state</td><td><code>show radius summary</code></td><td><code>show aaa servers</code></td></tr>
+            <tr><td>Rogues</td><td><code>show rogue ap summary</code></td><td><code>show wireless wps rogue ap summary</code></td></tr>
+            <tr><td>Config model</td><td>WLAN + interface + AP group</td><td>WLAN profile + policy profile + three tags</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="term">
+      <h3>Ports to allow through a firewall</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th class="mono-col">Port</th><th>Between</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td class="mono-col">UDP 5246</td><td>AP &rarr; WLC</td><td>CAPWAP control, DTLS</td></tr>
+            <tr><td class="mono-col">UDP 5247</td><td>AP &rarr; WLC</td><td>CAPWAP data</td></tr>
+            <tr><td class="mono-col">UDP 16666 / 16667</td><td>WLC &harr; WLC</td><td>Mobility control and data</td></tr>
+            <tr><td class="mono-col">UDP 1812 / 1813</td><td>WLC &rarr; RADIUS</td><td>Authentication and accounting</td></tr>
+            <tr><td class="mono-col">UDP 123</td><td>WLC and AP &rarr; NTP</td><td>Time. Certificates depend on it</td></tr>
+            <tr><td class="mono-col">UDP 69</td><td>AP &harr; WLC</td><td>TFTP, used by some image transfers</td></tr>
+            <tr><td class="mono-col">TCP 22 / 443</td><td>Admin &rarr; WLC</td><td>Management</td></tr>
+            <tr><td class="mono-col">UDP 162</td><td>WLC &rarr; NMS</td><td>SNMP traps</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="term">
+      <h3>RF numbers worth memorising</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Metric</th><th>Data target</th><th>Voice target</th></tr></thead>
+          <tbody>
+            <tr><td>RSSI</td><td>better than &minus;70 dBm</td><td>better than &minus;67 dBm</td></tr>
+            <tr><td>SNR</td><td>20 dB or more</td><td>25 dB or more</td></tr>
+            <tr><td>Noise floor</td><td colspan="2">&minus;92 dBm or lower is healthy; above &minus;85 means interference</td></tr>
+            <tr><td>Channel utilisation</td><td>under 50%</td><td>under 30%</td></tr>
+            <tr><td>Cell overlap</td><td>15&ndash;20%</td><td>20&ndash;25% at &minus;67 dBm</td></tr>
+            <tr><td>Retry rate</td><td colspan="2">under 10% is normal; over 20% indicates a problem</td></tr>
+            <tr><td>Clients per radio</td><td colspan="2">25&ndash;30 typical, 40+ needs a high-density design</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 19 ============ -->
+<section class="block" id="checklist">
+  <div class="sechead">
+    <h2><span class="num">19</span>Design checklist</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="checklist"> Reviewed</label>
+  </div>
+  <p class="lede">What to confirm before a wireless deployment carries production traffic.</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>Before go-live</caption>
+      <thead><tr><th>Check</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td><strong>NTP configured on controllers</strong>, two sources</td><td>Certificate validation depends on it. Scenario 01</td></tr>
+        <tr><td>DHCP option 43 or DNS entry verified by decoding the hex</td><td>Silent failure if the length byte is wrong</td></tr>
+        <tr><td>PoE budget checked against AP count and class</td><td>Degraded power disables radios without alarming</td></tr>
+        <tr><td>MTU tested from an AP with <code>ping size 1500 df-bit</code></td><td>Catches the join-then-reboot loop before go-live</td></tr>
+        <tr><td>Switchport mode matches AP mode &mdash; access for local, trunk for flex</td><td>Wrong mode means no join or wrong VLAN</td></tr>
+        <tr><td>FlexConnect native VLAN matches the switch trunk native VLAN</td><td>Mismatch prevents the AP joining</td></tr>
+        <tr><td>Every WLAN has a flex VLAN mapping at flex sites</td><td>Otherwise clients land on the native VLAN. Scenario 03</td></tr>
+        <tr><td>2.4 GHz set to 20 MHz, channels 1/6/11 only</td><td>Nothing else is non-overlapping</td></tr>
+        <tr><td>5 GHz channel width chosen for density, not peak rate</td><td>20 MHz beats 80 MHz in dense deployments. Scenario 05</td></tr>
+        <tr><td>Low data rates disabled (1/2/5.5/11 in 2.4, 6/9 in 5)</td><td>Shrinks cells, forces earlier roaming, saves airtime</td></tr>
+        <tr><td>DFS channels reviewed against the local radar environment</td><td>Scenario 07</td></tr>
+        <tr><td>802.11r, k and v enabled on voice SSIDs</td><td>Roam time is what breaks calls. Scenario 06</td></tr>
+        <tr><td>PMF set to optional first, measured, then tightened</td><td>Mandatory excludes legacy clients silently. Scenario 08</td></tr>
+        <tr><td>RF group name consistent, one leader per band</td><td>Split groups cause channel thrash</td></tr>
+        <tr><td>Mobility group name identical on every peer, UDP 16666/16667 open</td><td>Guest anchoring depends on it. Scenario 09</td></tr>
+        <tr><td>RADIUS tested with <code>test aaa</code>, not ping</td><td>Reachability is not authentication. Scenario 04</td></tr>
+        <tr><td>Rogue containment left on alarm-only unless justified</td><td>Legal exposure</td></tr>
+        <tr><td>One spare AP designated for sniffer mode</td><td>The only tool that shows what really happened in the air</td></tr>
+        <tr><td>Tags documented and assigned by rule, not by hand</td><td>An untagged AP silently gets the default tags</td></tr>
+        <tr><td>Post-deployment survey validating RSSI <em>and</em> SNR, not just coverage</td><td>Good signal on a noisy channel still performs badly</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+</main>
+</div>
+
+<footer>
+  <p>Command syntax and behaviour differ substantially between AireOS and Catalyst 9800, and across releases of each. Verify against the configuration guide for the exact platform and version in front of you before applying anything here to production.</p>
+  <p>Examples use RFC 1918 address space. Key standards: IEEE 802.11 (including 11k, 11r, 11v, 11w), RFC 5415 (CAPWAP), RFC 5416 (CAPWAP binding for 802.11), IEEE 802.3af/at/bt (PoE), RFC 3748 (EAP), RFC 2865 (RADIUS).</p>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var q = document.getElementById('q');
+  var clearBtn = document.getElementById('clearq');
+  var countEl = document.getElementById('count');
+  var noResult = document.getElementById('noresult');
+  var sections = Array.prototype.slice.call(document.querySelectorAll('section.block'));
+  var navLinks = Array.prototype.slice.call(document.querySelectorAll('nav.index a'));
+
+  var items = [];
+  sections.forEach(function(sec){
+    Array.prototype.slice.call(sec.querySelectorAll('.term, .scn')).forEach(function(el){
+      items.push({el: el, sec: sec, text: (el.textContent || '').toLowerCase()});
+    });
+  });
+
+  var tables = [];
+  sections.forEach(function(sec){
+    Array.prototype.slice.call(sec.querySelectorAll('.tablewrap')).forEach(function(w){
+      if(w.closest('.term') || w.closest('.scn')){ return; }
+      var rows = Array.prototype.slice.call(w.querySelectorAll('tbody tr')).map(function(tr){
+        return {tr: tr, text: (tr.textContent || '').toLowerCase()};
+      });
+      tables.push({wrap: w, sec: sec, rows: rows});
+    });
+  });
+
+  var totalItems = items.length + tables.reduce(function(n, t){ return n + t.rows.length; }, 0);
+
+  function applyFilter(raw){
+    var term = (raw || '').trim().toLowerCase();
+    var filtering = term.length > 0;
+    document.body.classList.toggle('filtering', filtering);
+    clearBtn.hidden = !filtering;
+
+    if(!filtering){
+      items.forEach(function(it){ it.el.style.display = ''; });
+      tables.forEach(function(t){
+        t.wrap.style.display = '';
+        t.rows.forEach(function(r){ r.tr.style.display = ''; });
+      });
+      sections.forEach(function(s){ s.style.display = ''; });
+      noResult.style.display = 'none';
+      countEl.textContent = totalItems + ' entries';
+      return;
+    }
+
+    var shown = 0;
+    var live = {};
+
+    items.forEach(function(it){
+      var hit = it.text.indexOf(term) !== -1;
+      it.el.style.display = hit ? '' : 'none';
+      if(hit){
+        shown++; live[it.sec.id] = true;
+        if(it.el.tagName === 'DETAILS'){ it.el.open = true; }
+      }
+    });
+
+    tables.forEach(function(t){
+      var any = false;
+      t.rows.forEach(function(r){
+        var hit = r.text.indexOf(term) !== -1;
+        r.tr.style.display = hit ? '' : 'none';
+        if(hit){ any = true; shown++; }
+      });
+      t.wrap.style.display = any ? '' : 'none';
+      if(any){ live[t.sec.id] = true; }
+    });
+
+    sections.forEach(function(s){ s.style.display = live[s.id] ? '' : 'none'; });
+    noResult.style.display = shown ? 'none' : 'block';
+    countEl.textContent = shown + ' of ' + totalItems + ' entries';
+  }
+
+  q.addEventListener('input', function(){ applyFilter(q.value); });
+  clearBtn.addEventListener('click', function(){ q.value = ''; applyFilter(''); q.focus(); });
+  q.addEventListener('keydown', function(e){
+    if(e.key === 'Escape'){ q.value = ''; applyFilter(''); }
+  });
+  document.addEventListener('keydown', function(e){
+    if(e.key === '/' && document.activeElement !== q){
+      e.preventDefault(); q.focus(); q.select();
+    }
+  });
+
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('.reviewed input'));
+  var fill = document.getElementById('progfill');
+  var ptxt = document.getElementById('progtxt');
+  var KEY = 'wlc-ref-reviewed-v1';
+
+  function load(){
+    try{
+      var raw = window.localStorage.getItem(KEY);
+      return raw ? JSON.parse(raw) : {};
+    }catch(err){ return {}; }
+  }
+  function save(state){
+    try{ window.localStorage.setItem(KEY, JSON.stringify(state)); }catch(err){ /* storage unavailable */ }
+  }
+  function paint(){
+    var done = boxes.filter(function(b){ return b.checked; }).length;
+    ptxt.textContent = done + '/' + boxes.length;
+    fill.style.width = (boxes.length ? (done / boxes.length * 100) : 0) + '%';
+  }
+  var state = load();
+  boxes.forEach(function(b){
+    if(state[b.dataset.sec]){ b.checked = true; }
+    b.addEventListener('change', function(){
+      var s = load();
+      if(b.checked){ s[b.dataset.sec] = 1; } else { delete s[b.dataset.sec]; }
+      save(s);
+      paint();
+    });
+  });
+  paint();
+
+  var tbtn = document.getElementById('themebtn');
+  var TKEY = 'wlc-ref-theme-v1';
+  try{
+    var saved = window.localStorage.getItem(TKEY);
+    if(saved === 'dark' || saved === 'light'){ document.documentElement.setAttribute('data-theme', saved); }
+  }catch(err){ /* ignore */ }
+  tbtn.addEventListener('click', function(){
+    var cur = document.documentElement.getAttribute('data-theme');
+    var isDark;
+    if(cur){ isDark = cur === 'dark'; }
+    else { isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches; }
+    var next = isDark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try{ window.localStorage.setItem(TKEY, next); }catch(err){ /* ignore */ }
+  });
+
+  if('IntersectionObserver' in window){
+    var obs = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(!en.isIntersecting){ return; }
+        navLinks.forEach(function(a){
+          a.classList.toggle('on', a.getAttribute('href') === '#' + en.target.id);
+        });
+      });
+    }, {rootMargin: '-72px 0px -70% 0px', threshold: 0});
+    sections.forEach(function(s){ obs.observe(s); });
+  }
+
+  applyFilter('');
+})();
+</script>
+</body>
+</html>
