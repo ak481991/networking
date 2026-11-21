@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cisco Network Reference</title>
+<style>
+  html,body{margin:0;height:100%;font-family:system-ui,-apple-system,sans-serif;background:#0f172a}
+  nav{display:flex;flex-wrap:wrap;gap:4px;padding:8px;background:#0f172a;position:sticky;top:0;z-index:2}
+  .tab{border:0;padding:8px 14px;border-radius:6px;background:#1e293b;color:#cbd5e1;
+       cursor:pointer;font:inherit;font-size:14px;line-height:1.2}
+  .tab:hover{background:#334155;color:#e2e8f0}
+  .tab:focus-visible{outline:2px solid #049fd9;outline-offset:2px}
+  .tab[aria-selected="true"]{background:#049fd9;color:#fff}
+  .panes{position:relative;width:100%;height:calc(100vh - 56px);height:calc(100dvh - 56px)}
+  .pane{display:none;width:100%;height:100%;border:0;background:#fff}
+  .pane.active{display:block}
+</style>
+</head>
+<body>
+
+<nav id="tabs" role="tablist" aria-label="Reference pages"></nav>
+<div class="panes" id="panes"></div>
+
+<script>
+(function () {
+  // Each page is loaded from its own file, so edits to a reference page show up
+  // here immediately. Add a page by adding one entry below.
+  var PAGES = [
+    { slug: 'qos',            label: 'QoS',            file: 'qos-reference.html'  },
+    { slug: 'ospf',           label: 'OSPF',           file: 'ospf-reference.html' },
+    { slug: 'bgp',            label: 'BGP',            file: 'bgp-reference.html'  },
+    { slug: 'asa',            label: 'ASA',            file: 'asa-reference.html'  },
+    { slug: 'asa-nat',        label: 'ASA NAT',        file: 'asa-nat.html'        },
+    { slug: 'ise',            label: 'ISE',            file: 'ise-reference.html'  },
+    { slug: 'eap-tls',        label: 'EAP-TLS / ISE',  file: 'eap-tls-ise.html'    },
+    { slug: 'wlc',            label: 'WLC',            file: 'wlc-reference.html'  },
+    { slug: 'packet-capture', label: 'Packet Capture', file: 'packet-capture.html' }
+  ];
+
+  var nav = document.getElementById('tabs');
+  var panes = document.getElementById('panes');
+  var tabs = [];
+  var frames = [];
+
+  PAGES.forEach(function (page, i) {
+    var tab = document.createElement('button');
+    tab.className = 'tab';
+    tab.type = 'button';
+    tab.id = 'tab-' + page.slug;
+    tab.textContent = page.label;
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-selected', 'false');
+    tab.setAttribute('aria-controls', 'pane-' + page.slug);
+    tab.tabIndex = -1;
+    tab.addEventListener('click', function () { select(i, true); });
+    nav.appendChild(tab);
+    tabs.push(tab);
+
+    // src is set on first activation, so opening the hub costs one page, not nine.
+    var frame = document.createElement('iframe');
+    frame.className = 'pane';
+    frame.id = 'pane-' + page.slug;
+    frame.title = page.label;
+    frame.setAttribute('role', 'tabpanel');
+    frame.setAttribute('aria-labelledby', tab.id);
+    frame.dataset.src = page.file;
+    panes.appendChild(frame);
+    frames.push(frame);
+  });
+
+  function select(i, setHash) {
+    if (i < 0 || i >= PAGES.length) return;
+
+    tabs.forEach(function (tab, j) {
+      var on = j === i;
+      tab.setAttribute('aria-selected', on ? 'true' : 'false');
+      tab.tabIndex = on ? 0 : -1;
+      frames[j].classList.toggle('active', on);
+    });
+
+    var frame = frames[i];
+    if (frame.dataset.src) {
+      frame.src = frame.dataset.src;
+      delete frame.dataset.src;
+    }
+
+    if (setHash) {
+      var hash = '#' + PAGES[i].slug;
+      if (location.hash !== hash) history.replaceState(null, '', hash);
+    }
+  }
+
+  // Accepts #ospf and, for links made against the single-file bundle, #1.
+  function indexFromHash() {
+    var raw = decodeURIComponent(location.hash.slice(1)).toLowerCase();
+    if (!raw) return -1;
+    for (var i = 0; i < PAGES.length; i++) {
+      if (PAGES[i].slug === raw) return i;
+    }
+    return /^\d+$/.test(raw) ? parseInt(raw, 10) : -1;
+  }
+
+  nav.addEventListener('keydown', function (e) {
+    var step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    var current = tabs.findIndex(function (t) {
+      return t.getAttribute('aria-selected') === 'true';
+    });
+    var next;
+
+    if (step) next = (current + step + PAGES.length) % PAGES.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = PAGES.length - 1;
+    else return;
+
+    e.preventDefault();
+    select(next, true);
+    tabs[next].focus();
+  });
+
+  window.addEventListener('hashchange', function () {
+    var i = indexFromHash();
+    if (i >= 0) select(i, false);
+  });
+
+  var start = indexFromHash();
+  select(start >= 0 ? start : 0, start >= 0);
+})();
+</script>
+
+</body>
+</html>

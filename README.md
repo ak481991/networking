@@ -2,7 +2,12 @@
 
 Self-contained HTML study pages for network engineers. No build step and no dependencies beyond Google Fonts — open any file in a browser.
 
-`cisco-network-reference.html` is a single-file bundle of all nine pages behind a tab bar, with each page embedded rather than linked — one file to carry offline or hand to someone, no other files needed. The tab is kept in the URL hash, so `...#4` opens straight to ASA NAT. Because every page is embedded, editing a reference page below does not change the bundle; regenerate it when the sources change.
+Two files put all nine pages behind one tab bar. Both keep the open tab in the URL hash, so a link can point at a specific page.
+
+- **`index.html`** — the hub to use day to day, and the landing page when the repo is served with Pages. It loads each page from its own file, so edits to a reference page show up here with no further work, and it fetches a page only when its tab is first opened rather than all nine up front. Tabs respond to arrow keys, `Home` and `End`. Hashes are readable (`index.html#ospf`); a numeric hash from a bundle link still works and is rewritten to the slug.
+- **`cisco-network-reference.html`** — one self-contained file with all nine pages embedded, for carrying offline or handing to someone as a single attachment. Because the pages are embedded, editing a reference page below does **not** change this file; regenerate it when the sources change.
+
+Adding a page to the hub is one entry in the `PAGES` array at the top of the script in `index.html`.
 
 | File | Covers |
 | --- | --- |
@@ -28,7 +33,7 @@ Every page shares the same behaviour:
 
 ## Publishing as a site
 
-All files are static. To serve them with GitHub Pages: push to the default branch, then under **Settings → Pages** set the source to that branch and the root folder. Each page is then reachable at `https://<user>.github.io/<repo>/<filename>`.
+All files are static. To serve them with GitHub Pages: push to the default branch, then under **Settings → Pages** set the source to that branch and the root folder. `index.html` is then served at `https://<user>.github.io/<repo>/` as the tabbed hub, and each page stays reachable on its own at `https://<user>.github.io/<repo>/<filename>`.
 
 ## Accuracy note
 
