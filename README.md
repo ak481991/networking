@@ -2,6 +2,8 @@
 
 Self-contained HTML study pages for network engineers. No build step and no dependencies beyond Google Fonts — open any file in a browser.
 
+`cisco-network-reference.html` is a single-file bundle of all nine pages behind a tab bar, with each page embedded rather than linked — one file to carry offline or hand to someone, no other files needed. The tab is kept in the URL hash, so `...#4` opens straight to ASA NAT. Because every page is embedded, editing a reference page below does not change the bundle; regenerate it when the sources change.
+
 | File | Covers |
 | --- | --- |
 | `packet-capture.html` | Packet capture across every platform family: where each tool taps the packet path, IOS-XE Embedded Packet Capture with filters and ACLs, Catalyst 9000 punt behaviour and limits, classic IOS and 6500/4500 tooling, SPAN/RSPAN/ERSPAN with the ERSPAN byte layout, punt/inject and FED counters, `debug platform condition`, QFP packet-trace with fia-trace, Catalyst 9800 and over-the-air capture, Nexus Ethanalyzer, SPAN-to-CPU and ELAM, NX-OS drop counters and CoPP, tcpdump/tshark and BPF, a "why the capture is empty" diagnostic, **ten worked incident scenarios**, and a 153-row searchable command reference |
