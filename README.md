@@ -2,12 +2,24 @@
 
 Self-contained HTML study pages for network engineers. No build step and no dependencies beyond Google Fonts — open any file in a browser.
 
-Two files put all nine pages behind one tab bar. Both keep the open tab in the URL hash, so a link can point at a specific page.
+Two files put every page behind one tab bar. Both keep the open tab in the URL hash, so a link can point at a specific page.
 
-- **`index.html`** — the hub to use day to day, and the landing page when the repo is served with Pages. It loads each page from its own file, so edits to a reference page show up here with no further work, and it fetches a page only when its tab is first opened rather than all nine up front. Tabs respond to arrow keys, `Home` and `End`. Hashes are readable (`index.html#ospf`); a numeric hash from a bundle link still works and is rewritten to the slug.
-- **`cisco-network-reference.html`** — one self-contained file with all nine pages embedded, for carrying offline or handing to someone as a single attachment. Because the pages are embedded, editing a reference page below does **not** change this file; regenerate it when the sources change.
+- **`index.html`** — the hub to use day to day, and the landing page when the repo is served with Pages. It loads each page from its own file, so edits to a page show up here with no further work, and it fetches a page only when its tab is first opened rather than all of them up front. Tabs respond to arrow keys, `Home` and `End`. Hashes are readable (`index.html#ospf`); a numeric hash from a bundle link still works and is rewritten to the slug.
+- **`cisco-network-reference.html`** — one self-contained file with the nine reference pages embedded, for carrying offline or handing to someone as a single attachment. Because the pages are embedded, editing a reference page below does **not** change this file; regenerate it when the sources change.
 
 Adding a page to the hub is one entry in the `PAGES` array at the top of the script in `index.html`.
+
+## Interview preparation
+
+Collapsed question-and-answer pages that work as a self-test: each answer opens to a short spoken response, the supporting detail, and a note on what the question is actually probing. Filter by keyword or by depth (Core / Deep / Expert), or reveal everything at once.
+
+| File | Questions | Covers |
+| --- | --- | --- |
+| `interview-routing.html` | 67 | Forwarding fundamentals (RIB/FIB, CEF, recursion, uRPF), OSPF (LSA types, forwarding address, SPF triggers, ABR rules), EIGRP (feasibility condition, SIA, query scope, stub), BGP (best path, RR, MED comparability, aggregation, multipath, convergence, RPKI), redistribution and policy, MPLS/VRF, multicast, IPv6, HA and convergence budgets, overlays and segment routing, methodology, whiteboard scenarios |
+| `interview-switching.html` | 61 | Frame forwarding and TCAM, VLANs and trunking (native VLAN, VTP, QinQ), spanning tree (path cost, RSTP mechanics, MST regions, TCN), STP protection (root vs loop guard, UDLD, storms), EtherChannel and MLAG, FHRP and anycast gateway, L3 switching and routed access, campus design and oversubscription, L2 security chain, data-centre switching (leaf-spine, VXLAN, incast, PFC/ECN), troubleshooting, whiteboard scenarios |
+| `interview-security.html` | 61 | AAA and identity (RADIUS/TACACS+, EAP methods, MAB, ISE policy, CoA), firewall architecture (stateful tables, ASA order of operations, ASP drops, FTD, failover, asymmetry), NAT, ACLs and ZBFW, IPsec and IKEv2, VPN topologies (DMVPN, FlexVPN, GETVPN, remote access, SD-WAN), PKI and certificates, segmentation and TrustSec, infrastructure hardening (CoPP, TTL security, DDoS), monitoring and detection, incident response, whiteboard scenarios |
+
+## Reference pages
 
 | File | Covers |
 | --- | --- |
