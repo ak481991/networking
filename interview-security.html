@@ -190,7 +190,7 @@ footer a{color:var(--accent-ink)}
     <div class="brand">
       <span class="eyebrow">Interview preparation &middot; 3 of 3</span>
       <h1>Security &mdash; Interview Questions &amp; Answers</h1>
-      <p>Sixty-one questions across identity, firewalls, VPN, PKI, segmentation, hardening and detection. Each has a short spoken answer, the supporting detail, and a note on what the question is probing. Answers start collapsed so the page works as a self-test.</p>
+      <p>Seventy-seven questions across identity, ISE, firewalls, VPN, PKI, segmentation, hardening and detection. Each has a short spoken answer, the supporting detail, and a note on what the question is probing. Answers start collapsed so the page works as a self-test.</p>
     </div>
     <button class="themebtn" id="themebtn" type="button">Switch theme</button>
   </div>
@@ -213,7 +213,7 @@ footer a{color:var(--accent-ink)}
     <div class="progwrap">
       <span>Done</span>
       <span class="progbar"><span class="progfill" id="progfill"></span></span>
-      <span class="num-col" id="progtxt">0/12</span>
+      <span class="num-col" id="progtxt">0/15</span>
     </div>
   </div>
 </div>
@@ -224,9 +224,11 @@ footer a{color:var(--accent-ink)}
   <h2>Contents</h2>
   <ol>
     <li><a href="#aaa">AAA &amp; identity</a></li>
+    <li><a href="#ise">ISE architecture</a></li>
     <li><a href="#firewall">Firewall architecture</a></li>
     <li><a href="#nat">NAT</a></li>
     <li><a href="#acl">ACLs &amp; policy</a></li>
+    <li><a href="#netsvc">ARP, DHCP &amp; DNS security</a></li>
     <li><a href="#ipsec">IPsec &amp; IKEv2</a></li>
     <li><a href="#vpn">VPN topologies</a></li>
     <li><a href="#pki">PKI &amp; certificates</a></li>
@@ -234,6 +236,7 @@ footer a{color:var(--accent-ink)}
     <li><a href="#harden">Infrastructure hardening</a></li>
     <li><a href="#monitor">Monitoring &amp; detection</a></li>
     <li><a href="#ir">Incident response</a></li>
+    <li><a href="#topology">Reference topology</a></li>
     <li><a href="#whiteboard">Whiteboard scenarios</a></li>
   </ol>
 </nav>
@@ -479,15 +482,264 @@ show logging | include COA|RADIUS-4</code></pre>
 </section>
 
 <!-- ============ 2 ============ -->
+<section class="block" id="ise">
+  <div class="sechead">
+    <h2><span class="num">02</span>ISE architecture &amp; services</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="ise"> Done</label>
+  </div>
+  <p class="lede">Identity Services Engine, from node personas to a failed authentication at 2 a.m. The questions interviewers lean on are the authentication-versus-authorization split, what triggers a CoA, and whether you can read a RADIUS Authentication Detail report rather than guess.</p>
+
+  <details class="qa" data-lvl="core">
+    <summary data-n="Q7"><span class="qtext">What are the ISE node personas, and how would you size a deployment?</span><span class="lvl lvl-core">Core</span></summary>
+    <div class="body">
+      <p class="lead">Four personas: the Policy Administration Node holds the configuration, Monitoring handles logging and reporting, Policy Service Nodes do the actual authentication work, and the pxGrid controller publishes context to other products. Sizing is driven by concurrent active sessions on the PSNs, and by how much latency sits between the nodes.</p>
+      <span class="step">Detail</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Persona</th><th>Does</th><th>Redundancy</th></tr></thead>
+          <tbody>
+            <tr><td><strong>PAN</strong> &mdash; Policy Administration</td><td>Single point of configuration; replicates to all nodes</td><td>Primary + secondary. <strong>Promotion is manual</strong> unless auto-failover is configured</td></tr>
+            <tr><td><strong>MnT</strong> &mdash; Monitoring</td><td>Logs, reports, Live Logs, Live Sessions</td><td>Primary + secondary; both receive logs</td></tr>
+            <tr><td><strong>PSN</strong> &mdash; Policy Service</td><td><strong>The work</strong> &mdash; RADIUS, TACACS+, profiling, posture, guest, BYOD</td><td>Scale out; group them into node groups</td></tr>
+            <tr><td><strong>pxGrid</strong></td><td>Publishes session and TrustSec context to subscribers</td><td>Two controllers, one active</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Deployment shapes:</strong> <em>standalone</em> runs every persona on one node &mdash; fine for a lab, no redundancy. <em>Two-node</em> has both nodes running all personas, one primary PAN and MnT and the other secondary &mdash; full redundancy with modest scale. <em>Dedicated</em> separates them: two PANs, two MnTs and as many PSNs as the session count needs, which is the shape for anything large.</p>
+      <p><strong>Node groups</strong> matter more than people expect. PSNs in a node group share session information, so if one PSN dies another member can issue the Change of Authorization for its orphaned sessions. Without node groups, sessions on a failed PSN simply hang until they re-authenticate.</p>
+      <div class="tip"><b>Sizing inputs to name</b>Concurrent active sessions is the number that matters, not users and not endpoints &mdash; and it should include everything: wired, wireless, VPN, and MAB endpoints like printers and cameras, which people routinely forget and which can outnumber the staff. Then: how many PSNs the network devices are configured to reach, round-trip latency from PSNs to the PANs and MnTs (there is a supported ceiling, and exceeding it causes replication and logging problems that look like random failures), latency to Active Directory, and whether you need TACACS+ device administration, which is licensed and sized separately. Saying "I would size on concurrent sessions including MAB endpoints, and check PAN-to-PSN latency" is a complete answer.</div>
+      <div class="verdict"><b>What they're testing</b>Whether you know PSNs do the work and PANs only configure. Node groups and the latency ceiling are the two details that show operational experience.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q8"><span class="qtext">Walk me through an 802.1X authentication end to end, from link-up to the port being authorized.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">The switch starts EAP, the supplicant answers, the switch relays it to a PSN over RADIUS, and then ISE does two separate things in sequence: <strong>authentication</strong> decides who this is, and <strong>authorization</strong> decides what they get. Those are two different policy tables and they fail in different ways &mdash; a successful authentication landing on the default deny rule is one of the most common tickets you will ever see.</p>
+      <span class="step">The flow</span>
+      <ol>
+        <li><strong>Link up.</strong> The switch sends an EAPoL Identity Request, or reacts to an EAPoL Start from the supplicant.</li>
+        <li><strong>Outer identity.</strong> The supplicant replies with an EAP Identity Response &mdash; the <em>outer</em> identity, which with PEAP or TEAP may be anonymous.</li>
+        <li><strong>RADIUS Access-Request</strong> to a PSN, carrying the EAP payload plus everything the switch knows: NAS-IP, NAS-Port-Id, Calling-Station-Id (the endpoint MAC), and Device Sensor attributes if it is configured.</li>
+        <li><strong>Policy Set selection.</strong> ISE picks one policy set based on conditions like the network device group, SSID or connection type. Everything after this happens inside that set.</li>
+        <li><strong>Authentication policy.</strong> A rule matches on things like <code>Wired_802.1X</code> or the EAP type, and selects an identity store or an <strong>identity source sequence</strong>. The EAP method then runs: the TLS tunnel comes up, the inner identity is presented, and the credential is checked against AD, an internal store, or a certificate.</li>
+        <li><strong>Authorization policy.</strong> A <em>separate</em>, top-down, first-match table. Conditions can use the authenticated identity, AD group membership, endpoint profile, posture status, certificate fields, time of day, location. The matched rule points at an <strong>authorization profile</strong>.</li>
+        <li><strong>Access-Accept</strong> carrying the result: a VLAN, a downloadable ACL, an SGT, a URL redirect, a reauthentication timer, or any combination.</li>
+        <li><strong>The switch applies it</strong> and the port is authorized. Later, if anything changes &mdash; the endpoint is profiled differently, posture completes, an admin quarantines it &mdash; ISE sends a <strong>Change of Authorization</strong> and steps 6 to 8 happen again without the endpoint re-authenticating.</li>
+      </ol>
+      <div class="gotcha"><b>"Authentication succeeded but the user has no access" is an authorization problem</b>And the giveaway is in Live Logs: the authorization rule shown is <code>Default</code>, or a DenyAccess profile. The credential was fine; no authorization rule matched. The usual causes are an AD group condition that does not match because the group was nested and nesting is not being evaluated, an endpoint identity group that the endpoint has not been profiled into yet, a posture status of <em>Unknown</em> where the rule requires <em>Compliant</em>, or simply rule order &mdash; a broader rule above the specific one catching the session first. Reading the matched rule name out of the log before touching anything is the habit that separates fast resolution from an afternoon of guessing.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"What if there is no supplicant at all?"</em> &mdash; MAB takes over after 802.1X gives up, and how long that takes is <code>dot1x timeout tx-period</code> multiplied by the retry count, which is why a printer can sit unusable for 90 seconds on default timers. Tune it, or use <code>authentication order mab dot1x</code> where you know the segment is MAB-heavy.</li>
+        <li><em>"Closed, low-impact, or monitor mode?"</em> &mdash; monitor (open) mode authenticates and logs but permits everything, which is how you deploy without an outage; low-impact adds a pre-auth ACL permitting the essentials; closed mode permits nothing until authorized. The migration path is monitor &rarr; low-impact &rarr; closed, and saying that unprompted shows you have deployed 802.1X rather than configured it in a lab.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>The authentication/authorization split above all. The default-rule diagnosis and the monitor-mode deployment path are both strong practical signals.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q9"><span class="qtext">How does ISE profiling work, and what is the risk of using profiles in authorization rules?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">ISE collects attributes about endpoints through probes, matches them against profiling policies, and each match adds to a certainty factor until the endpoint is classified. The risk is that profiling is <strong>asynchronous</strong>: an endpoint authorizes before it is fully profiled, then the profile changes, and if your authorization rules depend on that profile ISE issues a Change of Authorization &mdash; which can bounce the port of a device that was working perfectly a second ago.</p>
+      <span class="step">Detail &mdash; the probes</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Probe</th><th>Gives</th><th>Note</th></tr></thead>
+          <tbody>
+            <tr><td><strong>RADIUS</strong></td><td>MAC, NAS attributes, and <strong>Device Sensor</strong> data if the switch sends it</td><td>Always on; the best source</td></tr>
+            <tr><td><strong>DHCP</strong> / DHCP SPAN</td><td>Hostname, option 55 fingerprint, vendor class</td><td>High value. Use relay to ISE rather than SPAN</td></tr>
+            <tr><td><strong>HTTP</strong></td><td>User-Agent string</td><td>High value, but increasingly unavailable because of TLS</td></tr>
+            <tr><td><strong>SNMP</strong> query / trap</td><td>CDP, LLDP, interface and ARP data from the switch</td><td>Polling load on the switch</td></tr>
+            <tr><td><strong>DNS</strong></td><td>Reverse lookup of the hostname</td><td>Only useful with good reverse zones</td></tr>
+            <tr><td><strong>NMAP</strong></td><td>Active scan results</td><td>It is an active scan &mdash; know before you enable it</td></tr>
+            <tr><td><strong>AD</strong> / <strong>pxGrid</strong></td><td>Machine attributes; context from other products</td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Device Sensor</strong> is the one to advocate for: the access switch collects CDP, LLDP and DHCP attributes locally and sends them inside RADIUS accounting, so ISE gets rich data with no SPAN sessions, no SNMP polling and no extra traffic path.</p>
+<pre><code><span class="cmt">! switch side — Device Sensor</span>
+device-sensor filter-spec dhcp include list <span class="hl">DHCP-LIST</span>
+device-sensor filter-spec lldp include list LLDP-LIST
+device-sensor accounting
+device-sensor notify all-changes
+!
+radius-server attribute 6 on-for-login-auth
+radius-server attribute 8 include-in-access-req
+radius-server attribute 25 access-request include
+
+<span class="cmt">! verify what the endpoint looks like to the switch</span>
+show device-sensor cache all
+show device-sensor cache interface GigabitEthernet1/0/10
+show access-session interface GigabitEthernet1/0/10 details</code></pre>
+      <div class="gotcha"><b>Profiling-triggered CoA is a real outage source</b>In the Profiler settings, a profile change can be configured to do nothing, to reauthenticate, or to bounce the port. Bounce the port means the switchport goes down and up &mdash; which for a surveillance camera, a medical device or a point-of-sale terminal is a visible interruption. Combine that with authorization rules keyed on endpoint profiles and a profiling policy that reclassifies a device an hour after it connects, and you get interruptions nobody can correlate to a change, because nobody changed anything. Mitigations: prefer <em>No CoA</em> or <em>Reauth</em> over <em>Port Bounce</em> as the global setting, use <strong>static assignment</strong> for critical endpoints so profiling cannot move them, and base authorization on endpoint identity <em>groups</em> you control rather than on raw profiles that ISE updates with every feed update.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"What is a certainty factor?"</em> &mdash; each matched condition in a profiling policy contributes a value; the endpoint is classified when the total reaches the policy's minimum. It is why an endpoint can sit as a generic <em>Workstation</em> until a DHCP option arrives and promotes it to something specific, and it is why profiling takes time rather than happening at link-up.</li>
+        <li><em>"What happens on a feed update?"</em> &mdash; new and changed profiling policies arrive from Cisco, endpoints get reclassified, and anything keyed on profiles can shift. Reviewing feed updates rather than applying them blindly is the operational answer.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you know profiling is asynchronous and feeds back into authorization. Naming Device Sensor over SPAN and the port-bounce risk are the two experience markers.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q10"><span class="qtext">Explain the posture flow. Why is the redirect ACL so often misconfigured?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">An endpoint authenticates, lands in a quarantine authorization profile with a URL redirect, gets its posture agent, is assessed, and ISE issues a Change of Authorization to move it to the compliant profile. The redirect ACL confuses people because <strong>a <code>permit</code> in a redirect ACL means "redirect this", not "allow this"</strong> &mdash; the opposite sense from the downloadable ACL sitting on the same port.</p>
+      <span class="step">The flow</span>
+      <ol>
+        <li>802.1X or MAB succeeds. Posture status is <strong>Unknown</strong>, so the authorization rule for unknown posture matches.</li>
+        <li>That profile applies a <strong>dACL</strong> (what the endpoint may reach &mdash; ISE, DNS, the remediation servers) and a <strong>redirect ACL plus redirect URL</strong> (what web traffic gets bounced to the client provisioning portal).</li>
+        <li>The agent is installed or already present, and <strong>discovers</strong> ISE &mdash; through the redirect it receives, a configured discovery host, or the well-known enrolment URL.</li>
+        <li>Posture assessment runs against the requirements: patch level, antimalware state, registry or file checks, disk encryption.</li>
+        <li>The result is reported. ISE sends a <strong>CoA</strong>, the authorization policy is re-evaluated, the posture-compliant rule now matches, and the endpoint gets its real access.</li>
+        <li>A <strong>posture lease</strong> can mark the endpoint compliant for a period so it is not re-assessed on every reconnect.</li>
+      </ol>
+      <div class="gotcha"><b>The two ACLs on the port have opposite polarity</b>In the downloadable ACL, <code>permit</code> means the traffic is allowed. In the redirect ACL, <code>permit</code> means the traffic is <em>intercepted and redirected</em>. So a redirect ACL has to explicitly <code>deny</code> traffic to ISE, to DNS and to the remediation servers &mdash; otherwise that traffic gets redirected too, the agent cannot reach ISE, discovery fails and the endpoint sits in quarantine forever. The symptom is distinctive: the endpoint is authorized, the dACL looks right, web traffic redirects correctly, and posture never completes.</div>
+<pre><code><span class="cmt">! redirect ACL — permit means REDIRECT</span>
+ip access-list extended <span class="hl">ACL-POSTURE-REDIRECT</span>
+ deny   udp any any eq domain              <span class="cmt">! do NOT redirect DNS</span>
+ deny   ip  any host 10.50.10.11           <span class="cmt">! do NOT redirect traffic to ISE PSN</span>
+ deny   ip  any host 10.50.10.12
+ deny   ip  any 10.60.0.0 0.0.255.255      <span class="cmt">! do NOT redirect remediation servers</span>
+ permit tcp any any eq www                 <span class="cmt">! redirect this</span>
+ permit tcp any any eq 443                 <span class="cmt">! and this</span>
+
+<span class="cmt">! verify on the switch</span>
+show access-session interface Gi1/0/10 details
+show ip access-lists interface Gi1/0/10
+show ip access-lists <span class="cmt">! look for the dACL named xACSACLx-...</span>
+show authentication sessions interface Gi1/0/10 details
+show ip http server status                 <span class="cmt">! redirection needs the HTTP server</span></code></pre>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"Agent or agentless?"</em> &mdash; the persistent agent gives the richest assessment and remediation but has to be deployed and maintained; the temporal agent runs once with no install, suited to contractors; agentless posture reaches into the endpoint over remote management and needs credentials and endpoint firewall exceptions, which is a real deployment cost people underestimate.</li>
+        <li><em>"What if posture never completes for a subset of endpoints?"</em> &mdash; check discovery first: can the agent reach a PSN, and is the redirect ACL letting it? Then check whether the endpoint even got a redirect, and whether the switch's HTTP server is enabled, because redirection depends on it.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>The redirect-ACL polarity, which is the single most common posture misconfiguration, and whether you know a CoA is what moves the endpoint out of quarantine.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q11"><span class="qtext">Compare guest access and BYOD onboarding. What are the flows?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">Guest access is Central Web Authentication: MAB produces a redirect, the user authenticates on a portal, and a Change of Authorization grants access &mdash; the device stays unmanaged. BYOD onboarding goes further: it provisions a supplicant configuration and a <strong>certificate</strong> onto the device and registers it, so from then on it does EAP-TLS and never sees a portal again.</p>
+      <span class="step">Guest &mdash; CWA</span>
+      <ol>
+        <li>The endpoint has no supplicant, so MAB runs and the MAC is unknown.</li>
+        <li>The authorization rule for unknown MABs returns a <strong>redirect to the guest portal</strong> plus a dACL permitting DNS, DHCP and the portal.</li>
+        <li>The user hits the portal and either accepts an acceptable-use policy (hotspot), signs in with a sponsor-created account, or self-registers.</li>
+        <li>ISE sends a <strong>CoA</strong>; the authorization policy re-runs and matches the guest rule; the endpoint gets guest access &mdash; typically its own VLAN or SGT, restricted to the internet.</li>
+      </ol>
+      <p><strong>Guest types:</strong> hotspot (no credentials, AUP only), sponsored (an employee creates the account through the sponsor portal), and self-registered (the guest creates it, optionally pending sponsor approval). Time profiles govern how long the account lives.</p>
+      <span class="step">BYOD &mdash; onboarding</span>
+      <ol>
+        <li>The user connects and authenticates with their corporate credentials over PEAP or similar.</li>
+        <li>The authorization rule sees an unregistered device and redirects to the <strong>client provisioning</strong> portal.</li>
+        <li>The portal runs Native Supplicant Provisioning: it configures the device's wireless or wired profile and <strong>enrols a certificate</strong> through SCEP against the internal CA.</li>
+        <li>The device is added to a registered-devices endpoint identity group.</li>
+        <li>On reconnect it authenticates with <strong>EAP-TLS</strong> using that certificate, the registered-device rule matches, and it gets full access with no portal.</li>
+      </ol>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th></th><th>Single SSID BYOD</th><th>Dual SSID BYOD</th></tr></thead>
+          <tbody>
+            <tr><td>Onboarding happens on</td><td>The <strong>same</strong> secure SSID, using PEAP first</td><td>An open or guest SSID, then move to the secure one</td></tr>
+            <tr><td>User experience</td><td>Simpler &mdash; one network name</td><td>Two steps; users get lost in the handover</td></tr>
+            <tr><td>Requires</td><td>The secure SSID to accept both PEAP and EAP-TLS</td><td>A separate onboarding SSID</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tip"><b>The point to make about BYOD</b>Its value is that it converts an unmanaged device into something you can authenticate strongly and revoke individually &mdash; the certificate identifies <em>that device</em>, so you can revoke one phone without touching the user's password or anyone else's access. That is a much better answer than describing the portal clicks, and it leads naturally into the certificate-lifecycle question: what happens when the internal CA's certificate expires, and do you have a revocation story for lost devices.</div>
+      <div class="verdict"><b>What they're testing</b>Whether you know CoA drives both flows, and that BYOD ends in a certificate while guest does not. The revocation point is the senior observation.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="expert">
+    <summary data-n="Q12"><span class="qtext">How do SGTs get from ISE to an enforcement point, and what does pxGrid add?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <div class="body">
+      <p class="lead">ISE assigns a Scalable Group Tag in the authorization profile. The tag then has to reach the device that enforces it, by one of two paths: <strong>inline</strong>, carried in a metadata field in the frame on capable hardware, or <strong>out of band via SXP</strong>, which distributes IP-to-SGT bindings over TCP to devices that cannot carry the tag inline. Enforcement happens at the egress device against an SGACL matrix defined centrally in ISE. pxGrid is separate: it publishes session and tag context to <em>other products</em> so they can act on identity too.</p>
+      <span class="step">Detail</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Mechanism</th><th>Carries</th><th>Use when</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Inline tagging</strong></td><td>The SGT inside the frame, hop by hop</td><td>The whole path is TrustSec-capable. Most efficient; no binding tables to maintain</td></tr>
+            <tr><td><strong>SXP</strong></td><td>IP-to-SGT <em>bindings</em> over TCP between a speaker and a listener</td><td>Part of the path cannot tag inline. Scales by binding count, which becomes the limit</td></tr>
+            <tr><td><strong>pxGrid</strong></td><td>Session context to <strong>other products</strong> &mdash; not an enforcement path</td><td>Firewall, analytics, web proxy need identity</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Why the distinction matters:</strong> an SGACL can only be enforced if the egress device knows the <em>destination's</em> tag as well as the source's. Inline tagging gives it the source tag; the destination tag comes from the device's own local bindings or from SXP. Missing destination bindings is the classic reason an SGACL silently does not apply &mdash; the policy is correct, the tags are assigned, and the matrix is simply not evaluated because one side is unknown.</p>
+<pre><code>show cts environment-data
+show cts role-based sgt-map all
+show cts role-based permissions
+show cts role-based counters
+show cts interface brief
+show cts sxp connections brief
+show cts sxp sgt-map brief
+show cts credentials
+
+<span class="cmt">! on ISE: TrustSec → Policy → Matrix, and the SXP device list</span></code></pre>
+      <div class="tip"><b>The honest caveat about TrustSec</b>The technology works; the hard part is deciding what the groups <em>are</em> and keeping the matrix accurate as the organisation changes. A matrix with forty groups that nobody dares edit is worse than ten groups that are understood, because an enforcement policy people are afraid to change becomes an obstacle rather than a control. Start with a small number of coarse groups, enforce in monitor mode first so you can see what the matrix <em>would</em> have dropped, and only then turn on enforcement. Saying that shows you have operated segmentation rather than designed it on a slide.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"What does pxGrid actually enable?"</em> &mdash; a firewall writing rules against user groups rather than IP addresses, a web proxy applying per-identity policy, analytics attributing a flow to a user, and quarantine actions pushed back into ISE from another product. It is the integration bus, and it is certificate-authenticated with publish/subscribe topics.</li>
+        <li><em>"Where is the SGACL enforced?"</em> &mdash; at the <strong>egress</strong> point, which means the device closest to the destination. That is why the destination binding is required there and why enforcement feels inconsistent when bindings are incomplete.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you separate tag propagation from tag enforcement, and whether you know pxGrid is integration rather than enforcement. The missing-destination-binding failure is the expert detail.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="expert">
+    <summary data-n="Q13"><span class="qtext">A user cannot get on the network. Nothing appears in ISE Live Logs at all. Troubleshoot it.</span><span class="lvl lvl-expert">Expert</span></summary>
+    <div class="body">
+      <p class="lead">Nothing in Live Logs is a much more useful symptom than a failure in Live Logs, because it narrows the problem to everything <em>before</em> policy: the switch did not send a request, the request never arrived, or ISE discarded it before logging. So I would work outward from the port rather than inside ISE, and the three causes that account for most of these are an undefined network device, a shared-secret mismatch, and no RADIUS request being generated at all.</p>
+      <span class="step">The order I would work</span>
+      <ol>
+        <li><strong>Is the switch even trying?</strong> <code>show access-session interface X details</code> &mdash; if there is no session, or the method shows as not running, the port configuration is the problem and ISE is irrelevant.</li>
+        <li><strong>Is the switch sending RADIUS?</strong> <code>show aaa servers</code> for request and timeout counters, and <code>test aaa group</code> for a synthetic probe. If the counters never increment, nothing is leaving.</li>
+        <li><strong>Is it arriving?</strong> Run the <strong>TCP Dump</strong> tool on the PSN the switch is pointed at and filter on the switch's address. This single step splits the problem decisively: packets present means ISE is discarding them, packets absent means it is the path or the configuration.</li>
+        <li><strong>Is the NAD defined?</strong> If the switch's source IP is not configured as a network device in ISE &mdash; or the request is sourced from an interface whose address is not the one configured &mdash; ISE drops the request without a Live Log entry. Very common after someone adds a loopback or changes <code>ip radius source-interface</code>.</li>
+        <li><strong>Shared secret.</strong> A mismatch produces an invalid message authenticator, which again may not appear where you expect. Re-enter it on both sides rather than comparing by eye.</li>
+        <li><strong>Reachability and ports.</strong> UDP 1812 and 1813 for RADIUS, 1700 or 3799 for CoA inbound to the switch. A firewall permitting authentication but not CoA gives you the distinctive symptom of sessions that authorize and then never change state.</li>
+      </ol>
+<pre><code><span class="cmt">! switch side</span>
+show access-session interface Gi1/0/10 details
+show authentication sessions interface Gi1/0/10 details
+show aaa servers | section RADIUS|requests|timeouts
+show radius statistics
+test aaa group ISE-GROUP <span class="hl">user pass</span> new-code
+show running-config | include radius|source-interface|aaa
+debug radius authentication            <span class="cmt">! briefly, on a lab port</span>
+
+<span class="cmt">! ISE side: Operations → Troubleshoot → Diagnostic Tools</span>
+<span class="cmt">!   TCP Dump — filter on the NAD address</span>
+<span class="cmt">!   Endpoint Debug — per-MAC detailed trace</span>
+<span class="cmt">!   RADIUS Authentication Troubleshooting</span></code></pre>
+      <span class="step">And when there <em>is</em> a log entry</span>
+      <p>Open the <strong>RADIUS Authentication Detail</strong> report and read the steps. It lists every stage with its own latency, so you can see exactly where it failed and what was slow. Signatures worth recognising:</p>
+      <ul>
+        <li><strong>Subject not found in the identity store</strong> &mdash; the identity does not exist where you are looking; check the identity source sequence and the AD join point.</li>
+        <li><strong>TLS handshake failure during PEAP or EAP-TLS</strong> &mdash; almost always the client not trusting the ISE EAP certificate chain, or a client certificate issue. Not a password problem, so stop resetting passwords.</li>
+        <li><strong>Authorization rule shows Default or DenyAccess</strong> &mdash; authentication worked; your authorization conditions did not match.</li>
+        <li><strong>A single step with hundreds of milliseconds of latency</strong> &mdash; usually Active Directory. The report attributes it for you, which is why it beats guessing.</li>
+      </ul>
+      <div class="tip"><b>Say the diagnostic principle out loud</b>"No log entry means the problem is before policy; a log entry means the problem is in policy &mdash; so the first thing I establish is which of the two I have." That sentence is the answer to this question. Everything after it is just the checks, and it reassures an interviewer that you will not spend an hour in the policy editor for a shared-secret mismatch.</div>
+      <div class="verdict"><b>What they're testing</b>Whether the absence of a log tells you something. The undefined-NAD and CoA-port causes, and reading step latency out of the detail report, are what a senior answer contains.</div>
+    </div>
+  </details>
+</section>
+
+<!-- ============ 3 ============ -->
 <section class="block" id="firewall">
   <div class="sechead">
-    <h2><span class="num">02</span>Firewall architecture</h2>
+    <h2><span class="num">03</span>Firewall architecture</h2>
     <label class="reviewed"><input type="checkbox" data-sec="firewall"> Done</label>
   </div>
   <p class="lede">The highest-value answers here are that an existing connection bypasses the ACL, that ASP drop reasons name the cause directly, and why a stateful firewall pair cannot tolerate asymmetric routing.</p>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q7"><span class="qtext">What does "stateful" actually mean? What state is kept?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q14"><span class="qtext">What does "stateful" actually mean? What state is kept?</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">The firewall records each permitted connection in a table and uses that record to permit the return traffic implicitly. So you write policy for one direction only, and the firewall knows that a reply belongs to a conversation it already approved rather than matching it against a rule.</p>
       <span class="step">Detail</span>
@@ -525,7 +777,7 @@ show xlate local 10.1.1.10</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q8"><span class="qtext">Walk through the ASA order of operations for a new inbound packet.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q15"><span class="qtext">Walk through the ASA order of operations for a new inbound packet.</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Interface ingress, then the existing-connection lookup &mdash; which short-circuits almost everything if it hits. For a new connection: un-NAT the destination, check the ACL against real addresses, do a route lookup to pick the egress interface, apply NAT, run inspection, then egress.</p>
       <span class="step">The sequence</span>
@@ -561,7 +813,7 @@ show route 10.1.1.10</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q9"><span class="qtext">Traffic is being dropped by the firewall and the ACL looks correct. How do you find out why?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q16"><span class="qtext">Traffic is being dropped by the firewall and the ACL looks correct. How do you find out why?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Two tools. <code>show asp drop</code> lists every drop reason the accelerated security path has counted, and <code>capture type asp-drop</code> captures the actual packets with the reason attached. Between them you get the named cause rather than a guess, and the reason usually points straight at the configuration.</p>
       <span class="step">Detail</span>
@@ -607,7 +859,7 @@ show capture IN</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q10"><span class="qtext">What is the difference between ASA and FTD, architecturally? How does that change troubleshooting?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q17"><span class="qtext">What is the difference between ASA and FTD, architecturally? How does that change troubleshooting?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">ASA is the LINA data path &mdash; stateful layer 3 and 4 inspection with protocol inspection engines. FTD keeps LINA and adds Snort for layer 7: intrusion prevention, application visibility, URL filtering and file inspection. So a packet traverses two engines, and troubleshooting means knowing which one dropped it.</p>
       <span class="step">Detail</span>
@@ -652,7 +904,7 @@ show snort counters</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q11"><span class="qtext">Compare active/standby failover, active/active, and clustering.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q18"><span class="qtext">Compare active/standby failover, active/active, and clustering.</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Active/standby is one unit forwarding with a synchronised partner &mdash; simple and the default choice. Active/active splits contexts between two units so both forward, requiring multiple context mode. Clustering pools several units into one logical firewall with distributed flow ownership, which is how you scale throughput beyond a single appliance.</p>
       <span class="step">Detail</span>
@@ -706,7 +958,7 @@ show asp cluster counter</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q12"><span class="qtext">Why does asymmetric routing break a stateful firewall, and what are the options?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q19"><span class="qtext">Why does asymmetric routing break a stateful firewall, and what are the options?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">Because the firewall permits return traffic based on a connection record it created when it saw the outbound packet. If the forward path goes through one firewall and the return through another, the second has no record and drops the reply as a mid-stream packet &mdash; <code>tcp-not-syn</code>. The firewall is working exactly as designed; the topology is wrong for it.</p>
       <span class="step">Detail</span>
@@ -754,16 +1006,16 @@ show conn detail | include bypass</code></pre>
   </details>
 </section>
 
-<!-- ============ 3 ============ -->
+<!-- ============ 4 ============ -->
 <section class="block" id="nat">
   <div class="sechead">
-    <h2><span class="num">03</span>NAT</h2>
+    <h2><span class="num">04</span>NAT</h2>
     <label class="reviewed"><input type="checkbox" data-sec="nat"> Done</label>
   </div>
   <p class="lede">NAT questions are really ordering questions. The evaluation order on an ASA decides which rule a packet hits, and almost every NAT fault is a rule matching earlier than you expected.</p>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q13"><span class="qtext">List the NAT types and explain the order in which an ASA evaluates them.</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q20"><span class="qtext">List the NAT types and explain the order in which an ASA evaluates them.</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">Three sections, evaluated in order, first match wins within the applicable section. Section 1 is manual (twice) NAT in the order you wrote it. Section 2 is auto (object) NAT, ordered automatically by specificity rather than by configuration order. Section 3 is manual NAT configured with <code>after-auto</code>.</p>
       <span class="step">Detail</span>
@@ -817,7 +1069,7 @@ packet-tracer input inside tcp 10.1.1.50 12345 8.8.8.8 53 detailed</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q14"><span class="qtext">A site-to-site VPN comes up but no traffic passes. What is the usual NAT cause?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q21"><span class="qtext">A site-to-site VPN comes up but no traffic passes. What is the usual NAT cause?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">The VPN traffic is being PATted by the general internet rule before reaching the tunnel, so the source address no longer matches the crypto selectors and the far end has no idea what to do with it. The fix is an identity NAT exemption for the VPN-interesting traffic, placed <strong>above</strong> the PAT rule.</p>
       <span class="step">Detail</span>
@@ -859,7 +1111,7 @@ show crypto ikev2 sa detail</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q15"><span class="qtext">What is hairpinning, and why does an internal user fail to reach an internal server by its public address?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q22"><span class="qtext">What is hairpinning, and why does an internal user fail to reach an internal server by its public address?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Hairpinning is traffic entering and leaving the same firewall interface, which is disabled by default and needs <code>same-security-traffic permit intra-interface</code>. The internal-user-to-public-address case fails for a second reason: without source translation the server replies directly to the client's private address, so the client receives a reply from an address it never contacted and discards it.</p>
       <span class="step">Detail</span>
@@ -903,7 +1155,7 @@ show conn address 10.1.1.10</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q16"><span class="qtext">New connections are failing intermittently while existing ones work. NAT is involved. Diagnose it.</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q23"><span class="qtext">New connections are failing intermittently while existing ones work. NAT is involved. Diagnose it.</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">PAT port exhaustion. Each translation consumes a port on the mapped address, and with roughly 64,000 usable ports per address a busy site or a single misbehaving host can exhaust the pool. Existing connections keep their translations and work; every new connection fails until a translation is released, which produces exactly this intermittent pattern.</p>
       <span class="step">Detail</span>
@@ -956,16 +1208,16 @@ timeout conn 0:30:00</code></pre>
   </details>
 </section>
 
-<!-- ============ 4 ============ -->
+<!-- ============ 5 ============ -->
 <section class="block" id="acl">
   <div class="sechead">
-    <h2><span class="num">04</span>ACLs &amp; policy</h2>
+    <h2><span class="num">05</span>ACLs &amp; policy</h2>
     <label class="reviewed"><input type="checkbox" data-sec="acl"> Done</label>
   </div>
   <p class="lede">Policy questions, where the interviewer is often probing whether you can maintain a rule set rather than write one. The ACE expansion and rule-review answers are the ones that matter at scale.</p>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q17"><span class="qtext">How is an ACL processed, and what do object groups do to it?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q24"><span class="qtext">How is an ACL processed, and what do object groups do to it?</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">Top to bottom, first match wins, implicit deny at the end. Object groups make the configuration readable but they are <strong>expanded</strong> into individual entries when programmed, so one configured line with a group of ten sources and a group of five services becomes fifty entries &mdash; which is where ACL capacity problems come from.</p>
       <span class="step">Detail</span>
@@ -1001,7 +1253,7 @@ show object-group-search threshold</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q18"><span class="qtext">Compare a stateless ACL with <code>established</code>, a reflexive ACL, and a stateful firewall.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q25"><span class="qtext">Compare a stateless ACL with <code>established</code>, a reflexive ACL, and a stateful firewall.</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">A stateless ACL with <code>established</code> permits any TCP packet with ACK or RST set, which is trivially forged &mdash; it approximates return traffic without tracking anything. A reflexive ACL creates a temporary entry from observed outbound traffic, which is real state but only for simple cases. A stateful firewall maintains a full connection table with sequence validation and protocol awareness.</p>
       <span class="step">Detail</span>
@@ -1040,7 +1292,7 @@ show ip access-lists MIRROR            <span class="cmt">! the dynamic entries</
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q19"><span class="qtext">Explain zone-based firewall on IOS. How does it differ from interface ACLs?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q26"><span class="qtext">Explain zone-based firewall on IOS. How does it differ from interface ACLs?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">ZBFW groups interfaces into zones and applies stateful policy to <strong>zone pairs</strong>, which are directional. Traffic between zones is denied unless a zone pair with a policy permits it, and traffic within a zone is permitted by default. Interface ACLs are stateless and per interface; ZBFW is stateful and per zone relationship, which scales far better as interfaces are added.</p>
       <span class="step">Detail</span>
@@ -1086,7 +1338,7 @@ show policy-map type inspect zone-pair sessions</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q20"><span class="qtext">You inherit a firewall with 2,000 rules and no documentation. How do you clean it up?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q27"><span class="qtext">You inherit a firewall with 2,000 rules and no documentation. How do you clean it up?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Use the hit counters. Rules with zero hits over a long enough observation window are candidates for removal, shadowed rules can be identified structurally, and anything permitting <code>any any</code> is a finding regardless of its hit count. The work is methodical and the main risk is removing something that is used rarely rather than never.</p>
       <span class="step">The method</span>
@@ -1125,7 +1377,7 @@ show access-control-config
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q21"><span class="qtext">Compare address-based ACL policy with group-based (SGT) policy. What does each cost?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q28"><span class="qtext">Compare address-based ACL policy with group-based (SGT) policy. What does each cost?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">An address-based ACL encodes <em>location</em>: the rule works because the subnet tells you where something is. Group-based policy encodes <em>role</em>: the tag travels with the endpoint, so policy survives renumbering, mobility and re-addressing. The cost of group-based policy is the classification and propagation infrastructure, and that it is only as good as the classification.</p>
       <span class="step">Detail</span>
@@ -1154,16 +1406,208 @@ show access-control-config
   </details>
 </section>
 
-<!-- ============ 5 ============ -->
+<!-- ============ 6 ============ -->
+<section class="block" id="netsvc">
+  <div class="sechead">
+    <h2><span class="num">06</span>ARP, DHCP &amp; DNS security</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="netsvc"> Done</label>
+  </div>
+  <p class="lede">The three services every host depends on and none of them authenticates anything. The controls form a dependency chain &mdash; DHCP snooping builds the binding table that ARP inspection and source guard both consume &mdash; and knowing that chain is what the questions are really about.</p>
+
+  <details class="qa" data-lvl="core">
+    <summary data-n="Q29"><span class="qtext">Explain DHCP snooping. What is the trust boundary and what breaks if you get it wrong?</span><span class="lvl lvl-core">Core</span></summary>
+    <div class="body">
+      <p class="lead">DHCP snooping makes the switch inspect DHCP traffic and classify every port as trusted or untrusted. Server-sourced messages &mdash; offers and acks &mdash; are only accepted on trusted ports, which blocks rogue DHCP servers. As it watches the legitimate exchanges it builds a <strong>binding table</strong> of MAC, IP, VLAN and port, and that table is the foundation that ARP inspection and IP Source Guard both depend on.</p>
+      <span class="step">Detail</span>
+      <ul>
+        <li><strong>Untrusted</strong> is the default and is where access ports belong. Server messages arriving there are dropped.</li>
+        <li><strong>Trusted</strong> is for uplinks toward the real DHCP server or relay, and for inter-switch links.</li>
+        <li><strong>Rate limiting</strong> on untrusted ports caps DHCP messages per second, so a host cannot exhaust the pool. Exceeding it err-disables the port, which is the intended behaviour and also a support call.</li>
+        <li><strong>Option 82</strong> inserts the relay's circuit and remote ID. The switch adds it; whether the upstream accepts a packet that already has it is governed by whether option 82 insertion and trust are configured consistently.</li>
+      </ul>
+<pre><code>ip dhcp snooping
+ip dhcp snooping vlan 110,120
+no ip dhcp snooping information option        <span class="cmt">! if the upstream relay rejects option 82</span>
+!
+interface GigabitEthernet1/0/48               <span class="cmt">! uplink</span>
+ ip dhcp snooping trust
+!
+interface range GigabitEthernet1/0/1-47       <span class="cmt">! access</span>
+ ip dhcp snooping limit rate 15
+
+show ip dhcp snooping
+show ip dhcp snooping binding
+show ip dhcp snooping statistics
+show ip dhcp snooping database</code></pre>
+      <div class="gotcha"><b>Forgetting trust on the uplink breaks DHCP for the whole switch</b>The symptom is total and immediate: no host on that switch gets an address, because every offer arrives on an untrusted port and is discarded. It looks like a DHCP server or scope failure, and people go and look at the server. Two related traps: <strong>option 82 insertion</strong> by a switch that is not a relay can cause the upstream relay or server to discard the packet, which gives the same no-address symptom with the snooping configuration apparently correct; and the <strong>binding table does not survive a reload</strong> unless you write it to a database file, so after a reboot ARP inspection and source guard have nothing to validate against and start dropping legitimate hosts until they renew. Configure <code>ip dhcp snooping database</code> to a flash or remote file if you depend on those features.</div>
+      <div class="verdict"><b>What they're testing</b>Whether you know untrusted is the default and that the binding table is shared infrastructure for other features. The reload-loses-bindings point is the detail that shows you have run this.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q30"><span class="qtext">How does Dynamic ARP Inspection work, and what about hosts that do not use DHCP?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">DAI validates ARP packets on untrusted ports against the DHCP snooping binding table and drops any whose sender MAC and IP do not match a known binding &mdash; which stops ARP spoofing and the on-path attacks built on it. Hosts with static addresses have no binding, so they are dropped unless you give DAI another source of truth: an <strong>ARP ACL</strong> listing the permitted MAC-to-IP pairs.</p>
+      <span class="step">Detail</span>
+<pre><code>ip arp inspection vlan 110,120
+ip arp inspection validate src-mac dst-mac ip   <span class="cmt">! deeper header checks</span>
+!
+interface GigabitEthernet1/0/48
+ ip arp inspection trust                        <span class="cmt">! uplinks and inter-switch links</span>
+!
+<span class="cmt">! static hosts: an ARP ACL, bound to the VLAN</span>
+arp access-list <span class="hl">ARP-STATIC-HOSTS</span>
+ permit ip host 10.10.110.20 mac host 0050.56aa.bb01
+ permit ip host 10.10.110.21 mac host 0050.56aa.bb02
+!
+ip arp inspection filter ARP-STATIC-HOSTS vlan 110
+
+show ip arp inspection
+show ip arp inspection interfaces
+show ip arp inspection statistics vlan 110
+show ip arp inspection log</code></pre>
+      <p><strong>Trust placement is the same principle as DHCP snooping:</strong> access ports untrusted, inter-switch links trusted. An untrusted inter-switch link means the remote switch's legitimate hosts have no local binding and their ARP is dropped &mdash; which presents as hosts on one switch being unable to reach hosts on another, intermittently, as ARP entries age out.</p>
+      <div class="gotcha"><b>DAI without DHCP snooping does nothing useful</b>The binding table is the only thing DAI has to compare against, so enabling ARP inspection on a VLAN where snooping is not enabled drops everything that is not covered by an ARP ACL. The dependency runs one way and it is absolute: snooping builds the table, DAI and source guard consume it. State that chain when you answer, because it is the actual content of the question. The corollary is that anything which empties the binding table &mdash; a reload without a persistent database, clearing bindings, a snooping configuration change &mdash; takes DAI down with it.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"What does the <code>validate</code> option add?"</em> &mdash; checks beyond the binding: that the Ethernet source matches the ARP sender hardware address, that the destination matches for replies, and that the IP addresses are sane rather than multicast or all-zeroes. Cheap, and it catches malformed attack traffic the binding check alone would pass.</li>
+        <li><em>"Rate limiting?"</em> &mdash; DAI rate-limits ARP on untrusted ports and err-disables on violation, which protects the CPU doing the inspection. Pair it with error-disable recovery so a transient burst does not leave a port down until someone notices.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>The dependency on the snooping table, and whether you have a plan for static hosts. ARP ACLs are the specific answer to the static-host question.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q31"><span class="qtext">Build me the full anti-spoofing stack on an access port. What does each layer stop?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">Four layers, each stopping a different forgery. Port security limits how many MACs a port may present. DHCP snooping stops a rogue server and builds the binding table. DAI stops ARP spoofing against that table. IP Source Guard stops IP spoofing by filtering the source address of ordinary data traffic. Together they mean a host on an access port can only be itself.</p>
+      <span class="step">The stack</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Layer</th><th>Stops</th><th>Depends on</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Port security</strong></td><td>MAC flooding, a hub or unauthorised switch, MAC spoofing in quantity</td><td>Nothing</td></tr>
+            <tr><td><strong>DHCP snooping</strong></td><td>Rogue DHCP servers; <strong>builds the binding table</strong></td><td>Nothing</td></tr>
+            <tr><td><strong>DAI</strong></td><td>ARP spoofing, and therefore on-path interception</td><td><strong>The binding table</strong></td></tr>
+            <tr><td><strong>IP Source Guard</strong></td><td>Source IP spoofing in data traffic</td><td><strong>The binding table</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code>interface range GigabitEthernet1/0/1-47
+ switchport mode access
+ switchport port-security
+ switchport port-security maximum 3                <span class="cmt">! phone + PC + a little room</span>
+ switchport port-security violation restrict        <span class="cmt">! log, don't err-disable</span>
+ switchport port-security aging time 5
+ switchport port-security aging type inactivity
+ ip dhcp snooping limit rate 15
+ ip verify source                                   <span class="cmt">! IP Source Guard</span>
+ <span class="cmt">! ip verify source port-security  — also validate the MAC</span>
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+
+show port-security interface Gi1/0/1
+show ip verify source
+show ip verify source interface Gi1/0/1
+show errdisable recovery</code></pre>
+      <div class="tip"><b>Order of deployment, not just order of configuration</b>Deploy snooping first and let the binding table populate over a lease cycle, <em>then</em> enable DAI and source guard. Turning all four on at once in a live VLAN drops every host whose lease predates snooping, because there is no binding for them until they renew &mdash; and leases can be days long. The same reasoning applies to why you keep a persistent binding database: a reload is functionally the same event as first enabling the feature. Describing that sequencing is what makes the answer credible, because it is exactly the mistake that produces a change-window rollback.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"Which violation mode for port security?"</em> &mdash; <code>restrict</code> in most access networks: it drops the offending traffic and logs, without taking the port down and generating a ticket for every mis-plugged laptop. <code>shutdown</code> where the policy genuinely demands it, and then pair it with error-disable recovery. <code>protect</code> drops silently, which makes diagnosis harder and is rarely what you want.</li>
+        <li><em>"Does this replace 802.1X?"</em> &mdash; no. These controls constrain what an attached host can <em>forge</em>; 802.1X decides whether it should be attached at all. They are complementary, and the strongest access design uses both: identity at the port, and these four layers preventing the authenticated host from impersonating anything else.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you can assemble the stack and name the dependency order. The "deploy snooping first, wait a lease cycle" sequencing is what an interviewer remembers.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q32"><span class="qtext">DNS: how is it an attack surface, how is it a control, and what does encrypted DNS do to you?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">DNS is an attack surface because it is almost always permitted outbound, which makes it an excellent exfiltration and command-and-control channel. It is a control because almost every attack starts with a lookup, so resolving through a filtering service blocks a lot of it before any connection is attempted. And encrypted DNS &mdash; DNS over HTTPS or TLS, chosen by the <em>application</em> rather than the operating system &mdash; takes that visibility away by routing lookups past your resolver entirely.</p>
+      <span class="step">As an attack surface</span>
+      <ul>
+        <li><strong>Tunnelling and exfiltration.</strong> Data encoded into query labels against an attacker-controlled zone. The signatures are long and high-entropy labels, an unusual record-type mix, high query volume to one domain, and a client resolving far more than its peers.</li>
+        <li><strong>Command and control</strong> over DNS, including domain-generation algorithms &mdash; many lookups to algorithmically-named domains, most of which fail. A high NXDOMAIN rate from one host is a strong indicator.</li>
+        <li><strong>Cache poisoning and spoofing</strong>, which DNSSEC validation addresses for zones that sign.</li>
+        <li><strong>Internal zone disclosure</strong> from a resolver that answers or transfers to the world &mdash; split-horizon DNS and restricted transfers are the fix.</li>
+      </ul>
+      <span class="step">As a control</span>
+      <ul>
+        <li><strong>Filtering resolvers</strong> block known-malicious and newly-registered domains at lookup time, before a TCP connection exists. Cheap, broad, and it works on devices you cannot install anything on.</li>
+        <li><strong>Sinkholing</strong> points a malicious domain at an address you control, so you both block the connection and get a list of infected hosts.</li>
+        <li><strong>Query logging</strong> is among the highest-value telemetry per byte you can collect, because it attributes intent to a host even when the traffic itself is encrypted.</li>
+      </ul>
+      <div class="gotcha"><b>Encrypted DNS is the part people have not thought about</b>When a browser or application does DNS over HTTPS to a public resolver, your internal resolver never sees the query: filtering is bypassed, logging is blind, and split-horizon resolution of internal names can break in confusing ways. It is not an attack &mdash; it is a default in widely-deployed software. The practical responses are to set policy that steers applications back to the internal resolver where they support it, to block or redirect known public resolver endpoints at the egress firewall, to use a canary domain where the mechanism honours one, and to accept that the control shifts toward endpoint agents and TLS-layer inspection for anything you cannot steer. Naming this unprompted marks you as current, because it has changed what DNS-layer security can promise.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"How would you detect tunnelling with what you already have?"</em> &mdash; resolver query logs, looking for query length and entropy, record-type distribution, queries per client per domain, and NXDOMAIN rate. You do not need a dedicated product to find the obvious cases; you need the logs and a baseline.</li>
+        <li><em>"Should every host use the internal resolver?"</em> &mdash; yes, and enforce it rather than configure it: permit outbound UDP and TCP 53 only from the resolvers themselves, and redirect everything else. A host that can reach any resolver on the internet has opted out of your DNS controls whether it meant to or not.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you see DNS as both risk and control, and whether you are current on encrypted DNS. The "detect it from the logs you already have" answer shows practical judgement over product dependence.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="expert">
+    <summary data-n="Q33"><span class="qtext">You have the full IPv4 anti-spoofing stack deployed. An attacker on the same segment uses IPv6. What happens?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <div class="body">
+      <p class="lead">Nothing stops them. DHCP snooping, DAI and IP Source Guard are IPv4 features; they do not inspect ICMPv6 or DHCPv6. On a dual-stack segment &mdash; and every modern operating system is dual-stack whether you planned for it or not &mdash; an attacker sends a rogue Router Advertisement, becomes the default gateway for IPv6, and intercepts traffic for anything that prefers IPv6, which hosts generally do. The IPv4 controls are intact and irrelevant.</p>
+      <span class="step">The IPv6 first-hop security equivalents</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>IPv4 control</th><th>IPv6 equivalent</th><th>Stops</th></tr></thead>
+          <tbody>
+            <tr><td>&mdash;</td><td><strong>RA Guard</strong></td><td>Rogue Router Advertisements &mdash; the headline attack</td></tr>
+            <tr><td>DHCP snooping</td><td><strong>DHCPv6 Guard</strong></td><td>Rogue DHCPv6 servers</td></tr>
+            <tr><td>DAI</td><td><strong>ND Inspection</strong> / IPv6 snooping</td><td>Neighbor Discovery spoofing; builds the binding table</td></tr>
+            <tr><td>IP Source Guard</td><td><strong>IPv6 Source Guard</strong></td><td>Source address spoofing</td></tr>
+            <tr><td>&mdash;</td><td><strong>Destination Guard</strong></td><td>Neighbor-cache exhaustion from scanning a huge subnet</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code><span class="cmt">! policies, then attach them — the IBNS-style model</span>
+ipv6 nd raguard policy <span class="hl">RA-HOST</span>
+ device-role host
+!
+ipv6 dhcp guard policy DHCPV6-HOST
+ device-role client
+!
+ipv6 snooping policy ND-ACCESS
+ security-level guard
+ device-role node
+!
+vlan configuration 110,120
+ ipv6 nd raguard attach-policy RA-HOST
+ ipv6 dhcp guard attach-policy DHCPV6-HOST
+ ipv6 snooping attach-policy ND-ACCESS
+!
+interface GigabitEthernet1/0/48                   <span class="cmt">! the real router's uplink</span>
+ ipv6 nd raguard attach-policy RA-ROUTER          <span class="cmt">! device-role router</span>
+
+show ipv6 nd raguard policy RA-HOST
+show ipv6 snooping policies
+show ipv6 neighbors binding
+show ipv6 destination-guard policy</code></pre>
+      <div class="gotcha"><b>The real failure is never deciding about IPv6 at all</b>Segments where IPv6 was never "deployed" are the dangerous ones, because nobody configured first-hop security for a protocol they believe is not in use &mdash; while every host on the segment has link-local addresses, is listening for Router Advertisements, and will prefer IPv6 the moment something advertises a prefix. There are only two defensible positions: deploy IPv6 properly <em>with</em> the first-hop security controls, or suppress it at the access layer deliberately. "We do not use IPv6" is not one of them, and an interviewer asking this question is usually checking whether you understand that.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"How would you suppress it if you are not ready?"</em> &mdash; RA Guard with a host policy on access ports blocks the rogue-router attack even where you run no IPv6, and it is the single highest-value control. Beyond that you can filter IPv6 at the access port, with the honest caveat that link-local communication between hosts on the same segment is hard to eliminate entirely.</li>
+        <li><em>"How would you know whether IPv6 is already in use?"</em> &mdash; <code>show ipv6 neighbors</code> on the SVIs, interface counters for IPv6 traffic, and NetFlow records with IPv6 addresses. People are routinely surprised by the answer, which is the point of looking.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you recognise that a complete IPv4 security posture can be bypassed by a protocol nobody configured. RA Guard as the one control to deploy first is the answer that lands.</div>
+    </div>
+  </details>
+</section>
+
+<!-- ============ 7 ============ -->
 <section class="block" id="ipsec">
   <div class="sechead">
-    <h2><span class="num">05</span>IPsec &amp; IKEv2</h2>
+    <h2><span class="num">07</span>IPsec &amp; IKEv2</h2>
     <label class="reviewed"><input type="checkbox" data-sec="ipsec"> Done</label>
   </div>
   <p class="lede">The reliable discriminators are the IKEv2 four-message exchange, why AH is incompatible with NAT, and the difference between a policy-based crypto map and a route-based VTI. The troubleshooting question is where escalation candidates are separated.</p>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q22"><span class="qtext">Compare IKEv1 and IKEv2. Why would you not deploy IKEv1 today?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q34"><span class="qtext">Compare IKEv1 and IKEv2. Why would you not deploy IKEv1 today?</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">IKEv2 establishes an IKE SA and the first child SA in <strong>four messages</strong> where IKEv1 main mode plus quick mode takes nine. It also has dead peer detection, NAT traversal, anti-DoS cookies and EAP authentication built into the protocol rather than bolted on, and it supports multiple traffic selectors per child SA.</p>
       <span class="step">Detail</span>
@@ -1205,7 +1649,7 @@ show crypto session detail</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q23"><span class="qtext">Walk through the IKEv2 exchange message by message.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q35"><span class="qtext">Walk through the IKEv2 exchange message by message.</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Two IKE_SA_INIT messages negotiate the cipher suite and perform a Diffie-Hellman exchange, after which both sides can derive keys &mdash; so everything from that point is encrypted. Two IKE_AUTH messages then carry identities, authentication, and the proposal and traffic selectors for the first child SA.</p>
       <span class="step">The exchange</span>
@@ -1247,7 +1691,7 @@ debug crypto condition peer ipv4 203.0.113.9</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q24"><span class="qtext">What is perfect forward secrecy, and what do the SA lifetimes actually control?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q36"><span class="qtext">What is perfect forward secrecy, and what do the SA lifetimes actually control?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">PFS means each child SA derives its keys from a <strong>fresh Diffie-Hellman exchange</strong> rather than from the IKE SA's existing key material. So compromise of one key does not allow decryption of past or future sessions &mdash; which also means that recorded traffic cannot be decrypted later if the long-term key is eventually compromised.</p>
       <span class="step">Detail</span>
@@ -1291,7 +1735,7 @@ show crypto ikev2 sa detail | include Life</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q25"><span class="qtext">Explain NAT-T. Why is AH incompatible with NAT, and what MTU problems does IPsec cause?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q37"><span class="qtext">Explain NAT-T. Why is AH incompatible with NAT, and what MTU problems does IPsec cause?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">ESP has no port numbers, so a NAT device cannot multiplex several ESP flows behind one address. NAT-T detects a NAT in the path and encapsulates ESP in UDP 4500, giving the NAT something to translate. AH cannot be made to work at all, because its integrity check covers the outer IP header &mdash; which NAT by definition modifies.</p>
       <span class="step">Detail</span>
@@ -1338,7 +1782,7 @@ show crypto ikev2 sa detail | include NAT</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q26"><span class="qtext">Compare a crypto map with a VTI. Which would you use?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q38"><span class="qtext">Compare a crypto map with a VTI. Which would you use?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">A crypto map is policy-based: an ACL defines interesting traffic, and the crypto map is applied to a physical interface. A VTI is route-based: the tunnel is a real interface, and the routing table decides what is encrypted. VTIs are the modern choice because routing, QoS, NetFlow and interface counters all work normally on them.</p>
       <span class="step">Detail</span>
@@ -1397,7 +1841,7 @@ show ip route 10.2.2.0</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q27"><span class="qtext">A site-to-site tunnel will not come up. Walk me through your diagnosis.</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q39"><span class="qtext">A site-to-site tunnel will not come up. Walk me through your diagnosis.</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">Establish how far it gets first, because that single fact eliminates most of the possibilities. No IKE SA at all means reachability, blocked ports or a proposal mismatch. An IKE SA that fails at IKE_AUTH means authentication. An IKE SA up with no child SA means traffic selectors. A child SA up with no traffic means NAT, routing or ACLs.</p>
       <span class="step">The decision tree</span>
@@ -1450,16 +1894,16 @@ show route 192.168.5.0</code></pre>
   </details>
 </section>
 
-<!-- ============ 6 ============ -->
+<!-- ============ 8 ============ -->
 <section class="block" id="vpn">
   <div class="sechead">
-    <h2><span class="num">06</span>VPN topologies</h2>
+    <h2><span class="num">08</span>VPN topologies</h2>
     <label class="reviewed"><input type="checkbox" data-sec="vpn"> Done</label>
   </div>
   <p class="lede">Scale is the theme. Every topology here exists because a full mesh of point-to-point tunnels does not scale, and each solves it differently &mdash; on-demand tunnels, a group key, or a controller distributing keys.</p>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q28"><span class="qtext">Explain DMVPN and its three phases. What does NHRP do?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q40"><span class="qtext">Explain DMVPN and its three phases. What does NHRP do?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">DMVPN combines multipoint GRE, NHRP and IPsec so that spokes register with a hub and can then build direct tunnels to each other on demand &mdash; without the hub having to be configured with every spoke. NHRP is the resolution protocol: it maps a tunnel address to the real public address behind it, which is what lets a spoke find a peer.</p>
       <span class="step">Detail</span>
@@ -1509,7 +1953,7 @@ show crypto ipsec sa | include peer</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q29"><span class="qtext">What is FlexVPN and how does it compare with DMVPN?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q41"><span class="qtext">What is FlexVPN and how does it compare with DMVPN?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">FlexVPN is a unified IKEv2-based framework that uses virtual tunnel interfaces for every topology &mdash; hub-and-spoke, spoke-to-spoke and remote access &mdash; with one configuration model. Its main advantage over DMVPN is deep AAA integration: per-peer policy, addressing and routing can be pushed from RADIUS during IKEv2 negotiation.</p>
       <span class="step">Detail</span>
@@ -1555,7 +1999,7 @@ show crypto ikev2 authorization policy</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q30"><span class="qtext">What is GETVPN and when would you use it?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q42"><span class="qtext">What is GETVPN and when would you use it?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">GETVPN encrypts traffic without building tunnels. A key server distributes a shared group key to all members, and each member encrypts using IPsec while <strong>preserving the original IP header</strong> &mdash; so routing, multicast and any-to-any reachability work exactly as they did before encryption. It is for encrypting a private WAN, typically MPLS, not the internet.</p>
       <span class="step">Detail</span>
@@ -1602,7 +2046,7 @@ show crypto gdoi ks coop</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q31"><span class="qtext">Design a remote-access VPN. Split tunnel or tunnel everything?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q43"><span class="qtext">Design a remote-access VPN. Split tunnel or tunnel everything?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">It is a trade between inspection and capacity. Tunnelling everything means all traffic is inspected and logged, at the cost of hauling internet traffic through the corporate edge. Split tunnelling sends only corporate traffic down the tunnel, which is far more efficient and means the endpoint's internet traffic is uninspected &mdash; so the endpoint's own controls have to be good enough.</p>
       <span class="step">Detail</span>
@@ -1649,7 +2093,7 @@ show running-config group-policy CORP-POLICY</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q32"><span class="qtext">How does SD-WAN handle encryption and trust differently from traditional IPsec?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q44"><span class="qtext">How does SD-WAN handle encryption and trust differently from traditional IPsec?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">There is no IKE between edge devices. Devices authenticate to the controllers with certificates over DTLS, and the controller distributes <strong>pairwise data-plane keys</strong> through the overlay control protocol. That removes the n-squared IKE problem entirely &mdash; adding a site means one control connection, not a tunnel negotiation with every other site.</p>
       <span class="step">Detail</span>
@@ -1685,16 +2129,16 @@ show sdwan tunnel statistics</code></pre>
   </details>
 </section>
 
-<!-- ============ 7 ============ -->
+<!-- ============ 9 ============ -->
 <section class="block" id="pki">
   <div class="sechead">
-    <h2><span class="num">07</span>PKI &amp; certificates</h2>
+    <h2><span class="num">09</span>PKI &amp; certificates</h2>
     <label class="reviewed"><input type="checkbox" data-sec="pki"> Done</label>
   </div>
   <p class="lede">Certificates underpin 802.1X, VPN, TLS inspection and controller trust, so they come up in every security interview. The discriminating answers are the full validation chain, the soft-fail problem with revocation, and what has to be right on both ends for EAP-TLS.</p>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q33"><span class="qtext">What does a client actually check when validating a certificate?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q45"><span class="qtext">What does a client actually check when validating a certificate?</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">Six things: the signature chain up to a trusted root, the validity dates, revocation status, that the name matches what was expected, that the key usage permits the purpose, and that the chain's constraints are respected. Any one failing invalidates the certificate, and in practice the name and the chain are what fail most often.</p>
       <span class="step">The checks</span>
@@ -1733,7 +2177,7 @@ openssl s_client -connect host:443 -showcerts</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q34"><span class="qtext">Compare CRL and OCSP. What is the soft-fail problem?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q46"><span class="qtext">Compare CRL and OCSP. What is the soft-fail problem?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">A CRL is a signed list of revoked serial numbers that clients download periodically &mdash; simple, cacheable, and stale between updates. OCSP queries the status of one certificate on demand, which is fresher but depends on a responder being reachable. The soft-fail problem is that when the check cannot be completed, most implementations accept the certificate anyway &mdash; so revocation can be defeated simply by making the responder unreachable.</p>
       <span class="step">Detail</span>
@@ -1775,7 +2219,7 @@ debug crypto pki transactions</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q35"><span class="qtext">TLS authentication is failing with a certificate error. Walk through the diagnosis.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q47"><span class="qtext">TLS authentication is failing with a certificate error. Walk through the diagnosis.</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Check in the order of likelihood: the clock, then the chain, then the name in the SAN, then the EKU, then trust, then revocation. Each has a distinct symptom and the first three account for most cases. The fastest single test is to inspect the certificate the server actually presents, rather than the one you believe is installed.</p>
       <span class="step">The checklist</span>
@@ -1818,7 +2262,7 @@ show logging | include PKI|CERT</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q36"><span class="qtext">For EAP-TLS, what has to be right on the server, the client and the supplicant configuration?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q48"><span class="qtext">For EAP-TLS, what has to be right on the server, the client and the supplicant configuration?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Three sets of requirements. The server needs a certificate with Server Authentication EKU and the expected name in its SAN, signed by a CA the clients trust, with a complete chain. The client needs a certificate with Client Authentication EKU and an identity the policy can match, signed by a CA the server trusts. And the supplicant must be configured to validate the server certificate against a specific CA and server name &mdash; otherwise mutual authentication is only mutual in one direction.</p>
       <span class="step">Detail</span>
@@ -1853,7 +2297,7 @@ show logging | include PKI|CERT</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q37"><span class="qtext">What algorithms, key sizes and TLS versions would you require today, and what would you remove?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q49"><span class="qtext">What algorithms, key sizes and TLS versions would you require today, and what would you remove?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Require TLS 1.2 as a minimum and prefer 1.3; AEAD ciphers with ECDHE key exchange for forward secrecy; RSA 2048 as a floor with ECDSA P-256 or P-384 preferred; SHA-256 or better for signatures. Remove SSL 3.0 and TLS 1.0 and 1.1, RC4, 3DES, export ciphers, static RSA key exchange, and SHA-1 signatures.</p>
       <span class="step">Detail</span>
@@ -1898,16 +2342,16 @@ ssl cipher tlsv1.2 custom "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SH
   </details>
 </section>
 
-<!-- ============ 8 ============ -->
+<!-- ============ 10 ============ -->
 <section class="block" id="segment">
   <div class="sechead">
-    <h2><span class="num">08</span>Segmentation</h2>
+    <h2><span class="num">10</span>Segmentation</h2>
     <label class="reviewed"><input type="checkbox" data-sec="segment"> Done</label>
   </div>
   <p class="lede">The theme is that segmentation is a discovery problem before it is a configuration problem. The strongest answers here talk about flow data and monitor mode before they talk about SGACLs.</p>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q38"><span class="qtext">Explain TrustSec. What are the three stages?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q50"><span class="qtext">Explain TrustSec. What are the three stages?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">Classification assigns a scalable group tag to traffic. Propagation carries that tag to wherever policy will be enforced. Enforcement applies a policy based on the source and destination tags. Every TrustSec problem is a failure in one of those three, and identifying which one is the first troubleshooting step.</p>
       <span class="step">Detail</span>
@@ -1946,7 +2390,7 @@ show cts pacs</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q39"><span class="qtext">Compare inline tagging with SXP. When do you need each?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q51"><span class="qtext">Compare inline tagging with SXP. When do you need each?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Inline tagging carries the SGT inside the frame, so the tag travels with the traffic and needs no additional state &mdash; but every device in the path must support it. SXP carries IP-to-SGT <em>bindings</em> out of band over TCP, so it works across any path, at the cost of maintaining a binding table everywhere policy is enforced.</p>
       <span class="step">Detail</span>
@@ -1990,7 +2434,7 @@ show cts role-based sgt-map all count</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q40"><span class="qtext">What is the difference between macro and micro segmentation? When do you use a VRF rather than a group tag?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q52"><span class="qtext">What is the difference between macro and micro segmentation? When do you use a VRF rather than a group tag?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Macro segmentation separates routing domains, so there is no path between them at all unless you deliberately build one &mdash; VRFs, or virtual networks in a fabric. Micro segmentation controls traffic <em>within</em> a routing domain by group, so hosts that can reach each other at layer 3 are permitted or denied by policy. You use a VRF when the separation should be absolute, and a tag when it should be policy.</p>
       <span class="step">Detail</span>
@@ -2037,7 +2481,7 @@ show ip route vrf IOT</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q41"><span class="qtext">What does zero trust actually mean for a network team?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q53"><span class="qtext">What does zero trust actually mean for a network team?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">That network location stops conferring trust. Being on the corporate LAN grants nothing by itself; every session is authenticated and authorised on its own merits, continuously, with least privilege. For a network team that translates into four concrete things: identity at every port, segmentation by identity rather than topology, encryption of traffic that used to be trusted because it was internal, and telemetry sufficient to verify all of it.</p>
       <span class="step">Detail</span>
@@ -2066,7 +2510,7 @@ show ip route vrf IOT</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q42"><span class="qtext">You have been asked to segment a flat network. How do you do it without causing outages?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q54"><span class="qtext">You have been asked to segment a flat network. How do you do it without causing outages?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">Discovery first, enforcement last. You cannot write policy for traffic you have not observed, so the first phase is classification plus flow collection with no enforcement at all. Then policy in monitor mode, so you can see what <em>would</em> have been denied. Only then enforce, starting at the boundaries where the dependency map is simplest.</p>
       <span class="step">The phases</span>
@@ -2111,16 +2555,16 @@ show flow exporter statistics</code></pre>
   </details>
 </section>
 
-<!-- ============ 9 ============ -->
+<!-- ============ 11 ============ -->
 <section class="block" id="harden">
   <div class="sechead">
-    <h2><span class="num">09</span>Infrastructure hardening</h2>
+    <h2><span class="num">11</span>Infrastructure hardening</h2>
     <label class="reviewed"><input type="checkbox" data-sec="harden"> Done</label>
   </div>
   <p class="lede">Protecting the devices themselves. The high-value answers are a CoPP policy you would actually deploy, TTL security for eBGP, and knowing that RTBH sacrifices the victim to save the network.</p>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q43"><span class="qtext">What is CoPP and how would you design a policy?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q55"><span class="qtext">What is CoPP and how would you design a policy?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">Control Plane Policing classifies traffic destined to the device's own CPU and polices each class, so a flood of one kind of traffic cannot starve the routing protocols or lock you out of management. The design principle is to permit what the device genuinely needs at generous rates, police everything else hard, and never deploy a tight default class without measuring first.</p>
       <span class="step">Detail</span>
@@ -2179,7 +2623,7 @@ show processes cpu sorted | exclude 0.00</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q44"><span class="qtext">How do you secure a routing protocol? Cover authentication and TTL security.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q56"><span class="qtext">How do you secure a routing protocol? Cover authentication and TTL security.</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Authentication stops an unauthorised device forming an adjacency or injecting routes &mdash; key chains with SHA for the IGPs, and TCP-AO or MD5 for BGP. TTL security is the complementary control for eBGP: requiring an arriving TTL of 255 means only a directly connected peer can reach the session at all, so an off-link attacker cannot even open a TCP connection to it.</p>
       <span class="step">Detail</span>
@@ -2230,7 +2674,7 @@ show ip bgp neighbors 203.0.113.1 | include password|ttl|Prefix</code></pre>
   </details>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q45"><span class="qtext">How would you harden the management plane of a network device?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q57"><span class="qtext">How would you harden the management plane of a network device?</span><span class="lvl lvl-core">Core</span></summary>
       <div class="body">
       <p class="lead">Centralised authentication with a tested local fallback, SSH only with modern algorithms, SNMPv3 with authentication and privacy, access restricted to management source ranges, out-of-band where possible, and logging with authenticated NTP so the timestamps are trustworthy.</p>
       <span class="step">The configuration</span>
@@ -2288,7 +2732,7 @@ archive
   </details>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q46"><span class="qtext">What services and features would you disable on an internet-facing router?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q58"><span class="qtext">What services and features would you disable on an internet-facing router?</span><span class="lvl lvl-core">Core</span></summary>
       <div class="body">
       <p class="lead">Anything that responds to unsolicited traffic, discloses information, or can be used to amplify an attack. On an edge interface specifically: directed broadcasts, proxy ARP, ICMP redirects, source routing, unreachable generation under flood, and any discovery protocol facing the outside.</p>
       <span class="step">Detail</span>
@@ -2338,7 +2782,7 @@ show access-list INFRASTRUCTURE-ACL</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q47"><span class="qtext">What is the most likely way your BGP announcements get disrupted, and how do you reduce the risk?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q59"><span class="qtext">What is the most likely way your BGP announcements get disrupted, and how do you reduce the risk?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">A misconfiguration or a route leak, not an attack. Somebody announces a prefix they do not own &mdash; usually by accident, often by redistributing or aggregating carelessly &mdash; or re-announces a transit provider's routes to another provider. Both are far more common than deliberate hijacking, and the controls are the same: filter what you accept, filter what you announce, and publish authorisations for your own space.</p>
       <span class="step">Detail</span>
@@ -2385,7 +2829,7 @@ show ip bgp neighbors 203.0.113.1 advertised-routes | count</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q48"><span class="qtext">You are under a volumetric DDoS attack. What can you actually do?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q60"><span class="qtext">You are under a volumetric DDoS attack. What can you actually do?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">If the attack exceeds your circuit capacity, nothing you do on your own equipment helps &mdash; the congestion is upstream of you. The options in order of usefulness are: get your provider to drop it, divert to a scrubbing service, or black-hole the target. Black-holing works and it sacrifices the victim to save everything else, which is a decision to have pre-authorised rather than debate during an attack.</p>
       <span class="step">Detail</span>
@@ -2440,16 +2884,16 @@ show ip cef 192.0.2.1</code></pre>
   </details>
 </section>
 
-<!-- ============ 10 ============ -->
+<!-- ============ 12 ============ -->
 <section class="block" id="monitor">
   <div class="sechead">
-    <h2><span class="num">10</span>Monitoring &amp; detection</h2>
+    <h2><span class="num">12</span>Monitoring &amp; detection</h2>
     <label class="reviewed"><input type="checkbox" data-sec="monitor"> Done</label>
   </div>
   <p class="lede">What the network can tell you, and what it cannot. The strongest answers are honest about the limits &mdash; particularly that flow data answers questions about the past, and that encryption has moved detection to metadata.</p>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q49"><span class="qtext">What does NetFlow give you for security, and what are its limits?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q61"><span class="qtext">What does NetFlow give you for security, and what are its limits?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">It gives you a record of every conversation &mdash; who talked to whom, when, for how long, how much data, in which direction &mdash; without the payload. That makes it the most valuable security telemetry the network produces, because it lets you answer questions about activity that happened before anyone was looking. The limits are no content, and that sampling can hide exactly the low-volume activity that matters.</p>
       <span class="step">Detail</span>
@@ -2511,7 +2955,7 @@ show flow exporter statistics</code></pre>
   </details>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q50"><span class="qtext">What would you log from network devices, and how would you get it somewhere useful?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q62"><span class="qtext">What would you log from network devices, and how would you get it somewhere useful?</span><span class="lvl lvl-core">Core</span></summary>
       <div class="body">
       <p class="lead">Authentication events, configuration changes, interface and adjacency state, and security feature events &mdash; sent to a central collector over a reliable transport, with authenticated time so the timestamps can be correlated. The things people forget are configuration change logging and time synchronisation, and without the second the first is much less useful.</p>
       <span class="step">What to log</span>
@@ -2565,7 +3009,7 @@ show ntp associations</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q51"><span class="qtext">How would you detect lateral movement using network telemetry?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q63"><span class="qtext">How would you detect lateral movement using network telemetry?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">Look for changes in which hosts talk to which. Lateral movement means a host starting conversations it has never had before &mdash; new peers, administrative protocols to many destinations, authentication attempts spread across hosts. The signal is almost always a <em>change in the peer set</em> rather than any individual connection being suspicious, which is why a baseline is the prerequisite.</p>
       <span class="step">The signals</span>
@@ -2595,7 +3039,7 @@ show ntp associations</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q52"><span class="qtext">Most traffic is encrypted now. What can the network still see, and should you inspect TLS?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q64"><span class="qtext">Most traffic is encrypted now. What can the network still see, and should you inspect TLS?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">Rather more than people assume: the full five-tuple, volumes, timing, flow duration, packet-size sequences, and the TLS handshake metadata &mdash; version, offered cipher suites, the server name indication, and the certificate presented. Client implementations can be fingerprinted from their handshake, which identifies the software without seeing content. TLS inspection is sometimes justified and brings serious costs, so it should be selective rather than universal.</p>
       <span class="step">What remains visible</span>
@@ -2636,16 +3080,16 @@ show ntp associations</code></pre>
   </details>
 </section>
 
-<!-- ============ 11 ============ -->
+<!-- ============ 13 ============ -->
 <section class="block" id="ir">
   <div class="sechead">
-    <h2><span class="num">11</span>Incident response</h2>
+    <h2><span class="num">13</span>Incident response</h2>
     <label class="reviewed"><input type="checkbox" data-sec="ir"> Done</label>
   </div>
   <p class="lede">Four questions about behaviour under pressure. For a security escalation role these often carry more weight than any technical answer, because the interviewer is deciding whether to hand you a live incident.</p>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q53"><span class="qtext">You are told a host is compromised and asked to contain it. What are your options?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q65"><span class="qtext">You are told a host is compromised and asked to contain it. What are your options?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">Ranked by how surgical they are: a CoA that moves the session into a quarantine authorisation is fastest and most precise; a downloadable ACL lets you keep investigation access; a firewall block works if the traffic crosses a boundary; shutting the port is immediate and blunt. Before choosing, ask two questions &mdash; is this the only affected host, and does the response team want it contained or observed.</p>
       <span class="step">The options</span>
@@ -2692,7 +3136,7 @@ interface GigabitEthernet1/0/5
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q54"><span class="qtext">The business wants service restored immediately. The security team wants evidence preserved. How do you handle that?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q66"><span class="qtext">The business wants service restored immediately. The security team wants evidence preserved. How do you handle that?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">It is usually a false choice, because the network evidence that matters can be preserved in a couple of minutes. Export the flow records, pull the logs, capture the volatile device state, and then restore. Where it is genuinely a conflict, the decision belongs to the business with security advising &mdash; and your job is to make the cost of each option clear rather than to decide.</p>
       <span class="step">What to capture before you change anything</span>
@@ -2738,7 +3182,7 @@ monitor capture IR start
   </details>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q55"><span class="qtext">How do you approach a security escalation differently from a network fault?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q67"><span class="qtext">How do you approach a security escalation differently from a network fault?</span><span class="lvl lvl-core">Core</span></summary>
       <div class="body">
       <p class="lead">Three differences. There may be an adversary reacting to what you do, so your actions have consequences beyond the technical. The evidence is perishable and may be needed later, so collection comes before remediation. And the communication path is different &mdash; more people need to know, some things must not be written down speculatively, and there are decisions that are not yours.</p>
       <span class="step">Detail</span>
@@ -2770,7 +3214,7 @@ monitor capture IR start
   </details>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q56"><span class="qtext">"Tell me about a security incident you were involved in." How should you answer?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q68"><span class="qtext">"Tell me about a security incident you were involved in." How should you answer?</span><span class="lvl lvl-core">Core</span></summary>
       <div class="body">
       <p class="lead">Pick one where your contribution was identifiable and the technical work was interesting, and structure it as: what was detected and how, what made it hard, what you did, what the outcome was, and what changed afterwards. Be careful about detail &mdash; describe your actions and reasoning without disclosing your employer's or customer's specifics.</p>
       <span class="step">Structure</span>
@@ -2800,16 +3244,236 @@ monitor capture IR start
   </details>
 </section>
 
-<!-- ============ 12 ============ -->
+<!-- ============ 14 ============ -->
+<section class="block" id="topology">
+  <div class="sechead">
+    <h2><span class="num">14</span>Reference topology</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="topology"> Done</label>
+  </div>
+  <p class="lede">One security architecture with an internet edge, a two-tier DMZ, an identity deployment, a segmented data centre and branches that break out locally. Four questions asked against it &mdash; walk it, trace a session, respond to a compromise, and improve it.</p>
+
+  <div class="figure">
+    <div class="figscroll">
+      <svg viewBox="0 0 880 520" role="img" aria-label="Security reference architecture with internet edge routers, a firewall high-availability pair, a two-tier DMZ, ISE, a segmented data centre and SD-WAN branches" font-size="12" font-family="var(--font-body)">
+        <text x="24" y="26" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--font-display)">Enforcement points, outside in &mdash; the topology these four questions use</text>
+
+        <g stroke="var(--line-strong)" stroke-width="1.5" fill="none">
+          <path d="M420 88L370 118"></path>
+          <path d="M460 88L510 118"></path>
+          <path d="M360 164L385 210"></path>
+          <path d="M370 164L480 210"></path>
+          <path d="M520 164L495 210"></path>
+          <path d="M510 164L400 210"></path>
+          <path d="M330 222H294"></path>
+          <path d="M330 252H294"></path>
+          <path d="M440 272V320"></path>
+          <path d="M660 272L525 320"></path>
+          <path d="M400 370L160 410"></path>
+          <path d="M440 370V410"></path>
+          <path d="M480 370L720 410"></path>
+        </g>
+
+        <g>
+          <rect x="350" y="46" width="180" height="42" rx="20" fill="none" stroke="var(--line-strong)" stroke-width="1.25" stroke-dasharray="5 3"></rect>
+          <text x="440" y="66" text-anchor="middle" font-size="11.5" font-weight="600" fill="var(--ink)">INTERNET</text>
+          <text x="440" y="81" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">two providers</text>
+        </g>
+
+        <g>
+          <rect x="290" y="118" width="140" height="46" rx="7" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.4"></rect>
+          <text x="360" y="139" text-anchor="middle" font-size="11" font-weight="700" fill="var(--ink)">EDGE-1</text>
+          <text x="360" y="155" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">eBGP &middot; uRPF &middot; edge ACL</text>
+          <rect x="450" y="118" width="140" height="46" rx="7" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.4"></rect>
+          <text x="520" y="139" text-anchor="middle" font-size="11" font-weight="700" fill="var(--ink)">EDGE-2</text>
+          <text x="520" y="155" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">eBGP &middot; uRPF &middot; edge ACL</text>
+        </g>
+
+        <g>
+          <rect x="330" y="196" width="220" height="76" rx="9" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.75"></rect>
+          <rect x="342" y="210" width="96" height="48" rx="6" fill="none" stroke="var(--accent)" stroke-width="1.2"></rect>
+          <text x="390" y="231" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink)">FW-1</text>
+          <text x="390" y="246" text-anchor="middle" font-size="9" fill="var(--ink-2)">active</text>
+          <rect x="442" y="210" width="96" height="48" rx="6" fill="none" stroke="var(--accent)" stroke-width="1.2"></rect>
+          <text x="490" y="231" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink)">FW-2</text>
+          <text x="490" y="246" text-anchor="middle" font-size="9" fill="var(--ink-2)">standby</text>
+          <text x="440" y="267" text-anchor="middle" font-size="9.5" font-weight="600" fill="var(--ink-2)">stateful HA pair &middot; four zones</text>
+        </g>
+
+        <g>
+          <rect x="24" y="190" width="270" height="90" rx="9" fill="none" stroke="var(--line-strong)" stroke-width="1.25" stroke-dasharray="5 3"></rect>
+          <rect x="36" y="206" width="118" height="44" rx="6" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.4"></rect>
+          <text x="95" y="226" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink)">DMZ-WEB</text>
+          <text x="95" y="240" text-anchor="middle" font-size="9" fill="var(--ink-3)">reverse proxy</text>
+          <rect x="164" y="206" width="118" height="44" rx="6" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.4"></rect>
+          <text x="223" y="226" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink)">DMZ-APP</text>
+          <text x="223" y="240" text-anchor="middle" font-size="9" fill="var(--ink-3)">application tier</text>
+          <text x="159" y="270" text-anchor="middle" font-size="9.5" font-weight="600" fill="var(--ink-2)">separate zones &mdash; the firewall sits between the tiers</text>
+        </g>
+
+        <g>
+          <rect x="600" y="190" width="256" height="90" rx="9" fill="none" stroke="var(--line-strong)" stroke-width="1.25" stroke-dasharray="5 3"></rect>
+          <rect x="612" y="206" width="112" height="44" rx="6" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.4"></rect>
+          <text x="668" y="226" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink)">PAN / MnT</text>
+          <text x="668" y="240" text-anchor="middle" font-size="9" fill="var(--ink-3)">&times;2</text>
+          <rect x="732" y="206" width="112" height="44" rx="6" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.4"></rect>
+          <text x="788" y="226" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink)">PSN</text>
+          <text x="788" y="240" text-anchor="middle" font-size="9" fill="var(--ink-3)">&times;4, node group</text>
+          <text x="728" y="270" text-anchor="middle" font-size="9.5" font-weight="600" fill="var(--ink-2)">ISE &mdash; RADIUS, TACACS+, pxGrid publisher</text>
+        </g>
+
+        <g>
+          <rect x="330" y="320" width="220" height="50" rx="7" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.75"></rect>
+          <text x="440" y="341" text-anchor="middle" font-size="11" font-weight="700" fill="var(--ink)">INSIDE CORE</text>
+          <text x="440" y="357" text-anchor="middle" font-size="9.5" fill="var(--ink-2)">routed &middot; no inspection here</text>
+        </g>
+
+        <g>
+          <rect x="24" y="410" width="250" height="66" rx="7" fill="none" stroke="var(--line)" stroke-width="1.25"></rect>
+          <text x="149" y="431" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink)">CAMPUS ACCESS</text>
+          <text x="149" y="446" text-anchor="middle" font-size="9" fill="var(--ink-3)">802.1X + MAB &middot; dACL &middot; SGT</text>
+          <text x="149" y="461" text-anchor="middle" font-size="9" fill="var(--ink-3)">snooping, DAI, source guard</text>
+
+          <rect x="315" y="410" width="250" height="66" rx="7" fill="none" stroke="var(--line)" stroke-width="1.25"></rect>
+          <text x="440" y="431" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink)">DATA CENTRE</text>
+          <text x="440" y="446" text-anchor="middle" font-size="9" fill="var(--ink-3)">SGACL east-west</text>
+          <text x="440" y="461" text-anchor="middle" font-size="9" fill="var(--ink-3)">PCI zone behind its own firewall</text>
+
+          <rect x="606" y="410" width="250" height="66" rx="7" fill="var(--amber-soft)" stroke="var(--amber)" stroke-width="1.4"></rect>
+          <text x="731" y="431" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink)">BRANCHES &times;200</text>
+          <text x="731" y="446" text-anchor="middle" font-size="9" fill="var(--ink-3)">SD-WAN &middot; local internet breakout</text>
+          <text x="731" y="461" text-anchor="middle" font-size="9" font-weight="700" fill="var(--ink)">traffic never crosses this firewall</text>
+        </g>
+
+        <g font-size="9.5" font-weight="600" fill="var(--accent-ink)">
+          <text x="24" y="170">Edge: uRPF, bogon and anti-spoof ACL, no transit</text>
+          <text x="600" y="170">RADIUS 1812/1813 &middot; CoA 1700 or 3799 &middot; pxGrid</text>
+          <text x="24" y="302">Zones: outside &middot; dmz-web &middot; dmz-app &middot; inside</text>
+          <text x="24" y="394">Trust boundary &mdash; every port below is authenticated</text>
+        </g>
+
+        <g font-size="11" fill="var(--ink-2)">
+          <text x="24" y="500">Enforcement: anti-spoof ACL and uRPF at the edge &middot; stateful zones at the pair &middot; dACL and SGT at the access port &middot; SGACL east-west &middot; DNS and proxy at the branch</text>
+        </g>
+      </svg>
+    </div>
+    <p class="figcap">Security reference architecture &middot; five enforcement points, and one path that bypasses the central one.</p>
+  </div>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q69"><span class="qtext">Walk me through this architecture.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">Layered enforcement from the outside in: anti-spoofing at the edge routers, a stateful firewall pair with four zones, a two-tier DMZ with the firewall between the tiers rather than beside them, identity enforcement at every campus access port, and SGACL-based east-west control in the data centre. The thing I would raise immediately is the branches &mdash; they break out to the internet locally, so <strong>their traffic never passes the central firewall at all</strong>, and that means the central controls are not the whole story.</p>
+      <span class="step">Detail &mdash; outside in</span>
+      <ol>
+        <li><strong>Edge routers.</strong> eBGP to two providers, unicast reverse path forwarding and an anti-spoofing ACL so packets claiming internal sources cannot arrive from outside, and no transit between providers. Control-plane policing and management-plane restriction belong here too.</li>
+        <li><strong>Firewall pair.</strong> Stateful active/standby with four zones. Note the asymmetry risk inherent in any HA pair &mdash; state replication is what lets a failover not drop sessions, and it is worth knowing whether it is configured and healthy rather than assumed.</li>
+        <li><strong>DMZ, two tiers.</strong> Web and application are <em>separate zones</em>, so the firewall inspects between them. That is the design decision that matters: a compromised web tier does not get a free path to the application tier, and the application tier's access to the inside is narrow and explicit.</li>
+        <li><strong>Inside core.</strong> Routed, no inspection. Inspection at the core would be an expensive bottleneck for traffic that is already inside the trust boundary; the controls that matter inside are at the access port and east-west in the data centre.</li>
+        <li><strong>Campus access.</strong> 802.1X with MAB fallback, downloadable ACLs and SGTs from ISE, plus DHCP snooping, DAI and IP Source Guard so an authenticated host cannot impersonate anything else.</li>
+        <li><strong>Data centre.</strong> SGACLs for east-west segmentation, with a regulated zone behind its own firewall because a tag-based control is harder to evidence to an auditor than a firewall rule set.</li>
+        <li><strong>ISE.</strong> Two PANs and MnTs, four PSNs in a node group, publishing context over pxGrid so the firewall and the analytics platform can write identity-aware policy.</li>
+        <li><strong>Branches.</strong> SD-WAN with local internet breakout &mdash; good for performance, and it moves the enforcement point to the branch, where it has to be DNS-layer filtering, a cloud security gateway, or on-box inspection.</li>
+      </ol>
+      <div class="tip"><b>Close with the question the diagram raises</b>"My first question would be what enforces policy for the branch internet traffic, because the firewall pair in this picture does not see it. If the answer is a cloud gateway or DNS filtering then the design is coherent; if the answer is nothing, then two hundred sites have unfiltered internet access and that is the most important finding in the room." Spotting where the diagram's main control does <em>not</em> apply is the skill being assessed.</div>
+      <div class="verdict"><b>What they're testing</b>Whether you can narrate layered defence in order, and whether you notice the branch bypass. The firewall-between-DMZ-tiers observation is the design detail worth naming.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q70"><span class="qtext">Trace an inbound session from the internet to a database behind the application tier.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">It should never be one session. A user reaches the reverse proxy in the web zone, the proxy opens a <em>separate</em> connection to the application tier, and the application opens another to the database inside &mdash; three connections, three policy decisions, two of them crossing the firewall between zones. If the trace is really one TCP session from the internet to the database, that is the finding.</p>
+      <span class="step">The trace</span>
+      <ol>
+        <li><strong>Edge router.</strong> Packet arrives for a public address. uRPF and the anti-spoofing ACL pass it; it is routed to the firewall's outside interface. No state here &mdash; the router is stateless.</li>
+        <li><strong>Firewall, outside &rarr; dmz-web.</strong> NAT translates the public address to the reverse proxy's real address. The zone policy permits only the published port. A state entry is created. Application inspection and any IPS policy apply here, which is the deepest inspection in the whole path.</li>
+        <li><strong>Reverse proxy.</strong> Terminates the connection. If TLS terminates here, this is also where the firewall or the proxy can see cleartext &mdash; which is why the proxy's own hardening matters as much as the firewall rule.</li>
+        <li><strong>New connection, dmz-web &rarr; dmz-app.</strong> The proxy opens its own connection. The firewall sees a <em>different</em> session with a different source and makes a <em>separate</em> decision: permit this one source zone, to these specific hosts, on this one port. New state entry.</li>
+        <li><strong>New connection, dmz-app &rarr; inside.</strong> The application reaches the database. Narrowest rule in the design: specific source hosts, specific destination host, one port. New state entry.</li>
+        <li><strong>Inside.</strong> Routed to the data centre. If the database sits in the regulated zone it crosses that zone's firewall as well, and east-west SGACLs apply between workloads once it is there.</li>
+        <li><strong>Return traffic</strong> at each hop matches existing state and is permitted without re-evaluating the rule base &mdash; which is the entire value of a stateful firewall and also why asymmetric routing breaks it.</li>
+      </ol>
+      <p><strong>Count:</strong> three TCP connections, three distinct firewall policy decisions, one NAT translation, one TLS termination, and potentially a fourth decision at the regulated-zone boundary.</p>
+      <div class="gotcha"><b>The failure to look for is a flat DMZ</b>If web and app are in the <em>same</em> zone, the firewall never sees the second connection &mdash; and a compromise of the internet-facing proxy gives the attacker unimpeded access to the application tier, which already has a permitted path inside. The published rule base looks tight because every rule in it is narrow; the gap is in the traffic that never reaches a rule. This is why "how many zones does the DMZ have" is a better question than "show me the firewall rules", and why tracing a session rather than reading a configuration finds things a rule review misses.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"Where would you troubleshoot a failure in this path?"</em> &mdash; packet tracer or the equivalent on the firewall first, because it tells you the matched rule, the NAT translation and the egress interface in one output. Then connection and state tables, then the proxy and application logs. Working the path in order and letting the firewall tell you its own decision beats reading rules.</li>
+        <li><em>"What breaks if the firewall pair fails over mid-session?"</em> &mdash; nothing, if state replication is healthy, which is the point of a stateful pair. If it is not, every established session drops and reconnects, and the symptom is a brief total outage rather than a graceful switch. Worth testing deliberately rather than discovering.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you understand a tiered DMZ means separate connections and separate decisions. The flat-DMZ failure and packet tracer as the first tool are both strong signals.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="expert">
+    <summary data-n="Q71"><span class="qtext">A campus endpoint is confirmed compromised and beaconing out. Contain it using what is in this diagram.</span><span class="lvl lvl-expert">Expert</span></summary>
+    <div class="body">
+      <p class="lead">Quarantine it at the access port through ISE, because that is both the fastest action and the one that preserves the host for investigation &mdash; an Adaptive Network Control quarantine triggers a Change of Authorization and the endpoint lands in a restricted authorization profile within seconds, without anyone touching a switch. In parallel, sinkhole the command-and-control domain so every <em>other</em> infected host reveals itself, and only then start hunting laterally.</p>
+      <span class="step">Containment, in order</span>
+      <ol>
+        <li><strong>Quarantine via ISE.</strong> Apply the ANC quarantine policy to the endpoint. ISE issues a CoA, the authorization policy re-evaluates, and the quarantine rule applies a restrictive dACL or SGT. The port stays up and the host stays reachable from your forensic tooling, which is why this beats shutting the port.</li>
+        <li><strong>Do not pull the cable or shut the port</strong> unless you must. You lose volatile memory, you lose your remote access to collect evidence, and you tell the operator they have been noticed. A quarantine that leaves the host online but isolated is strictly better.</li>
+        <li><strong>Sinkhole the C2 domain</strong> at the DNS layer. This blocks the channel for every host at once and produces a list of everything else that resolves it &mdash; the single highest-yield scoping action available, and it covers the two hundred branches that never cross the central firewall.</li>
+        <li><strong>Block the destination at the edge and the firewall pair</strong> for the addresses involved, accepting that infrastructure moves and DNS-layer blocking generalises better.</li>
+        <li><strong>Scope east-west.</strong> SGACL counters and firewall logs for the regulated zone boundary: did this host touch anything it should not have? Data centre flow records, authentication logs for credential reuse from that endpoint's identity.</li>
+        <li><strong>Check the branch path explicitly.</strong> If infected hosts exist at branches, central firewall logs will not show their beaconing at all. You need the DNS logs or the cloud gateway's. Saying this unprompted is what shows you have internalised the diagram's bypass.</li>
+      </ol>
+<pre><code><span class="cmt">! ISE: Operations → Live Sessions → ANC → Quarantine</span>
+<span class="cmt">!      or via pxGrid from the SOC tooling</span>
+
+<span class="cmt">! switch side — confirm the CoA landed</span>
+show access-session mac 0050.56aa.bb01 details
+show access-session interface Gi1/0/14 details
+show ip access-lists | include xACSACL
+show cts role-based sgt-map vrf default all
+show logging | include COA|AUTHZ|SWITCH_TO
+
+<span class="cmt">! scope</span>
+show cts role-based counters
+show logging | include %SEC-6-IPACCESSLOG</code></pre>
+      <div class="tip"><b>State the containment principle, then the actions</b>"Contain at the identity layer, block at the DNS layer, and keep the host alive for investigation." That is the whole answer in one line, and it tells an interviewer you have been in an incident rather than read a playbook. Then the detail: a CoA quarantine is reversible in seconds if you are wrong about the host, which matters when you are making a containment decision on partial evidence at 3 a.m. &mdash; and being able to undo a containment action cheaply is what lets you act fast on a confident-but-unproven signal.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"What if the endpoint is on a port with MAB and no 802.1X?"</em> &mdash; the quarantine works the same way, because CoA is a function of the session, not the authentication method. What changes is attribution: a MAB session identifies a MAC, not a person, so you will be working from the endpoint record rather than a username.</li>
+        <li><em>"What if ISE is unavailable?"</em> &mdash; then you are back to shutting the port or an ACL on the SVI, and you have just discovered that your containment capability has a single dependency. Worth naming as a design finding, because it argues for the node-group and redundancy design that is already in this diagram.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you contain without destroying evidence, whether you use DNS sinkholing for scope rather than just blocking, and whether you remember the branches. The "reversible in seconds" argument is the senior reasoning.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="expert">
+    <summary data-n="Q72"><span class="qtext">What would you change about this architecture?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <div class="body">
+      <p class="lead">Four things, ordered by risk reduced rather than by effort: establish what enforces branch internet policy, close the gap between the data centre's tag-based segmentation and what an auditor can evidence, verify the firewall pair's state replication and the ISE deployment's failure behaviour by testing them, and get visibility into east-west traffic you currently only control.</p>
+      <span class="step">In priority order</span>
+      <ol>
+        <li><strong>The branch bypass.</strong> Two hundred sites reaching the internet without the central firewall needs an answer: a cloud security gateway, DNS-layer filtering, or on-box inspection. If something is already there, confirm it covers every branch and that its logs reach the same place as everything else &mdash; a control nobody monitors is a checkbox. This is first because it is the largest unmanaged surface in the picture.</li>
+        <li><strong>Evidence for the data centre segmentation.</strong> SGACLs are a good control and a hard one to demonstrate: an auditor asking "prove this workload cannot reach the cardholder zone" wants something more concrete than a matrix. Keep the firewall at the regulated-zone boundary (it is already there, which is right), and make sure SGACL <em>counters and logs</em> are collected so the tag-based policy produces evidence rather than only enforcement.</li>
+        <li><strong>Test the failure modes.</strong> Fail the firewall pair over in a window and watch whether established sessions survive &mdash; that validates state replication, which everyone assumes and few verify. Fail a PSN and confirm the node group re-issues CoAs for its sessions. Fail the primary PAN and establish whether promotion is automatic or someone has to be woken up. Each of these is a one-hour test that converts an assumption into a fact.</li>
+        <li><strong>East-west visibility.</strong> The design controls east-west traffic but the diagram does not show anyone <em>seeing</em> it. Flow telemetry from the data centre fabric, pxGrid-attributed so flows carry identity, is what turns the segmentation from a policy into something you can investigate against.</li>
+      </ol>
+      <span class="step">Smaller things I would check first</span>
+      <ul>
+        <li>That the edge anti-spoofing ACL and uRPF are actually in place on <em>both</em> routers, and that control-plane policing and management-plane restriction are configured.</li>
+        <li>Whether the DMZ tiers are genuinely separate zones in the running configuration, not just on the diagram.</li>
+        <li>Certificate expiry across ISE's EAP certificate, the internal CA, and the firewall's identity certificates &mdash; an expired EAP certificate takes the entire campus offline and is entirely predictable.</li>
+        <li>Whether CoA ports are permitted inbound to every network device, since an authentication path that works while CoA is blocked gives you posture and quarantine that silently never apply.</li>
+      </ul>
+      <div class="tip"><b>Lead with the gap, not the wishlist</b>An interviewer is listening for whether you find the thing that is missing rather than recommending products. "The architecture is sound; what I cannot see is what enforces policy for branch internet traffic, and that is where I would start" is a stronger opening than a list of additions &mdash; and the certificate-expiry check is the kind of unglamorous item that shows you have been on call for a network like this one.</div>
+      <div class="verdict"><b>What they're testing</b>Whether you prioritise by risk, whether you distinguish enforcement from evidence and from visibility, and whether you would test HA assumptions rather than trust them.</div>
+    </div>
+  </details>
+</section>
+
+<!-- ============ 15 ============ -->
 <section class="block" id="whiteboard">
   <div class="sechead">
-    <h2><span class="num">12</span>Whiteboard scenarios</h2>
+    <h2><span class="num">15</span>Whiteboard scenarios</h2>
     <label class="reviewed"><input type="checkbox" data-sec="whiteboard"> Done</label>
   </div>
   <p class="lede">Open-ended design and diagnosis. Ask about the constraints before drawing, state your assumptions, and name the trade-offs you are choosing between rather than picking silently.</p>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q57"><span class="qtext">Design a secure internet edge. Talk me through the layers.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q73"><span class="qtext">Design a secure internet edge. Talk me through the layers.</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">Ask first what is being published, what the outbound requirements are, whether remote access terminates here, and whether there is a regulatory requirement for full inspection. Then build it as layers with different jobs: router protecting itself and the circuit, firewall doing stateful policy and NAT, inspection doing layer 7, and DMZs separating anything published from everything internal.</p>
       <span class="step">The layers</span>
@@ -2840,7 +3504,7 @@ monitor capture IR start
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q58"><span class="qtext">Roll out 802.1X across 5,000 ports. How do you avoid taking the company offline?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q74"><span class="qtext">Roll out 802.1X across 5,000 ports. How do you avoid taking the company offline?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">Three stages, and never skip the first: <strong>monitor mode</strong> where authentication runs and failures are logged but nothing is denied; <strong>low-impact mode</strong> where a pre-authentication ACL permits essential services while policy is tightened; then <strong>closed mode</strong>. The discovery that happens in monitor mode is the entire value, because the endpoint inventory is always wrong.</p>
       <span class="step">The phases</span>
@@ -2897,7 +3561,7 @@ show authentication sessions summary
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q59"><span class="qtext">200 branches, internet and MPLS at each. Design the connectivity and security.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q75"><span class="qtext">200 branches, internet and MPLS at each. Design the connectivity and security.</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Ask what the branches need to reach, whether internet traffic should break out locally or be backhauled, what the application mix is, and who operates the branches. The answer is usually an SD-WAN overlay with local internet breakout through a cloud security service, because backhauling all internet traffic to a data centre is the thing that does not scale across 200 sites.</p>
       <span class="step">The design</span>
@@ -2935,7 +3599,7 @@ show authentication sessions summary
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q60"><span class="qtext">Users report intermittent 802.1X authentication failures. Nothing changed. Diagnose it.</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q76"><span class="qtext">Users report intermittent 802.1X authentication failures. Nothing changed. Diagnose it.</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">Find the pattern before forming a theory. The live log grouped by failure reason, by switch, by site, by endpoint type and by time of day almost always reveals a cluster &mdash; one switch, one OS version, one location, or a time correlation. "Intermittent and everywhere" is usually "specific and nobody has grouped the data yet".</p>
       <span class="step">Group the failures first</span>
@@ -2982,7 +3646,7 @@ clear platform condition all</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q61"><span class="qtext">A new internet-facing application needs a DMZ. Design it.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q77"><span class="qtext">A new internet-facing application needs a DMZ. Design it.</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Ask what the components are, which of them actually need inbound exposure, what they need to reach internally, and what data is involved. Then build it so that only the presentation tier is reachable from the internet, the tiers are separated from each other, and the path from the DMZ into the internal network is as narrow as you can make it.</p>
       <span class="step">The design</span>
@@ -3025,7 +3689,7 @@ clear platform condition all</code></pre>
 </div>
 
 <footer>
-  <p><strong>Security &mdash; Interview Questions &amp; Answers.</strong> Sixty-one questions across twelve sections. Filter with the box at the top or press <kbd>/</kbd>; narrow by depth with the Core, Deep and Expert buttons; <em>Reveal all</em> opens every answer at once. Section checkboxes are stored in this browser only.</p>
+  <p><strong>Security &mdash; Interview Questions &amp; Answers.</strong> Seventy-seven questions across fifteen sections. Filter with the box at the top or press <kbd>/</kbd>; narrow by depth with the Core, Deep and Expert buttons; <em>Reveal all</em> opens every answer at once. Section checkboxes are stored in this browser only.</p>
   <p>Answers are written to be spoken, not recited &mdash; the short answer first, then the supporting detail, then what the question is actually probing for. Configuration examples are illustrative and use placeholder addresses and redacted keys; algorithm recommendations and platform behaviour move over time, so check current guidance and the configuration guide for your release before deploying anything from here.</p>
 </footer>
 <script>

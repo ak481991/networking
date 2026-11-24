@@ -190,7 +190,7 @@ footer a{color:var(--accent-ink)}
     <div class="brand">
       <span class="eyebrow">Interview preparation &middot; 2 of 3</span>
       <h1>Switching &mdash; Interview Questions &amp; Answers</h1>
-      <p>Sixty-one questions on layer 2 and campus switching, from frame forwarding to VXLAN fabrics. Each has a short spoken answer, the supporting detail, and a note on what the question is probing. Answers start collapsed so the page works as a self-test.</p>
+      <p>Eighty-one questions on layer 2 and campus switching, from frame forwarding to VXLAN fabrics and platform HA. Each has a short spoken answer, the supporting detail, and a note on what the question is probing. Answers start collapsed so the page works as a self-test.</p>
     </div>
     <button class="themebtn" id="themebtn" type="button">Switch theme</button>
   </div>
@@ -213,7 +213,7 @@ footer a{color:var(--accent-ink)}
     <div class="progwrap">
       <span>Done</span>
       <span class="progbar"><span class="progfill" id="progfill"></span></span>
-      <span class="num-col" id="progtxt">0/12</span>
+      <span class="num-col" id="progtxt">0/16</span>
     </div>
   </div>
 </div>
@@ -224,16 +224,20 @@ footer a{color:var(--accent-ink)}
   <h2>Contents</h2>
   <ol>
     <li><a href="#forwarding">Frame forwarding</a></li>
+    <li><a href="#services">ARP &amp; host services</a></li>
     <li><a href="#vlans">VLANs &amp; trunking</a></li>
     <li><a href="#stp">Spanning tree</a></li>
     <li><a href="#stpsafe">STP protection</a></li>
     <li><a href="#etherchannel">EtherChannel</a></li>
     <li><a href="#fhrp">FHRP</a></li>
+    <li><a href="#mcastl2">Multicast at L2</a></li>
     <li><a href="#l3sw">L3 switching</a></li>
     <li><a href="#campus">Campus design</a></li>
     <li><a href="#l2sec">L2 security</a></li>
     <li><a href="#dc">Data centre switching</a></li>
+    <li><a href="#platha">Platform HA</a></li>
     <li><a href="#method">Troubleshooting</a></li>
+    <li><a href="#topology">Reference topology</a></li>
     <li><a href="#whiteboard">Whiteboard scenarios</a></li>
   </ol>
 </nav>
@@ -450,15 +454,226 @@ show interfaces Gi1/0/5 | include broadcast|multicast|input rate</code></pre>
 </section>
 
 <!-- ============ 2 ============ -->
+<section class="block" id="services">
+  <div class="sechead">
+    <h2><span class="num">02</span>ARP &amp; host services</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="services"> Done</label>
+  </div>
+  <p class="lede">Where layer 2 meets the host. The two reliable discriminators are keeping the ARP table and the MAC table separate in your head, and knowing what decides which subnet a DHCP client lands in.</p>
+
+  <details class="qa" data-lvl="core">
+    <summary data-n="Q6"><span class="qtext">What is the difference between the ARP table and the MAC address table? How do they interact?</span><span class="lvl lvl-core">Core</span></summary>
+    <div class="body">
+      <p class="lead">They answer different questions. The ARP table maps an <strong>IP address to a MAC address</strong> and lives on anything doing layer 3. The MAC address table maps a <strong>MAC address to a port</strong> and lives on the switch. A frame needs both answers: ARP to find out who to address it to, and the MAC table to find out where to send it.</p>
+      <span class="step">Detail</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th></th><th>ARP table</th><th>MAC address table</th></tr></thead>
+          <tbody>
+            <tr><td>Maps</td><td>IP &rarr; MAC</td><td>MAC + VLAN &rarr; port</td></tr>
+            <tr><td>Lives on</td><td>Hosts, routers, L3 switches</td><td>Switches</td></tr>
+            <tr><td>Populated by</td><td>ARP request and reply</td><td>Observing source MACs of received frames</td></tr>
+            <tr><td>Default lifetime</td><td><strong>4 hours</strong> on Cisco</td><td><strong>5 minutes</strong></td></tr>
+            <tr><td>Miss results in</td><td>An ARP request &mdash; a broadcast</td><td><strong>Flooding</strong> to the VLAN</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The sequence for host A sending to host B on the same subnet: A checks its own ARP table, broadcasts an ARP request if there is no entry, the switch floods that broadcast and <em>learns A's MAC</em> from it, B replies unicast, the switch learns B's MAC from the reply, and A now has the mapping. Two tables populated by one exchange.</p>
+<pre><code><span class="cmt">! the two tables, on an L3 switch — both at once</span>
+show ip arp 10.100.0.50
+show mac address-table address 0011.2233.4455
+show mac address-table vlan 100
+
+<span class="cmt">! and the question "where is this host?" needs both</span>
+show ip arp | include 10.100.0.50
+<span class="cmt">!   gives the MAC</span>
+show mac address-table address 0011.2233.4455
+<span class="cmt">!   gives the port</span>
+
+show ip arp summary
+show mac address-table count</code></pre>
+      <div class="tip"><b>The two-step host hunt is worth saying out loud</b>"Find the host" is ARP for the MAC, then MAC table for the port, and on a multi-switch path you repeat the second step hop by hop following the uplink. Candidates who try to find a host from the ARP table alone get an address and no location; candidates who try the MAC table alone need the MAC they do not have. Naming it as a two-table lookup is a small thing that demonstrates you have actually traced a host on a campus.</div>
+      <div class="verdict"><b>What they're testing</b>Whether you keep the two tables distinct. Candidates who conflate them struggle with the next question, because the mismatch between their lifetimes only makes sense if you know they are separate.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q7"><span class="qtext">How does ARP affect how large you make a VLAN?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">Every ARP request is a broadcast that <em>every</em> host in the VLAN must receive and process, whether or not it is the target. So ARP load scales with the number of hosts times how often they resolve, and on a large flat VLAN it becomes a measurable tax on every endpoint &mdash; which is one of the two main reasons to keep broadcast domains small.</p>
+      <span class="step">Detail</span>
+      <p>The arithmetic to reason about out loud: n hosts each resolving a handful of addresses produces n times that many broadcasts, and each one is processed by all n hosts. The work is proportional to n squared, which is why a /24 is unremarkable and a /16 flat VLAN is a problem. Add gratuitous ARP from failovers and VM moves, plus the occasional scan sweeping the subnet, and the baseline broadcast rate grows faster than the host count.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Consequence of a large VLAN</th><th>Detail</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Broadcast processing on every host</strong></td><td>CPU on endpoints, and more on low-powered devices &mdash; IoT, embedded, older equipment</td></tr>
+            <tr><td><strong>ARP table size on the gateway</strong></td><td>Consumes hardware adjacency and TCAM resources on an L3 switch</td></tr>
+            <tr><td><strong>Failure domain</strong></td><td>A loop, a storm or a rogue DHCP server affects everything in it</td></tr>
+            <tr><td><strong>Unknown unicast flooding reach</strong></td><td>A flooded frame goes to every port in the VLAN, so the waste scales with its size</td></tr>
+            <tr><td><strong>ARP scan impact</strong></td><td>A sweep of a /16 generates 65,000 broadcasts and 65,000 incomplete adjacencies on the gateway</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code><span class="cmt">! measure rather than assume</span>
+show interfaces Vlan100 | include broadcast
+show interfaces Gi1/0/5 | include broadcast|input rate
+show ip arp summary
+show ip arp | count
+
+<span class="cmt">! contain it</span>
+interface range GigabitEthernet1/0/1-48
+ storm-control broadcast level 0.50
+ storm-control action trap
+!
+<span class="cmt">! and on the gateway, protect against a scan</span>
+interface Vlan100
+ ip arp inspection limit rate 15 burst interval 1
+ no ip proxy-arp</code></pre>
+      <div class="tip"><b>Refuse to give a maximum VLAN size as a number</b>The right answer is the reasoning: small enough that a broadcast storm in it is survivable, that ARP overhead is negligible on the weakest device in it, and that a layer 2 fault affects an acceptable number of users. In practice that lands at a /24 or smaller per access switch or wiring closet, but the number is a consequence rather than a rule. Giving the reasoning and then the typical result is a stronger answer than giving the number, and it is what lets you defend an exception when an application genuinely needs one.</div>
+      <div class="verdict"><b>What they're testing</b>Whether you can justify small broadcast domains quantitatively rather than by convention. The n-squared framing and the ARP-scan consequence are the two points that make the argument concrete.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q8"><span class="qtext">Clients in a VLAN are getting addresses from the wrong subnet. The relay is configured. Why?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">Because the DHCP server chooses the scope from the <strong><code>giaddr</code></strong> field, and <code>giaddr</code> is set to the <em>primary</em> address of the interface that received the broadcast. If the SVI has secondary addresses, or if the relay source has been set to a loopback, clients get addresses from whichever subnet that address belongs to &mdash; not from the one you intended.</p>
+      <span class="step">Detail</span>
+      <p>The relay's job is small and consequential: receive the client's broadcast, write its own receiving-interface address into <code>giaddr</code>, and unicast the packet to the server. The server then matches <code>giaddr</code> against its configured scopes. So <code>giaddr</code> is the entire mechanism by which a server knows which subnet a client is on, and anything that changes it changes the allocation.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Cause</th><th>Effect</th></tr></thead>
+          <tbody>
+            <tr><td><strong>SVI has a secondary address</strong></td><td><code>giaddr</code> is the <strong>primary</strong>, so clients get the primary subnet's scope</td></tr>
+            <tr><td><strong>Relay source set to a loopback</strong></td><td>All VLANs present the same <code>giaddr</code>, so every client gets one scope</td></tr>
+            <tr><td>No scope matching <code>giaddr</code> on the server</td><td>No offer at all &mdash; clients get nothing</td></tr>
+            <tr><td>Server cannot route back to <code>giaddr</code></td><td>Offer is generated and never arrives</td></tr>
+            <tr><td>Option 82 inserted with <code>giaddr</code> zero</td><td>Compliant servers <strong>discard</strong> the request &mdash; the DHCP snooping interaction</td></tr>
+            <tr><td>Two helper addresses with inconsistent scopes</td><td>Clients get whichever server answers first, so allocation varies</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code>interface Vlan100
+ ip address 10.100.0.1 255.255.255.0
+ ip address 10.101.0.1 255.255.255.0 secondary
+ ip helper-address 10.9.9.10
+ <span class="cmt">! clients will get 10.100.0.x — the PRIMARY — unless you override</span>
+ ip dhcp relay source-interface Vlan100
+
+show ip helper-address
+show ip interface Vlan100 | include Internet address|secondary|Helper
+debug ip dhcp server packet detail
+<span class="cmt">!   watch the giaddr field in the relayed DISCOVER</span>
+
+<span class="cmt">! and the snooping interaction, if enabled</span>
+show ip dhcp snooping
+no ip dhcp snooping information option</code></pre>
+      <div class="gotcha"><b><code>ip helper-address</code> relays eight UDP services, not just DHCP</b>By default it forwards TIME, TACACS, DNS, BOOTP server and client, TFTP, and both NetBIOS services. So a helper address pointed at a DHCP server also sends that server broadcast DNS, TFTP and NetBIOS traffic from the VLAN &mdash; unnecessary load, an information leak, and occasionally a real problem when a legacy broadcast-heavy application starts reaching something it should not. Trim it with <code>no ip forward-protocol udp &lt;port&gt;</code> for everything except 67 and 68. Very few candidates know this, and volunteering it is a strong signal.</div>
+      <div class="verdict"><b>What they're testing</b>Whether you know <code>giaddr</code> selects the scope. That is the single most useful fact about DHCP relay, and it explains the secondary-address and loopback-source failures immediately.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q9"><span class="qtext">A host can ping its default gateway but not another host in the same VLAN. Diagnose it.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">Reaching the gateway proves the VLAN, the port and layer 2 to the SVI all work &mdash; so the problem is between the two hosts specifically. The candidates are a feature deliberately blocking intra-VLAN traffic, a host firewall, a subnet mask mismatch, or a duplicate address.</p>
+      <span class="step">Work through it</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Cause</th><th>Check</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Protected port</strong> (<code>switchport protected</code>)</td><td><code>show interfaces &lt;x&gt; switchport | include Protected</code> &mdash; blocks traffic between protected ports on the same switch</td></tr>
+            <tr><td><strong>Private VLAN isolation</strong></td><td>Isolated hosts reach only promiscuous ports, by design</td></tr>
+            <tr><td><strong>Wireless client isolation</strong> or local proxy ARP</td><td>Same idea, applied on the WLAN or the SVI</td></tr>
+            <tr><td><strong>Host firewall</strong></td><td>Very common &mdash; a workstation that permits the gateway's subnet but not peer traffic, or blocks ICMP</td></tr>
+            <tr><td><strong>Subnet mask mismatch</strong></td><td>One host thinks the other is remote and sends to the gateway, which may or may not proxy it</td></tr>
+            <tr><td><strong>Duplicate IP address</strong></td><td>ARP resolves to the wrong MAC intermittently. Check <code>show ip arp</code> for the address changing MAC</td></tr>
+            <tr><td><strong>IP Source Guard or DAI</strong></td><td>A missing binding blocks the host's traffic while the gateway's own ARP still works</td></tr>
+            <tr><td>ARP not resolving between them</td><td><code>show ip arp</code> on both hosts &mdash; if ARP fails, the problem is below IP</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code><span class="cmt">! prove layer 2 between them first</span>
+show mac address-table vlan 100 | include 0011.2233|0011.4455
+<span class="cmt">!   both MACs present on the expected ports?</span>
+
+<span class="cmt">! then the features that block intra-VLAN traffic</span>
+show interfaces Gi1/0/5 switchport | include Protected|Private
+show vlan private-vlan
+show ip interface Vlan100 | include proxy
+show ip verify source
+show ip arp inspection statistics vlan 100
+show port-security interface Gi1/0/5
+
+<span class="cmt">! and the duplicate-address check</span>
+show ip arp 10.100.0.50
+show logging | include DUPADDR|duplicate</code></pre>
+      <div class="tip"><b>"Pings the gateway but not a peer" is a strong clue, so say what it eliminates</b>It rules out the VLAN assignment, the access port, the trunk path to the SVI, and the switch's basic forwarding &mdash; all of which would break gateway reachability too. What remains is either something deliberately blocking host-to-host traffic, or something on the hosts themselves. Starting the answer with that elimination, rather than with a list of things to check, is what makes it a diagnostic rather than a checklist &mdash; and in practice the answer is a host firewall more often than anything on the network, which is worth saying because it sets up a defensible handover.</div>
+      <div class="verdict"><b>What they're testing</b>Whether you read what the working case proves. The protected-port and PVLAN causes are the network-side answers, and naming the host firewall as statistically most likely shows you do not assume every fault is yours.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q10"><span class="qtext">How does IPv6 neighbour discovery change the layer 2 picture?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">It replaces broadcast with multicast. An IPv6 host joins a <strong>solicited-node multicast group</strong> derived from the low 24 bits of its address, and neighbour solicitations are sent to that group &mdash; so instead of interrupting every host on the segment, a resolution typically interrupts one. The cost is that the switch now needs MLD snooping to keep that efficiency, and that a host legitimately has several addresses and therefore several groups.</p>
+      <span class="step">Detail</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th></th><th>IPv4 ARP</th><th>IPv6 ND</th></tr></thead>
+          <tbody>
+            <tr><td>Resolution request sent to</td><td><strong>Broadcast</strong> &mdash; every host processes it</td><td><strong>Solicited-node multicast</strong> &mdash; usually one host</td></tr>
+            <tr><td>Switch efficiency depends on</td><td>Nothing &mdash; broadcast is broadcast</td><td><strong>MLD snooping</strong>, or it floods like broadcast anyway</td></tr>
+            <tr><td>Gateway discovery</td><td>DHCP option 3, or static</td><td><strong>Router advertisement only</strong> &mdash; there is no DHCPv6 gateway option</td></tr>
+            <tr><td>Duplicate detection</td><td>Optional gratuitous ARP</td><td><strong>Mandatory DAD</strong> before using an address</td></tr>
+            <tr><td>Addresses per host</td><td>Usually one</td><td>Several &mdash; link-local, stable, temporary privacy addresses</td></tr>
+            <tr><td>First-hop security</td><td>DHCP snooping, DAI, IPSG</td><td><strong>RA Guard</strong>, DHCPv6 Guard, ND inspection, IPv6 Source Guard</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code>show ipv6 neighbors
+show ipv6 interface Vlan100 | include Joined group
+<span class="cmt">!   one solicited-node group per address — several per host</span>
+show ipv6 mld snooping
+show ipv6 mld snooping vlan 100
+show ipv6 routers
+
+<span class="cmt">! first-hop security on access ports — RA Guard is the important one</span>
+ipv6 nd raguard policy HOST-PORTS
+ device-role host
+ipv6 snooping policy SNOOP
+ security-level glean
+!
+interface range GigabitEthernet1/0/1-48
+ ipv6 nd raguard attach-policy HOST-PORTS
+ ipv6 dhcp guard attach-policy HOST-DHCP
+ ipv6 snooping attach-policy SNOOP
+ ipv6 source-guard attach-policy
+
+show ipv6 neighbors binding
+show ipv6 nd raguard policy HOST-PORTS</code></pre>
+      <div class="gotcha"><b>Without MLD snooping, ND multicast floods like broadcast and you lose the benefit</b>The solicited-node design only reduces load if the switch knows which port joined which group &mdash; otherwise every neighbour solicitation is flooded to the whole VLAN, exactly like ARP, and you have the broadcast cost plus the complexity. MLD snooping needs to be enabled and, in a layer 2-only VLAN, needs a querier for the same reason IGMP snooping does. Dual-stack networks frequently run with IGMP snooping configured and MLD snooping forgotten, so IPv6 traffic floods while IPv4 does not &mdash; and the symptom is unexplained multicast load on ports that joined nothing.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"Why is RA Guard more urgent than DHCP snooping?"</em> &mdash; because a rogue router advertisement makes a host a default gateway for the segment immediately, and hosts accept <em>multiple</em> routers simultaneously rather than ignoring a second one the way a DHCPv4 client with a lease does. Windows internet-connection sharing has caused outages this way entirely by accident, which is why RA Guard belongs in the standard access-port template rather than in a hardening project.</li>
+        <li><em>"What does the multiple-addresses-per-host behaviour break?"</em> &mdash; anything that assumed one address per device: inventory, ACLs written against host addresses, and port security counting. Privacy addresses rotate, so address-based identity does not work in IPv6 the way people expect.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you know ND is multicast rather than broadcast, and that the efficiency depends on MLD snooping being enabled. The forgotten-MLD-snooping point is a real dual-stack operational gap.</div>
+    </div>
+  </details>
+</section>
+
+<!-- ============ 3 ============ -->
 <section class="block" id="vlans">
   <div class="sechead">
-    <h2><span class="num">02</span>VLANs &amp; trunking</h2>
+    <h2><span class="num">03</span>VLANs &amp; trunking</h2>
     <label class="reviewed"><input type="checkbox" data-sec="vlans"> Done</label>
   </div>
   <p class="lede">The native VLAN is the single most productive question in this area, because it leads to tag format, VLAN leaking and the double-tagging attack in one thread. VTP is usually asked to see whether you will recommend it.</p>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q6"><span class="qtext">Describe the 802.1Q tag. What is the native VLAN and why does a mismatch matter?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q11"><span class="qtext">Describe the 802.1Q tag. What is the native VLAN and why does a mismatch matter?</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">The tag is four bytes inserted after the source MAC: a two-byte TPID of 0x8100, then a two-byte control field containing three bits of priority, one drop-eligible bit, and a twelve-bit VLAN ID. The native VLAN is the one VLAN carried <strong>untagged</strong> on a trunk, and a mismatch causes traffic to silently cross between two different VLANs.</p>
       <span class="step">Detail</span>
@@ -502,7 +717,7 @@ show vlan dot1q tag native</code></pre>
   </details>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q7"><span class="qtext">Explain the trunk negotiation modes. Which combinations form a trunk, and what would you configure?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q12"><span class="qtext">Explain the trunk negotiation modes. Which combinations form a trunk, and what would you configure?</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">DTP has four relevant states. <code>dynamic desirable</code> actively asks; <code>dynamic auto</code> only responds. Two <code>auto</code> ends stay access. In production I configure both ends statically &mdash; <code>mode trunk</code> or <code>mode access</code> &mdash; plus <code>nonegotiate</code>, because dynamic negotiation is both an outage risk and an attack surface.</p>
       <span class="step">Detail</span>
@@ -549,7 +764,7 @@ show dtp interface Gi1/0/49</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q8"><span class="qtext">What is VTP, what changed in version 3, and would you deploy it?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q13"><span class="qtext">What is VTP, what changed in version 3, and would you deploy it?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">VTP synchronises the VLAN database across a domain so VLANs created on one switch appear everywhere. In versions 1 and 2 any server with a higher revision number overwrites the whole domain, which has destroyed production VLAN databases often enough that the common recommendation became transparent mode. Version 3 fixes that with a primary-server model and adds MST and private VLAN propagation.</p>
       <span class="step">Detail</span>
@@ -603,7 +818,7 @@ vtp primary vlan</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q9"><span class="qtext">How does an IP phone end up in the voice VLAN, and why is that port not a trunk?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q14"><span class="qtext">How does an IP phone end up in the voice VLAN, and why is that port not a trunk?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">The phone boots untagged, learns the voice VLAN ID from the switch via CDP or LLDP-MED, and then tags its own voice traffic with that VLAN while passing the PC's traffic through untagged. The port is a <strong>multi-VLAN access port</strong>, not a trunk &mdash; it carries exactly two VLANs by a special mechanism, and features like PortFast, port security and 802.1X treat it accordingly.</p>
       <span class="step">Detail</span>
@@ -651,7 +866,7 @@ show mls qos interface Gi1/0/5</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q10"><span class="qtext">Explain QinQ and VLAN translation. Where would you use each?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q15"><span class="qtext">Explain QinQ and VLAN translation. Where would you use each?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">QinQ adds a second, outer service tag so a customer's entire VLAN range crosses a provider network untouched &mdash; the customer keeps VLAN 1 to 4094 and the provider sees only one S-VLAN. VLAN translation instead rewrites a single VLAN ID at the boundary, which solves numbering collisions without adding a tag or the MTU overhead.</p>
       <span class="step">Detail</span>
@@ -707,16 +922,16 @@ show system mtu</code></pre>
   </details>
 </section>
 
-<!-- ============ 3 ============ -->
+<!-- ============ 4 ============ -->
 <section class="block" id="stp">
   <div class="sechead">
-    <h2><span class="num">03</span>Spanning tree</h2>
+    <h2><span class="num">04</span>Spanning tree</h2>
     <label class="reviewed"><input type="checkbox" data-sec="stp"> Done</label>
   </div>
   <p class="lede">Seven questions, because STP is where switching interviews spend most of their time. The ones that discriminate are the path-cost comparison in order, what actually makes RSTP fast, and what a topology change does to the MAC table.</p>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q11"><span class="qtext">How is the root bridge elected, and what is in a BPDU?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q16"><span class="qtext">How is the root bridge elected, and what is in a BPDU?</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">The switch with the numerically lowest bridge ID wins. The bridge ID is priority followed by MAC address, so with every switch at the default priority of 32768 the oldest switch &mdash; lowest MAC &mdash; becomes root, which is almost never where you want it.</p>
       <span class="step">Detail</span>
@@ -767,7 +982,7 @@ show spanning-tree vlan 100 detail | include priority|root|change</code></pre>
   </details>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q12"><span class="qtext">How does a switch decide which port is the root port and which are designated? Give the comparison in order.</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q17"><span class="qtext">How does a switch decide which port is the root port and which are designated? Give the comparison in order.</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">Four comparisons, in strict order: lowest root path cost, then lowest sender bridge ID, then lowest sender port ID, then lowest receiving port ID. The first comparison that differs decides it, and the order is what the question is really asking for.</p>
       <span class="step">Detail</span>
@@ -816,7 +1031,7 @@ show spanning-tree pathcost method</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q13"><span class="qtext">Compare 802.1D states and timers with RSTP. Why is 802.1D so slow?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q18"><span class="qtext">Compare 802.1D states and timers with RSTP. Why is 802.1D so slow?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">802.1D is slow because it is timer-driven and conservative: it waits out max age before accepting that a path is gone, then spends two forward-delay intervals in listening and learning. Worst case is <strong>50 seconds</strong>. RSTP replaces the waiting with an explicit handshake, so convergence is driven by events rather than clocks.</p>
       <span class="step">Detail</span>
@@ -861,7 +1076,7 @@ show spanning-tree pathcost method</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q14"><span class="qtext">What specifically makes RSTP converge in under a second?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q19"><span class="qtext">What specifically makes RSTP converge in under a second?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">Four mechanisms: the proposal/agreement handshake on point-to-point links, edge ports going straight to forwarding, BPDUs acting as keepalives so three missed hellos age a neighbour out in six seconds instead of twenty, and every switch originating its own BPDUs rather than relaying the root's.</p>
       <span class="step">Detail</span>
@@ -891,7 +1106,7 @@ debug spanning-tree events</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q15"><span class="qtext">Explain MST. What defines a region, and what happens when regions do not match?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q20"><span class="qtext">Explain MST. What defines a region, and what happens when regions do not match?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">MST maps many VLANs onto a few spanning-tree instances, so a thousand VLANs can share two instances instead of running a thousand state machines. A region is defined by three things that must match exactly on every member: the <strong>region name</strong>, the <strong>revision number</strong>, and the <strong>VLAN-to-instance mapping</strong>. If any differ, the switches are in different regions and treat each other as boundaries.</p>
       <span class="step">Detail</span>
@@ -931,7 +1146,7 @@ show spanning-tree mst 0 detail | include Boundary|Bndry</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q16"><span class="qtext">What does a topology change notification actually do, and why do frequent TCNs hurt?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q21"><span class="qtext">What does a topology change notification actually do, and why do frequent TCNs hurt?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">A topology change causes MAC address tables to be flushed, so every destination becomes unknown and traffic floods until the tables repopulate. A steady stream of TCNs therefore produces a steady stream of unknown unicast flooding, which consumes bandwidth across the whole VLAN and raises CPU &mdash; while nothing appears to be down.</p>
       <span class="step">Detail</span>
@@ -974,7 +1189,7 @@ interface GigabitEthernet1/0/14
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q17"><span class="qtext">You are connecting an MST region to a switch running Rapid PVST+. What happens?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q22"><span class="qtext">You are connecting an MST region to a switch running Rapid PVST+. What happens?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">The MST boundary port runs <strong>PVST simulation</strong>: the region sends its IST information and the boundary replicates that same BPDU into every VLAN the PVST+ neighbour expects. It works, with one firm condition &mdash; the MST region must be the root for <em>all</em> VLANs at that boundary. If the PVST+ side has a better root for any VLAN, the boundary port is put into a PVST simulation inconsistent state and blocked.</p>
       <span class="step">Detail</span>
@@ -1012,16 +1227,16 @@ show spanning-tree root</code></pre>
   </details>
 </section>
 
-<!-- ============ 4 ============ -->
+<!-- ============ 5 ============ -->
 <section class="block" id="stpsafe">
   <div class="sechead">
-    <h2><span class="num">04</span>STP protection</h2>
+    <h2><span class="num">05</span>STP protection</h2>
     <label class="reviewed"><input type="checkbox" data-sec="stpsafe"> Done</label>
   </div>
   <p class="lede">Root guard versus loop guard is the reliable discriminator, because the two are easy to confuse and protect against opposite conditions. The storm question is asked to find out what you do under pressure.</p>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q18"><span class="qtext">What do PortFast, BPDU guard and BPDU filter do? Which is dangerous?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q23"><span class="qtext">What do PortFast, BPDU guard and BPDU filter do? Which is dangerous?</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">PortFast moves an access port straight to forwarding and stops it generating topology changes. BPDU guard err-disables the port if a BPDU arrives, which is how you stop someone plugging a switch into a user port. BPDU filter is the dangerous one &mdash; applied at interface level it stops sending <em>and</em> ignores received BPDUs, which disables spanning tree on that port entirely.</p>
       <span class="step">Detail</span>
@@ -1065,7 +1280,7 @@ show errdisable detect</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q19"><span class="qtext">Root guard versus loop guard. What does each protect against, and where do you put them?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q24"><span class="qtext">Root guard versus loop guard. What does each protect against, and where do you put them?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Root guard reacts to a <strong>superior</strong> BPDU &mdash; it blocks the port rather than allow an unexpected switch to become root. Loop guard reacts to the <strong>absence</strong> of BPDUs on a port that should be receiving them &mdash; it blocks rather than let the port transition to forwarding and create a loop. Opposite triggers, opposite placements.</p>
       <span class="step">Detail</span>
@@ -1109,7 +1324,7 @@ show logging | include ROOTGUARD|LOOPGUARD|BLOCK
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q20"><span class="qtext">What is UDLD, what is the difference between normal and aggressive mode, and what does it catch that STP does not?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q25"><span class="qtext">What is UDLD, what is the difference between normal and aggressive mode, and what does it catch that STP does not?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">UDLD echoes its own device and port identity to the neighbour and expects to see itself echoed back, which proves the link works in both directions. It catches a unidirectional failure &mdash; a broken fibre strand, a dead transmitter, a miswired patch &mdash; where the interface stays up and traffic flows one way only. Normal mode detects and reports; aggressive mode err-disables the port.</p>
       <span class="step">Detail</span>
@@ -1156,7 +1371,7 @@ udld reset                                 <span class="cmt">! manually re-enabl
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q21"><span class="qtext">A campus is down with what looks like a broadcast storm. What do you do in the first two minutes?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q26"><span class="qtext">A campus is down with what looks like a broadcast storm. What do you do in the first two minutes?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">Stop the loop before diagnosing it. Get console or out-of-band access, find the two ports the switch is reporting MAC flaps between, and shut one of them. Service comes back, the evidence is still there, and then you investigate. Trying to understand the topology while the CPU is saturated and the switches are unreachable wastes the outage.</p>
       <span class="step">The first two minutes</span>
@@ -1195,7 +1410,7 @@ show mac address-table interface Gi1/0/14</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q22"><span class="qtext">What causes err-disable, and should you enable automatic recovery?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q27"><span class="qtext">What causes err-disable, and should you enable automatic recovery?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Err-disable is the switch taking a port out of service because a protection mechanism fired. Automatic recovery is right for causes that are usually transient &mdash; link flap, UDLD, storm control &mdash; and questionable for causes that indicate a persistent condition, because recovering into the same condition produces a flapping loop instead of a clean failure.</p>
       <span class="step">Detail</span>
@@ -1243,7 +1458,7 @@ interface GigabitEthernet1/0/5
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q23"><span class="qtext">There was a loop and spanning tree did not prevent it. How is that possible?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q28"><span class="qtext">There was a loop and spanning tree did not prevent it. How is that possible?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">Because spanning tree can only block a loop it can see, and there are several ways a loop can exist outside its view: BPDUs are being filtered, the link is unidirectional, a device in the path forwards frames but not BPDUs, or something is bridging two interfaces below the level STP is operating at.</p>
       <span class="step">Detail</span>
@@ -1281,16 +1496,16 @@ show logging | include MACFLAP|LOOPGUARD|UDLD|SPANTREE</code></pre>
   </details>
 </section>
 
-<!-- ============ 5 ============ -->
+<!-- ============ 6 ============ -->
 <section class="block" id="etherchannel">
   <div class="sechead">
-    <h2><span class="num">05</span>EtherChannel</h2>
+    <h2><span class="num">06</span>EtherChannel</h2>
     <label class="reviewed"><input type="checkbox" data-sec="etherchannel"> Done</label>
   </div>
   <p class="lede">Two reliable questions here: which mode combinations actually bundle, and why aggregation does not give a single flow more bandwidth. The multi-chassis question tends to follow for anyone claiming data-centre experience.</p>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q24"><span class="qtext">Compare LACP, PAgP and static. Which mode combinations form a bundle?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q29"><span class="qtext">Compare LACP, PAgP and static. Which mode combinations form a bundle?</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">LACP is the standard, with <code>active</code> and <code>passive</code> modes; PAgP is Cisco's, with <code>desirable</code> and <code>auto</code>. In both, at least one side must be the assertive mode &mdash; two passive or two auto ends never bundle. <code>mode on</code> is static with no protocol at all, which means no misconfiguration detection.</p>
       <span class="step">Detail</span>
@@ -1352,7 +1567,7 @@ show interfaces Port-channel1 etherchannel</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q25"><span class="qtext">Why is one member of an EtherChannel carrying far more traffic than the others?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q30"><span class="qtext">Why is one member of an EtherChannel carrying far more traffic than the others?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Because member selection is a hash of chosen header fields, not a measurement of load. If few distinct values exist in those fields &mdash; a handful of conversations, or all traffic between two IP addresses &mdash; most flows hash to the same member. A single flow always takes one member and cannot exceed its bandwidth.</p>
       <span class="step">Detail</span>
@@ -1394,7 +1609,7 @@ show platform software fed switch active etherchannel loadbalance</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q26"><span class="qtext">What must match for members to bundle, and what happens when one side is bundled and the other is not?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q31"><span class="qtext">What must match for members to bundle, and what happens when one side is bundled and the other is not?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Speed, duplex, switchport mode, native VLAN, allowed VLAN list and the relevant spanning-tree parameters must all match across members. If one side bundles and the other does not, you get parallel forwarding paths that STP treats as a single logical port and therefore does not block &mdash; a loop. EtherChannel misconfiguration guard exists specifically to detect that.</p>
       <span class="step">Detail</span>
@@ -1436,7 +1651,7 @@ show spanning-tree summary | include EtherChannel</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q27"><span class="qtext">Compare vPC with StackWise Virtual or VSS. Why would you choose one?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q32"><span class="qtext">Compare vPC with StackWise Virtual or VSS. Why would you choose one?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Both let a downstream device bundle links to two physical switches. The difference is the control plane: vPC keeps <strong>two independent control planes</strong> that coordinate, while VSS and StackWise Virtual merge two chassis into <strong>one</strong> control plane with a single configuration. One config is simpler to operate; two control planes fail more independently.</p>
       <span class="step">Detail</span>
@@ -1489,7 +1704,7 @@ show vpc orphan-ports</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q28"><span class="qtext">How does spanning tree see an EtherChannel, and what are the consequences?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q33"><span class="qtext">How does spanning tree see an EtherChannel, and what are the consequences?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">As a single logical port with a single cost and a single state. That is the main benefit &mdash; parallel links with no blocking, and no reconvergence when a member fails. It also means STP cannot protect you from a problem <em>inside</em> the bundle, and that member changes can alter the bundle's cost and therefore the topology.</p>
       <span class="step">Detail</span>
@@ -1526,16 +1741,16 @@ show spanning-tree pathcost method</code></pre>
   </details>
 </section>
 
-<!-- ============ 6 ============ -->
+<!-- ============ 7 ============ -->
 <section class="block" id="fhrp">
   <div class="sechead">
-    <h2><span class="num">06</span>FHRP</h2>
+    <h2><span class="num">07</span>FHRP</h2>
     <label class="reviewed"><input type="checkbox" data-sec="fhrp"> Done</label>
   </div>
   <p class="lede">The high-value answers here are preempt delay, interface tracking, and why modern fabrics have replaced first-hop redundancy with an anycast gateway. The protocol comparison table is table stakes.</p>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q29"><span class="qtext">Compare HSRP, VRRP and GLBP.</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q34"><span class="qtext">Compare HSRP, VRRP and GLBP.</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">HSRP and VRRP both elect a single forwarder per group, so load sharing requires multiple groups with different winners per VLAN. GLBP shares load <em>within</em> one group by handing different hosts different virtual MACs. HSRP and GLBP are Cisco; VRRP is the standard.</p>
       <span class="step">Detail</span>
@@ -1584,7 +1799,7 @@ show vrrp brief</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q30"><span class="qtext">Why is <code>preempt delay</code> important? What goes wrong without it?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q35"><span class="qtext">Why is <code>preempt delay</code> important? What goes wrong without it?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">A router that has just booted or just had its uplink restored can win the HSRP election within seconds &mdash; before its routing protocols have converged and its forwarding table is populated. It becomes the active gateway and black-holes traffic until the IGP or BGP finishes. Preempt delay holds it in standby until it is actually able to forward.</p>
       <span class="step">Detail</span>
@@ -1628,7 +1843,7 @@ show ip route summary</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q31"><span class="qtext">The HSRP active router fails but traffic keeps being sent to it. What happened?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q36"><span class="qtext">The HSRP active router fails but traffic keeps being sent to it. What happened?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">The router did not fail in a way HSRP can see. HSRP only monitors its own hellos on the VLAN interface, so if the <em>uplink</em> fails while the SVI stays up, the router remains active, continues answering for the virtual IP, and black-holes everything. Interface and route tracking is what connects HSRP's decision to the router's actual ability to forward.</p>
       <span class="step">Detail</span>
@@ -1677,7 +1892,7 @@ show ip sla statistics</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q32"><span class="qtext">How should FHRP, the STP root and the routing metric relate in a campus?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q37"><span class="qtext">How should FHRP, the STP root and the routing metric relate in a campus?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">They should all point at the same switch for a given VLAN. If the HSRP active router is not the STP root, traffic goes up to the non-root switch, across the inter-switch link, to the root, and out &mdash; so every packet takes an extra hop, the inter-switch link carries traffic it should not, and your uplink capacity planning is wrong.</p>
       <span class="step">Detail</span>
@@ -1719,7 +1934,7 @@ show standby brief
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q33"><span class="qtext">Why do modern data-centre fabrics have no FHRP at all?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q38"><span class="qtext">Why do modern data-centre fabrics have no FHRP at all?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">Because the distributed anycast gateway replaces it. Every leaf configures the <em>same</em> gateway IP and the same virtual MAC for a subnet, so a host's gateway is always on its own leaf. There is no election, no active and standby, no preempt, no tracking, and no traffic crossing the fabric to reach a first hop.</p>
       <span class="step">Detail</span>
@@ -1762,16 +1977,231 @@ show bgp l2vpn evpn route-type 2</code></pre>
   </details>
 </section>
 
-<!-- ============ 7 ============ -->
+<!-- ============ 8 ============ -->
+<section class="block" id="mcastl2">
+  <div class="sechead">
+    <h2><span class="num">08</span>Multicast at layer 2</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="mcastl2"> Done</label>
+  </div>
+  <p class="lede">Multicast is where a switch's default behaviour is to flood, and every mechanism here exists to narrow that. The questions that discriminate are querier placement, why fast-leave is sometimes unsafe, and what PIM snooping does that IGMP snooping cannot.</p>
+
+  <details class="qa" data-lvl="core">
+    <summary data-n="Q39"><span class="qtext">How does a switch forward multicast by default, and what does IGMP snooping change?</span><span class="lvl lvl-core">Core</span></summary>
+    <div class="body">
+      <p class="lead">By default it floods, because a multicast destination MAC is never a source address and therefore never appears in the MAC table &mdash; so every multicast frame is an unknown destination and goes out every port in the VLAN. IGMP snooping has the switch listen to the IGMP conversation between hosts and routers and build a per-VLAN, per-group list of which ports actually asked for the traffic.</p>
+      <span class="step">Detail</span>
+      <p>The key insight is that multicast MAC addresses cannot be learned. A switch populates its MAC table from <em>source</em> addresses, and no host ever sources a frame from a multicast address &mdash; so there is no learning mechanism and flooding is the only safe default. Snooping replaces that default with inference: if a host sent a membership report for a group on a port, that port wants the group.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Snooping builds</th><th>From</th></tr></thead>
+          <tbody>
+            <tr><td>Group-to-port membership, per VLAN</td><td>IGMP membership reports from hosts</td></tr>
+            <tr><td><strong>The mrouter port</strong></td><td>IGMP queries, and PIM hellos, arriving on a port</td></tr>
+            <tr><td>Membership aging</td><td>The absence of reports in response to queries</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The mrouter port matters and is often overlooked: the switch must forward hosts' reports <em>toward the router</em>, and it must forward multicast data arriving from the router toward the hosts. Without knowing where the router is, snooping has no upstream.</p>
+<pre><code>ip igmp snooping
+ip igmp snooping vlan 100
+
+show ip igmp snooping
+show ip igmp snooping vlan 100
+show ip igmp snooping groups
+show ip igmp snooping groups vlan 100 count
+show ip igmp snooping mrouter
+show ip igmp snooping statistics vlan 100
+
+<span class="cmt">! what is always flooded regardless</span>
+<span class="cmt">!   224.0.0.0/24 — link-local control: OSPF, PIM, IGMP itself</span></code></pre>
+      <div class="tip"><b>Say why 224.0.0.0/24 is always flooded</b>It carries the control protocols that make everything else work &mdash; OSPF on 224.0.0.5 and 224.0.0.6, PIM on 224.0.0.13, IGMP queries themselves, HSRP, VRRP. Constraining those by snooping would break the protocols that snooping depends on, so the link-local range is excluded by design. It is a small detail and it pre-empts a confused follow-up about why some multicast still floods on a correctly snooping switch.</div>
+      <div class="verdict"><b>What they're testing</b>Whether you know <em>why</em> flooding is the default &mdash; that multicast MACs cannot be learned. Candidates who say "the switch does not know where to send it" are right but vague; the source-address explanation is the mechanism.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q40"><span class="qtext">Where should the IGMP querier be, and what happens in a VLAN with no layer 3 device?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">The querier is normally the layer 3 gateway for the VLAN, because queries are what keep membership alive. In a VLAN with no SVI anywhere &mdash; a stretched layer 2 segment whose gateway lives elsewhere, or a pure layer 2 VLAN &mdash; nobody sends queries, the snooping entries age out, and the switch reverts to flooding. The fix is a snooping querier configured on a switch.</p>
+      <span class="step">Detail</span>
+      <p>The dependency chain: hosts only send membership reports <em>in response to queries</em> (plus an unsolicited report when they first join). Snooping entries age based on not having seen a report. So no queries means no reports, which means the entries expire, which means flooding resumes &mdash; and flooding is the safe default, so nothing logs an error.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Scenario</th><th>Querier</th></tr></thead>
+          <tbody>
+            <tr><td>VLAN with an SVI doing multicast routing</td><td>The router. Nothing to configure</td></tr>
+            <tr><td>VLAN with an SVI but no <code>ip pim</code></td><td><strong>Often nothing</strong> &mdash; an SVI without PIM may not send queries. A common gap</td></tr>
+            <tr><td>Pure layer 2 VLAN, gateway elsewhere</td><td><strong>Configure <code>ip igmp snooping querier</code></strong></td></tr>
+            <tr><td>Several switches with the snooping querier enabled</td><td>Lowest IP address wins the election; the others stay quiet</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code><span class="cmt">! the fix for an L2-only VLAN</span>
+ip igmp snooping querier
+<span class="cmt">! and per VLAN, with an explicit source address</span>
+vlan configuration 100
+ ip igmp snooping querier address 10.100.0.254
+ ip igmp snooping querier version 2
+ ip igmp snooping querier query-interval 60
+
+show ip igmp snooping querier
+show ip igmp snooping querier vlan 100 detail
+<span class="cmt">!   shows the ACTIVE querier and its address — read this, not the config</span>
+show ip igmp snooping groups vlan 100</code></pre>
+      <div class="gotcha"><b>The querier address must be routable-looking and consistent</b>Two problems come up. First, if you configure a snooping querier on several switches without planning, the election picks the lowest address &mdash; which may be a switch at the wrong point in the topology, and the behaviour changes when that switch reloads. Second, a querier sourcing from an address that hosts consider invalid, or from 0.0.0.0 on some platforms, is ignored by some host stacks &mdash; so queries are sent and reports never come back, and the symptom is identical to having no querier at all. Set the address explicitly, on one switch per VLAN deliberately, and verify with <code>show ip igmp snooping querier</code> that the active querier is the one you intended.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"How would you recognise this problem?"</em> &mdash; multicast arriving on ports that joined nothing, <code>show ip igmp snooping groups</code> empty or sparse while traffic is clearly flowing, and <code>show ip igmp snooping querier</code> showing none. That trio is conclusive and takes thirty seconds.</li>
+        <li><em>"Why does an SVI without PIM not necessarily send queries?"</em> &mdash; because IGMP querying is part of multicast <em>routing</em>; a plain SVI is a gateway, not a multicast router. So a VLAN can have a perfectly good layer 3 gateway and still have no querier, which is the case people find most surprising.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you understand that snooping depends on a querier existing. It is the number one cause of unexplained multicast flooding and the fix is one command, so it is a high-value fact with a low cost to remember.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q41"><span class="qtext">Compare IGMPv2 and v3 snooping. When is fast-leave unsafe?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">IGMPv2 expresses interest in a group; v3 expresses interest in a group <em>from specific sources</em>, which is what SSM requires. Fast-leave removes a port from a group the moment a leave arrives, without sending a group-specific query first &mdash; which is safe when there is one receiver per port and cuts off other interested hosts when there is not.</p>
+      <span class="step">Detail</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th></th><th>IGMPv2</th><th>IGMPv3</th></tr></thead>
+          <tbody>
+            <tr><td>Expresses</td><td>"I want group G"</td><td>"I want G <strong>from source S</strong>" &mdash; include and exclude lists</td></tr>
+            <tr><td>Leave</td><td>Explicit leave-group message</td><td>A state-change report</td></tr>
+            <tr><td>Required for</td><td>Sparse-mode groups</td><td><strong>SSM</strong> &mdash; 232.0.0.0/8</td></tr>
+            <tr><td>Snooping must</td><td>Track group-to-port</td><td>Track <strong>source and group</strong> to port, or it degrades to (*,G)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="gotcha"><b>A v2 querier forces v3 hosts to fall back, and that breaks SSM</b>IGMP version negotiation is downward: if the querier is v2, hosts send v2 reports, which carry no source information. So an SSM deployment where the querier &mdash; or the snooping querier &mdash; is configured as v2 will silently fail to deliver source-specific traffic, because the join never says which source. Both the querier version and the snooping version must be v3 for SSM to work, and the symptom is that the group appears to be joined and no traffic arrives.</div>
+      <p><strong>Fast-leave, and when not to use it:</strong></p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Situation</th><th>Fast-leave</th></tr></thead>
+          <tbody>
+            <tr><td>One receiver per access port &mdash; a set-top box, a trading terminal</td><td><strong>Safe and valuable</strong> &mdash; the stream stops immediately, freeing bandwidth</td></tr>
+            <tr><td>Several hosts behind one port &mdash; a VM host, a small unmanaged switch, a hub</td><td><strong>Unsafe</strong> &mdash; one host leaving cuts off the others still watching</td></tr>
+            <tr><td>Several hosts, with <strong>explicit host tracking</strong> enabled</td><td>Safe &mdash; the switch tracks members individually and only removes the port when the last one leaves</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code>ip igmp snooping vlan 100 immediate-leave
+<span class="cmt">! safer, where several receivers share a port</span>
+ip igmp snooping vlan 100 explicit-tracking
+
+<span class="cmt">! version alignment, which matters for SSM</span>
+vlan configuration 100
+ ip igmp snooping querier version 3
+interface Vlan100
+ ip igmp version 3
+
+<span class="cmt">! report suppression — reduces router load, interferes with v3 tracking</span>
+no ip igmp snooping report-suppression
+
+show ip igmp snooping vlan 100
+show ip igmp snooping groups vlan 100 detail
+show ip igmp snooping explicit-tracking vlan 100</code></pre>
+      <div class="tip"><b>Report suppression is the third knob and it interacts badly with v3</b>By default the switch forwards only one report per group upstream, suppressing duplicates to spare the router. That is helpful with v2 and harmful with v3 or explicit tracking, because suppressing reports throws away the per-source and per-host detail those features depend on. On an SSM deployment, or anywhere you have enabled explicit tracking, turn report suppression off. Knowing that these three settings &mdash; version, fast-leave, report suppression &mdash; interact is what separates someone who has tuned a multicast VLAN from someone reading the options list.</div>
+      <div class="verdict"><b>What they're testing</b>Whether you know fast-leave has a precondition, and ideally the v2-querier-breaks-SSM interaction. Both are specific, both cause real failures, and neither is obvious from the configuration.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="expert">
+    <summary data-n="Q42"><span class="qtext">What does PIM snooping do that IGMP snooping cannot?</span><span class="lvl lvl-expert">Expert</span></summary>
+      <div class="body">
+      <p class="lead">IGMP snooping constrains multicast toward <strong>hosts</strong>, by listening to their membership reports. On a segment shared by several multicast <em>routers</em>, the routers signal interest with PIM joins rather than IGMP reports &mdash; so IGMP snooping has nothing to learn from, treats every router port as an mrouter port, and floods every group to every router. PIM snooping listens to PIM join and prune messages and constrains the traffic to the routers that actually asked.</p>
+      <span class="step">Detail</span>
+      <p>The scenario: a transit VLAN in a core with four PIM routers on it. Router A is the only one with receivers for group 239.1.1.1 downstream, so it sends a PIM join toward the source. Without PIM snooping, the switch sees PIM hellos from all four routers, marks all four ports as mrouter ports, and floods the group's traffic to all of them &mdash; so three routers receive a high-rate stream they have no use for, and discard it after consuming the bandwidth on the way in.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th></th><th>IGMP snooping</th><th>PIM snooping</th></tr></thead>
+          <tbody>
+            <tr><td>Listens to</td><td>IGMP reports and queries from <strong>hosts</strong></td><td>PIM join and prune from <strong>routers</strong></td></tr>
+            <tr><td>Constrains traffic toward</td><td>Host ports</td><td><strong>Router ports</strong></td></tr>
+            <tr><td>Needed on</td><td>Any access VLAN with receivers</td><td>A transit VLAN with <strong>multiple PIM routers</strong></td></tr>
+            <tr><td>Without it</td><td>Flooding to all host ports</td><td>Flooding to all router ports</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code>ip pim snooping
+vlan configuration 100
+ ip pim snooping
+
+show ip pim snooping
+show ip pim snooping vlan 100
+show ip pim snooping vlan 100 neighbor
+show ip pim snooping vlan 100 mroute
+show ip igmp snooping mrouter
+<span class="cmt">!   without PIM snooping, EVERY PIM router port shows as an mrouter port</span></code></pre>
+      <div class="tip"><b>Where this actually bites</b>A shared transit VLAN carrying high-rate multicast &mdash; IPTV, market data, video distribution &mdash; with several routers attached. The waste is proportional to the stream rate times the number of uninterested routers, so on a multi-gigabit feed it is substantial, and it shows up as inexplicable inbound load on routers that should not be receiving anything. The honest design note: this situation usually indicates a shared layer 2 segment between routers, which modern designs avoid in favour of point-to-point routed links &mdash; so PIM snooping is both the fix and a hint that the topology could be simplified. Saying that is the stronger answer.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"How would you notice the problem?"</em> &mdash; a router with high inbound multicast on a transit VLAN and no corresponding outbound, and <code>show ip mroute</code> showing groups it has no interest in. Combined with <code>show ip igmp snooping mrouter</code> listing every router port, that is the signature.</li>
+        <li><em>"Does it help on an access VLAN?"</em> &mdash; no. There are no PIM routers there, so there is nothing to snoop. It is specifically for router-to-router shared segments, and enabling it elsewhere achieves nothing.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you understand that routers and hosts signal interest differently, so the two snooping mechanisms address different halves of the problem. Very few candidates know PIM snooping exists, and the "this hints at a topology that could be simplified" observation is what makes the answer senior.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q43"><span class="qtext">How is broadcast and multicast traffic handled inside a VXLAN fabric?</span><span class="lvl lvl-deep">Deep</span></summary>
+      <div class="body">
+      <p class="lead">BUM traffic &mdash; broadcast, unknown unicast and multicast &mdash; has to reach every VTEP participating in a VNI, and there are two ways to do that. Underlay multicast maps each VNI to a multicast group and lets the underlay replicate. Ingress replication has the sending VTEP unicast a copy to every other VTEP in the VNI. Ingress replication is the common modern choice because EVPN removes most BUM traffic in the first place.</p>
+      <span class="step">Detail</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th></th><th>Underlay multicast</th><th>Ingress replication</th></tr></thead>
+          <tbody>
+            <tr><td>Replication done by</td><td>The <strong>underlay</strong> &mdash; spines replicate</td><td>The <strong>ingress VTEP</strong> &mdash; one copy per remote VTEP</td></tr>
+            <tr><td>Requires</td><td><strong>PIM in the underlay</strong>, plus an RP design</td><td>Nothing extra &mdash; EVPN route type 3 builds the list</td></tr>
+            <tr><td>Efficiency</td><td><strong>Better</strong> for high BUM volume and many VTEPs</td><td>Cost grows linearly with VTEP count per VNI</td></tr>
+            <tr><td>Operational complexity</td><td>Higher &mdash; another protocol and another failure mode in the underlay</td><td><strong>Lower</strong></td></tr>
+            <tr><td>Common choice</td><td>Very large fabrics with heavy BUM</td><td><strong>Most deployments</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Why ingress replication is usually fine:</strong> EVPN removes most of what BUM traffic used to be. MAC learning happens in the control plane, so there is almost no unknown unicast flooding. ARP suppression means the leaf answers ARP locally from its EVPN table rather than flooding it. What remains is genuine broadcast and genuine multicast, which in a server fabric is a small fraction of traffic &mdash; so replicating it at the ingress costs little.</p>
+<pre><code><span class="cmt">! ingress replication, with EVPN building the list</span>
+interface nve1
+ no shutdown
+ host-reachability protocol bgp
+ source-interface loopback1
+ member vni 10100
+  ingress-replication protocol bgp
+ member vni 50000 associate-vrf
+
+<span class="cmt">! or underlay multicast, if BUM volume justifies it</span>
+ member vni 10100
+  mcast-group 239.1.1.1
+
+show nve vni
+show nve peers
+show bgp l2vpn evpn route-type 3
+<span class="cmt">!   type 3 is the inclusive multicast route — the replication list</span>
+show ip arp suppression-cache detail
+show ip mroute                           <span class="cmt">! underlay, if using multicast replication</span></code></pre>
+      <div class="tip"><b>Mention ARP suppression as the reason the choice matters less than it used to</b>Before EVPN, a VXLAN fabric using flood-and-learn had to flood every unknown destination and every ARP across every VTEP in the VNI, so BUM volume was large and underlay multicast was close to mandatory. With EVPN distributing MAC and IP reachability and suppressing ARP at the leaf, BUM volume collapses &mdash; which is what made ingress replication practical and let people remove PIM from the underlay entirely. Framing the answer as "EVPN changed the economics" rather than listing two options is what shows you understand the progression.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"When would you go back to underlay multicast?"</em> &mdash; a VNI with many VTEPs and genuinely heavy multicast &mdash; video distribution, market data, some scientific workloads &mdash; where replicating at the ingress would multiply the sender's uplink load by the VTEP count. That is a measurement, not an assumption: count the VTEPs per VNI and the BUM rate.</li>
+        <li><em>"What is the MAC move or duplicate detection condition?"</em> &mdash; EVPN carries a sequence number in the MAC mobility extended community, so a host appearing in a new place increments it and every VTEP prefers the new location. If a MAC persistently appears in two places &mdash; a misconfigured NIC team, a loop outside the fabric &mdash; the sequence number climbs and the fabric raises duplicate detection and eventually freezes the entry. That is a symptom of a layer 2 problem outside the fabric rather than a fabric fault.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you know both replication models and why ingress replication became the default. The ARP-suppression explanation is the causal link and is what distinguishes understanding from recall.</div>
+    </div>
+  </details>
+</section>
+
+<!-- ============ 9 ============ -->
 <section class="block" id="l3sw">
   <div class="sechead">
-    <h2><span class="num">07</span>L3 switching</h2>
+    <h2><span class="num">09</span>L3 switching</h2>
     <label class="reviewed"><input type="checkbox" data-sec="l3sw"> Done</label>
   </div>
   <p class="lede">Where layer 2 meets layer 3. The questions that carry weight are SVI autostate, and the routed-access design argument &mdash; the second is asked of anyone being considered for a design role.</p>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q34"><span class="qtext">Compare a routed port, an SVI and a layer 3 EtherChannel. When do you use each?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q44"><span class="qtext">Compare a routed port, an SVI and a layer 3 EtherChannel. When do you use each?</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">A routed port is a physical interface with no VLAN at all &mdash; no spanning tree, no bridging, just an IP interface. An SVI is a layer 3 interface for a VLAN, so it serves many ports and depends on the VLAN's state. A layer 3 EtherChannel is a bundle with <code>no switchport</code>, giving a routed interface with link redundancy.</p>
       <span class="step">Detail</span>
@@ -1823,7 +2253,7 @@ show etherchannel summary</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q35"><span class="qtext">An SVI is down even though the VLAN exists and is not shut down. Why?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q45"><span class="qtext">An SVI is down even though the VLAN exists and is not shut down. Why?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Autostate. An SVI is only brought up when at least one port in that VLAN is up <em>and</em> in a spanning-tree forwarding state. If every access port in the VLAN is down and the VLAN is not carried on any up trunk, the SVI goes down regardless of its own configuration.</p>
       <span class="step">Detail</span>
@@ -1861,7 +2291,7 @@ show interfaces Vlan100 | include autostate</code></pre>
   </details>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q36"><span class="qtext">Compare router-on-a-stick with a layer 3 switch for inter-VLAN routing.</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q46"><span class="qtext">Compare router-on-a-stick with a layer 3 switch for inter-VLAN routing.</span><span class="lvl lvl-core">Core</span></summary>
       <div class="body">
       <p class="lead">Router-on-a-stick sends every inter-VLAN packet up the trunk and back down it, so the link carries each packet twice and total inter-VLAN throughput is bounded by that one link. A layer 3 switch routes between VLANs in the ASIC at line rate, with no hairpin, which is why it replaced the pattern everywhere except labs and the smallest sites.</p>
       <span class="step">Detail</span>
@@ -1914,7 +2344,7 @@ show platform software fed switch active ip route</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q37"><span class="qtext">Make the case for routed access. What do you give up?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q47"><span class="qtext">Make the case for routed access. What do you give up?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Routed access puts layer 3 on the access switch, so the links to distribution are routed point-to-point. Spanning tree and FHRP disappear between the layers, each access switch becomes its own failure domain, and convergence is handled by the IGP in sub-second time. What you give up is the ability to span a VLAN across access switches.</p>
       <span class="step">What you gain</span>
@@ -1963,7 +2393,7 @@ show sdm prefer</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q38"><span class="qtext">A layer 3 switch is forwarding at line rate, then an ACL is applied and throughput collapses. What happened?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q48"><span class="qtext">A layer 3 switch is forwarding at line rate, then an ACL is applied and throughput collapses. What happened?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">The ACL could not be programmed into hardware, so matching traffic is being punted to the CPU and forwarded in software. The CPU cannot forward at line rate, so throughput drops to a fraction and CPU utilisation goes to the ceiling &mdash; while the ACL appears correctly configured and is working.</p>
       <span class="step">Detail</span>
@@ -2000,16 +2430,16 @@ show ip access-lists BLOCK | include log</code></pre>
   </details>
 </section>
 
-<!-- ============ 8 ============ -->
+<!-- ============ 10 ============ -->
 <section class="block" id="campus">
   <div class="sechead">
-    <h2><span class="num">08</span>Campus design</h2>
+    <h2><span class="num">10</span>Campus design</h2>
     <label class="reviewed"><input type="checkbox" data-sec="campus"> Done</label>
   </div>
   <p class="lede">Design questions, where the interviewer wants assumptions stated out loud and trade-offs named. There is no single right answer to any of these, and candidates who give one without asking about constraints lose marks for it.</p>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q39"><span class="qtext">When do you need a three-tier design rather than a collapsed core?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q49"><span class="qtext">When do you need a three-tier design rather than a collapsed core?</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">When you have enough distribution blocks that interconnecting them directly becomes unmanageable. With two or three blocks, a mesh between distribution pairs is fine and a dedicated core adds cost and latency for nothing. Past that, the link count grows quadratically and a core layer turns it back into a star.</p>
       <span class="step">Detail</span>
@@ -2038,7 +2468,7 @@ show ip access-lists BLOCK | include log</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q40"><span class="qtext">What is a failure domain in a campus, and how do you keep them small?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q50"><span class="qtext">What is a failure domain in a campus, and how do you keep them small?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">A failure domain is the set of things that break together. In a campus the dominant one is the layer 2 broadcast domain, because a loop, a storm or a rogue DHCP server affects everything in it. Keeping them small means not stretching VLANs, pushing the layer 3 boundary toward the access layer, and not merging failure domains with features that look convenient.</p>
       <span class="step">Detail</span>
@@ -2073,7 +2503,7 @@ show ip access-lists BLOCK | include log</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q41"><span class="qtext">Compare stacking, StackWise Virtual and independent switches. What are the failure modes?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q51"><span class="qtext">Compare stacking, StackWise Virtual and independent switches. What are the failure modes?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Stacking merges several access switches into one logical switch with one control plane. StackWise Virtual does the same for two larger chassis. Both buy operational simplicity &mdash; one configuration, cross-member bundling, no spanning tree inside &mdash; and both create a shared control plane, which means a software fault or an upgrade affects everything in it.</p>
       <span class="step">Detail</span>
@@ -2130,7 +2560,7 @@ interface GigabitEthernet1/0/48
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q42"><span class="qtext">Where should the layer 2 to layer 3 boundary be?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q52"><span class="qtext">Where should the layer 2 to layer 3 boundary be?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">As close to the access layer as the applications allow. At distribution is the classic position and requires spanning tree and FHRP; at the access layer gives you routed access with neither; and in a fabric design there is effectively no boundary, because layer 2 adjacency becomes an overlay service on a routed network.</p>
       <span class="step">Detail</span>
@@ -2157,7 +2587,7 @@ interface GigabitEthernet1/0/48
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q43"><span class="qtext">How do you size access uplinks? Work through the oversubscription.</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q53"><span class="qtext">How do you size access uplinks? Work through the oversubscription.</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">Add the access port capacity, divide by the uplink capacity, and then <strong>recalculate for the failure case</strong> where one uplink is gone. The failure number is the one that matters, because that is the state you have to survive &mdash; and it is double the headline figure on a two-uplink switch.</p>
       <span class="step">Worked examples</span>
@@ -2203,16 +2633,16 @@ show interfaces Port-channel1 | include members|BW</code></pre>
   </details>
 </section>
 
-<!-- ============ 9 ============ -->
+<!-- ============ 11 ============ -->
 <section class="block" id="l2sec">
   <div class="sechead">
-    <h2><span class="num">09</span>L2 security</h2>
+    <h2><span class="num">11</span>L2 security</h2>
     <label class="reviewed"><input type="checkbox" data-sec="l2sec"> Done</label>
   </div>
   <p class="lede">The chain that matters is DHCP snooping building a binding table, DAI and IP Source Guard consuming it. Explaining that dependency is worth more than describing each feature separately, and it is what the interviewer is listening for.</p>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q44"><span class="qtext">Explain port security. What are the violation modes and which would you choose?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q54"><span class="qtext">Explain port security. What are the violation modes and which would you choose?</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">Port security limits how many MAC addresses a port may learn and optionally which ones. On a violation it can drop silently, drop and alert, or err-disable the port. <code>restrict</code> &mdash; drop and alert &mdash; is usually the right choice, because it gives you the signal without turning a security event into a user outage.</p>
       <span class="step">Detail</span>
@@ -2253,7 +2683,7 @@ show logging | include PSECURE</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q45"><span class="qtext">How does DHCP snooping work, and what is the trouble with option 82?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q55"><span class="qtext">How does DHCP snooping work, and what is the trouble with option 82?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">DHCP snooping classifies ports as trusted or untrusted and drops DHCP server messages &mdash; OFFER, ACK &mdash; arriving on untrusted ports, which stops a rogue DHCP server on a user port. While doing so it records each successful lease in a <strong>binding table</strong> of MAC, IP, VLAN, lease and interface, and that table is what DAI and IP Source Guard are built on.</p>
       <span class="step">Detail</span>
@@ -2294,7 +2724,7 @@ show logging | include DHCP_SNOOPING</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q46"><span class="qtext">What is Dynamic ARP Inspection protecting against, and how does it know what is valid?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q56"><span class="qtext">What is Dynamic ARP Inspection protecting against, and how does it know what is valid?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">It protects against ARP spoofing &mdash; a host claiming to own an IP address it does not, usually the default gateway, to intercept traffic. DAI validates every ARP packet on untrusted ports against the DHCP snooping binding table, and drops any where the MAC-to-IP mapping does not match a known lease.</p>
       <span class="step">Detail</span>
@@ -2341,7 +2771,7 @@ show logging | include ARP_INSPECTION|DAI</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q47"><span class="qtext">What does IP Source Guard add on top of DHCP snooping and DAI?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q57"><span class="qtext">What does IP Source Guard add on top of DHCP snooping and DAI?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">DAI validates <em>ARP</em>, so it stops a host lying about who owns an IP in the ARP exchange. IP Source Guard validates the source address of <em>IP traffic itself</em>, so it stops a host sending packets with a source address it has no lease for &mdash; which is the spoofing that bypasses DAI entirely.</p>
       <span class="step">Detail</span>
@@ -2379,7 +2809,7 @@ show platform software fed switch active acl usage   <span class="cmt">! IPSG co
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q48"><span class="qtext">Explain private VLANs. What are the port and VLAN types, and when would you use them?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q58"><span class="qtext">Explain private VLANs. What are the port and VLAN types, and when would you use them?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">A private VLAN splits one subnet into a primary VLAN and secondary VLANs, so hosts share a gateway and a subnet but cannot necessarily reach each other. Isolated secondary VLANs let a host talk only to promiscuous ports; community secondary VLANs let hosts talk within their community and to promiscuous ports. The classic use is a DMZ or a shared-hosting segment where servers must reach the gateway but not one another.</p>
       <span class="step">Detail</span>
@@ -2442,7 +2872,7 @@ show interfaces Gi1/0/5 switchport | include Private</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q49"><span class="qtext">Give me your standard access-port configuration and justify each line.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q59"><span class="qtext">Give me your standard access-port configuration and justify each line.</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">This question is really asking whether you have a template, because an estate configured port by port is an estate with inconsistent security. Every line should have a reason you can state in one sentence.</p>
       <span class="step">The template</span>
@@ -2507,16 +2937,16 @@ no vtp mode server</code></pre>
   </details>
 </section>
 
-<!-- ============ 10 ============ -->
+<!-- ============ 12 ============ -->
 <section class="block" id="dc">
   <div class="sechead">
-    <h2><span class="num">10</span>Data centre switching</h2>
+    <h2><span class="num">12</span>Data centre switching</h2>
     <label class="reviewed"><input type="checkbox" data-sec="dc"> Done</label>
   </div>
   <p class="lede">Where switching stops being about spanning tree and starts being about buffers and ECMP. The buffer and incast questions are the ones that separate people who have operated a fabric from people who have read about one.</p>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q50"><span class="qtext">Why leaf-spine rather than three-tier? What changes?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q60"><span class="qtext">Why leaf-spine rather than three-tier? What changes?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">Three-tier was designed for north-south traffic, where most flows went from a server to a user or to the internet. Data-centre traffic is predominantly east-west, server to server, and a three-tier design makes that path long and variable. Leaf-spine makes every server two hops from every other, with all links active via layer 3 ECMP and no spanning tree.</p>
       <span class="step">Detail</span>
@@ -2563,7 +2993,7 @@ show interface brief | include up</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q51"><span class="qtext">What does VXLAN add to a frame, and what does the underlay need to support?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q61"><span class="qtext">What does VXLAN add to a frame, and what does the underlay need to support?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Fifty bytes: an outer Ethernet header, an outer IP header, a UDP header with destination port 4789, and an eight-byte VXLAN header carrying the 24-bit VNI. The underlay needs an MTU large enough to carry that, IP reachability between VTEP loopbacks, and ECMP &mdash; and the source UDP port is deliberately randomised to give that ECMP something to hash on.</p>
       <span class="step">Detail</span>
@@ -2612,7 +3042,7 @@ ping 10.255.0.12 source 10.255.0.11 packet-size 9000 df-bit</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q52"><span class="qtext">A leaf is dropping packets on a port running at 20% average utilisation. Explain.</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q62"><span class="qtext">A leaf is dropping packets on a port running at 20% average utilisation. Explain.</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">Microbursts, almost certainly caused by incast. Many servers respond to one requester simultaneously, their traffic converges on one egress port, and the buffer overruns in microseconds. Averaged over any normal polling interval the utilisation looks low, so the graph and the drop counter disagree &mdash; and the drop counter is the one telling the truth.</p>
       <span class="step">Detail</span>
@@ -2659,7 +3089,7 @@ show platform hardware fed switch active qos queue stats interface Gi1/0/5</code
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q53"><span class="qtext">What is PFC, how does it differ from ECN, and what are the risks of lossless Ethernet?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q63"><span class="qtext">What is PFC, how does it differ from ECN, and what are the risks of lossless Ethernet?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">PFC is per-priority PAUSE &mdash; it stops the upstream device sending one traffic class while letting others continue, making that class lossless. ECN instead marks packets to tell the <em>end hosts</em> to slow down. PFC acts hop by hop and reacts in microseconds; ECN acts end to end and reacts in a round trip. The risk with PFC is that pausing propagates backwards and can deadlock the fabric.</p>
       <span class="step">Detail</span>
@@ -2707,7 +3137,7 @@ show hardware internal buffer info pkt-stats</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q54"><span class="qtext">How do you dual-attach a server to the fabric? Compare vPC with EVPN multihoming.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q64"><span class="qtext">How do you dual-attach a server to the fabric? Compare vPC with EVPN multihoming.</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">vPC makes two switches look like one to the server, coordinated over a peer-link, and is limited to a pair. EVPN multihoming achieves the same thing through the EVPN control plane using an Ethernet Segment Identifier &mdash; no peer-link, standards-based, and it works with more than two switches.</p>
       <span class="step">Detail</span>
@@ -2757,16 +3187,270 @@ show l2route evpn mac all</code></pre>
   </details>
 </section>
 
-<!-- ============ 11 ============ -->
+<!-- ============ 13 ============ -->
+<section class="block" id="platha">
+  <div class="sechead">
+    <h2><span class="num">13</span>Platform HA</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="platha"> Done</label>
+  </div>
+  <p class="lede">Per-platform redundancy, which interviewers use to check whether your knowledge is current and hands-on. The highest-value answers are the StackWise split-brain case, why dual-active detection must not share a path with the link it protects, and the vPC failure matrix.</p>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q65"><span class="qtext">Map the HA options across the Catalyst 9000 family. What does each platform actually offer?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">Three mechanisms, applied at different points in the family. Fixed access switches stack &mdash; several chassis, one control plane. Modular switches take a second supervisor in the same chassis. Core-class switches pair two chassis with StackWise Virtual. Several platforms support more than one of these, so the question is which fits the role rather than which the box can do.</p>
+      <span class="step">Detail</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Platform</th><th>Form</th><th>HA mechanism</th><th>Typical role</th></tr></thead>
+          <tbody>
+            <tr><td><strong>C9200 / 9200L</strong></td><td>Fixed</td><td>Stacking on supported models. <strong>No supervisor redundancy</strong></td><td>Small-branch access</td></tr>
+            <tr><td><strong>C9300 / 9300X</strong></td><td>Fixed</td><td><strong>StackWise</strong> &mdash; up to 8 members, SSO between active and standby, plus StackPower</td><td>Campus access</td></tr>
+            <tr><td><strong>C9400</strong></td><td>Modular</td><td><strong>Dual supervisor</strong> in chassis with SSO and NSF; ISSU. StackWise Virtual on supported combinations</td><td>Large access, distribution</td></tr>
+            <tr><td><strong>C9500 / 9500X</strong></td><td>Fixed</td><td><strong>StackWise Virtual</strong> &mdash; two chassis, one logical</td><td>Distribution, collapsed core</td></tr>
+            <tr><td><strong>C9600</strong></td><td>Modular</td><td><strong>Dual supervisor</strong> in chassis; StackWise Virtual across two chassis</td><td>Core</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The distinction that matters: <strong>dual supervisor protects against a supervisor failure within one chassis</strong>, while stacking and StackWise Virtual protect against the loss of a whole chassis. They address different failures, and on a 9600 you can have both &mdash; dual sups in each of two chassis paired by StackWise Virtual, which is the belt-and-braces core design.</p>
+<pre><code><span class="cmt">! what have I got?</span>
+show version | include Model|Mode|System image
+show switch                              <span class="cmt">! stack members, roles, priorities</span>
+show module                              <span class="cmt">! modular chassis, supervisors</span>
+show redundancy states
+show stackwise-virtual
+show inventory
+show platform                            <span class="cmt">! what is physically present</span></code></pre>
+      <div class="tip"><b>Say what each mechanism does <em>not</em> protect against</b>All three share a single control plane, so none of them protects against a software defect or a bad upgrade &mdash; a stack, a dual-sup chassis and a StackWise Virtual pair will all fail together under a control-plane bug. That is the argument for independent switches with vPC or multi-chassis bundling in environments where correlated software failure is the risk you care about. Naming that limit unprompted is what distinguishes someone who has chosen between these designs from someone reciting the datasheet.</div>
+      <div class="verdict"><b>What they're testing</b>Whether you know the family and whether you separate "lost a supervisor" from "lost a chassis". The shared-control-plane limitation is the senior observation.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q66"><span class="qtext">Explain StackWise on a Catalyst 9300. What happens when the ring breaks?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">Members are cabled in a ring, one is elected active and runs the single control plane, one is standby with state synchronised by SSO, and the rest are members. Breaking the ring in <strong>one</strong> place leaves a working chain at reduced stack bandwidth. Breaking it in <strong>two</strong> places splits the stack into two independent switches with the same configuration and the same management address &mdash; which is the failure to plan for.</p>
+      <span class="step">Detail</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Role</th><th>Does</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Active</strong></td><td>Runs the control plane, holds the configuration, owns the management interface</td></tr>
+            <tr><td><strong>Standby</strong></td><td>SSO-synchronised; takes over on active failure with forwarding preserved</td></tr>
+            <tr><td><strong>Member</strong></td><td>Forwards; participates in the election if the active and standby are both lost</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Election</strong> is by highest configured priority (1&ndash;15, default 1), then preference for a switch that is already active, then the lowest MAC address. It is <strong>not preemptive</strong>, so a member you later give a higher priority does not take over until the current active fails &mdash; which means stack roles drift over years of reloads unless you set priorities deliberately and check them.</p>
+<pre><code>switch 1 priority 15                     <span class="cmt">! intended active</span>
+switch 2 priority 14                     <span class="cmt">! intended standby</span>
+switch 3 provision c9300-48p             <span class="cmt">! pre-provision a member before it arrives</span>
+
+show switch
+show switch detail
+show switch stack-ports summary
+show switch stack-ring activity
+show switch stack-bandwidth
+show redundancy states
+show logging | include STACKMGR|SWITCH_ADD|SWITCH_REMOVE
+
+<span class="cmt">! and the power ring, which is separate from the data ring</span>
+show stack-power detail
+show stack-power load-shedding</code></pre>
+      <div class="gotcha"><b>A stack split produces two switches with one identity</b>Two breaks in the ring &mdash; a cable pulled while another is already faulty, or two members reloading together &mdash; leave two partial stacks. Each elects an active, each loads the same configuration, each brings up the same SVIs and the same management IP, and each believes it is the whole stack. The result is duplicate addresses, duplicate HSRP or routing identities, and unpredictable forwarding, and it is particularly nasty because both halves look healthy locally. Mitigations: keep the ring cabled correctly and verify with <code>show switch stack-ports summary</code> after any physical work, distribute uplinks across members so a split leaves both halves reachable, and treat a single ring break as an urgent fault rather than a degraded-but-fine state &mdash; because at that point you are one cable from a split.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"Why distribute uplinks across members?"</em> &mdash; because if every uplink is on one member, losing that member takes the whole stack off the network regardless of how many switches survive, and upgrading it is an outage. Uplinks on at least two members, bundled as a cross-stack EtherChannel, is the design.</li>
+        <li><em>"What does <code>switch N provision</code> do?"</em> &mdash; lets you configure interfaces for a member that is not yet installed, so the configuration is ready when it arrives and the interface configuration is not lost if a member is removed. Useful operationally and a sign you have built stacks rather than inherited them.</li>
+        <li><em>"Does a stack upgrade require an outage?"</em> &mdash; in-service upgrade mechanisms let members upgrade in groups so part of the stack keeps forwarding, which only helps if the uplinks are distributed. Otherwise it is a reload.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you know the split-brain case and the non-preemptive election. The uplink-distribution point is the design consequence and is what makes the answer practical.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q67"><span class="qtext">A Catalyst 9400 has two supervisors. What is the difference between SSO and RPR, and what survives a switchover?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">SSO keeps the standby supervisor fully synchronised, so a switchover preserves forwarding and most control-plane state and takes a second or two. RPR is a colder mode where the standby is loaded but not synchronised, so a switchover means the control plane restarts from configuration &mdash; much slower and disruptive. SSO is what you want and what you should verify is actually in effect.</p>
+      <span class="step">Detail</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th></th><th>SSO</th><th>RPR</th></tr></thead>
+          <tbody>
+            <tr><td>Standby state</td><td><strong>Fully synchronised</strong> &mdash; configuration and much runtime state</td><td>Booted, not synchronised</td></tr>
+            <tr><td>Switchover time</td><td>Seconds</td><td>Much longer &mdash; the control plane initialises</td></tr>
+            <tr><td>Forwarding during switchover</td><td><strong>Continues</strong> via NSF on the line cards</td><td>Interrupted</td></tr>
+            <tr><td>Routing adjacencies</td><td>Survive with graceful restart or NSR</td><td>Reset</td></tr>
+            <tr><td>Use</td><td><strong>Always, where supported</strong></td><td>Fallback when SSO cannot be established</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code>redundancy
+ mode sso
+!
+show redundancy states
+<span class="cmt">!   my state = ACTIVE, peer state = <span class="hl">STANDBY HOT</span>   ← what you want</span>
+<span class="cmt">!   peer state = STANDBY COLD means SSO is NOT established</span>
+show redundancy
+show redundancy switchover history
+show redundancy history | include SWITCHOVER|PEER|SSO
+show module
+show platform software iomd redundancy
+
+<span class="cmt">! a planned switchover, for testing or maintenance</span>
+redundancy force-switchover</code></pre>
+      <div class="gotcha"><b>"STANDBY HOT" is the only acceptable state, and people do not check it</b>A chassis with two supervisors where the peer is in <code>STANDBY COLD</code> has redundancy in the sense that a second supervisor is present, and not in the sense that a failure would be non-disruptive &mdash; the switchover will be an RPR-style restart. The usual causes are a software version mismatch between supervisors, a configuration incompatibility, or the standby still booting. <code>show redundancy states</code> is one command and it should be part of any health check and any pre-change verification. Discovering during an incident that your SSO pair was never actually in SSO is a memorable way to learn this.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"What does not survive a switchover?"</em> &mdash; anything stateful that is not replicated, and the specifics are platform and release dependent. The honest answer is to test it: perform a <code>redundancy force-switchover</code> in a maintenance window and observe what breaks, rather than inferring from documentation. Things commonly worth checking are aggressive BFD sessions, some security and NAT state, and any feature the release notes list as not SSO-aware.</li>
+        <li><em>"Do both supervisors' uplinks work?"</em> &mdash; on some supervisor and platform combinations, inserting a second supervisor changes which uplink ports are usable. It is a real planning consideration on a 9400, because it can reduce your available uplink capacity at the moment you add redundancy, and it surprises people at install time.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you verify SSO rather than assume it. <code>STANDBY HOT</code> is the specific thing to name, and the "test it with a forced switchover" answer shows you validate HA rather than configuring it and hoping.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q68"><span class="qtext">Explain StackWise Virtual. What is dual-active detection and why does its path matter?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">StackWise Virtual makes two chassis behave as one logical switch, joined by a StackWise Virtual Link that carries both control and data traffic. If the SVL fails while both chassis are healthy, both become active &mdash; a dual-active condition. Dual-active detection exists to notice that and put one chassis into recovery mode, and it <strong>must not share a physical path with the SVL</strong>, or the failure that causes the problem also disables the detection.</p>
+      <span class="step">Detail</span>
+      <div class="tablewrap">
+        <table>
+          <caption>Dual-active detection methods</caption>
+          <thead><tr><th>Method</th><th>How</th><th>Needs</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Fast hello</strong></td><td>A dedicated link between the chassis carrying hello packets</td><td>A spare port pair on a <strong>separate physical path</strong></td></tr>
+            <tr><td><strong>Enhanced PAgP</strong></td><td>A downstream switch bundled to both chassis relays PAgP messages that reveal the dual-active state</td><td>A shared neighbour that supports ePAgP</td></tr>
+            <tr><td><strong>BFD</strong></td><td>A BFD session over a routed path between the chassis</td><td>A routed path independent of the SVL</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>What happens on dual-active:</strong> both chassis detect the condition, and the one that loses puts itself into <strong>recovery mode</strong> &mdash; shutting all its interfaces except the SVL and the detection links. That is deliberately drastic: a chassis in recovery mode forwards nothing, which is far better than two chassis forwarding with the same identity. When the SVL is restored, the recovery-mode chassis reloads to rejoin properly.</p>
+<pre><code>stackwise-virtual
+ domain 10
+!
+interface range FortyGigabitEthernet1/0/1-2
+ stackwise-virtual link 1
+!
+interface GigabitEthernet1/0/48
+ stackwise-virtual dual-active-detection
+<span class="cmt">! — and this port must take a DIFFERENT physical path from the SVL</span>
+
+show stackwise-virtual
+show stackwise-virtual link
+show stackwise-virtual neighbors
+show stackwise-virtual dual-active-detection
+show stackwise-virtual dual-active-detection pagp
+show redundancy states
+show logging | include STACKWISE|DUAL_ACTIVE|RECOVERY</code></pre>
+      <div class="gotcha"><b>Shared fate between the SVL and the detection path is the design error</b>If the fast-hello link runs in the same fibre bundle, the same conduit, or through the same intermediate switch as the SVL, then the event that cuts the SVL cuts detection too &mdash; and you get a genuine split brain: two chassis both active, both answering for the same addresses, with a layer 2 loop between them through the downstream bundles. The requirement is physically independent paths, and it is exactly the same principle as a vPC peer-keepalive needing to be independent of the peer-link. Stating that symmetry shows you understand the class of problem rather than two product-specific rules.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"Why is recovery mode so aggressive?"</em> &mdash; because a chassis that cannot tell whether its peer is forwarding must assume it is. Two chassis sharing one identity and both forwarding produces duplicate frames, MAC flapping on everything downstream, and a loop. Shutting one down is the safe failure, and it is a deliberate choice of availability loss over correctness loss.</li>
+        <li><em>"Which detection method would you choose?"</em> &mdash; fast hello on a dedicated, physically separate link if you have the ports, because it does not depend on a third device. ePAgP is a reasonable alternative where you already have a dual-homed downstream switch and no spare ports, with the caveat that it depends on that neighbour being up.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you know detection is a separate mechanism with a path independence requirement. The parallel to the vPC peer-keepalive is the insight that generalises.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="expert">
+    <summary data-n="Q69"><span class="qtext">Give me the vPC failure matrix. What happens for each combination of peer-link and keepalive failure?</span><span class="lvl lvl-expert">Expert</span></summary>
+      <div class="body">
+      <p class="lead">Four combinations with four quite different outcomes. Keepalive alone failing is benign. Peer-link alone failing makes the secondary suspend its vPC member ports, so the primary carries everything. Both failing is genuine split brain. And the primary device failing is the clean case the design is actually for.</p>
+      <span class="step">The matrix</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Failure</th><th>What happens</th><th>Severity</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Keepalive down, peer-link up</strong></td><td>Logged; <strong>no forwarding change</strong>. The peer-link proves the peer is alive, so the keepalive's only job is already covered</td><td>Benign &mdash; fix it before anything else fails</td></tr>
+            <tr><td><strong>Peer-link down, keepalive up</strong></td><td>The keepalive shows the peer is alive, so the <strong>secondary suspends its vPC member ports</strong> and the vPC VLANs' SVIs. The primary carries all vPC traffic. <strong>Orphan ports on the secondary are isolated</strong></td><td>Degraded but correct</td></tr>
+            <tr><td><strong>Both down</strong></td><td><strong>Split brain.</strong> Both peers become operational primary and both forward. Duplicate frames, MAC flapping downstream, possible loop</td><td><span class="bad">Serious</span></td></tr>
+            <tr><td><strong>Primary device fails entirely</strong></td><td>Secondary becomes operational primary and keeps its member ports up. Dual-attached devices lose one bundle member and continue</td><td>The designed case &mdash; near-hitless</td></tr>
+            <tr><td><strong>Peer reloads</strong></td><td><code>delay restore</code> holds vPC member ports and SVIs down until the peer-link is up, state is synced and routing has converged</td><td>Controlled</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>The two features that change these outcomes:</strong></p>
+      <ul>
+        <li><strong><code>auto-recovery</code></strong> &mdash; if a switch boots and cannot reach its peer at all, it would normally keep vPC member ports down to avoid a split brain. Auto-recovery lets it bring them up after a timer, so a single surviving switch can serve traffic rather than the whole pair being useless. Essential for the "both switches lost power, one came back" case.</li>
+        <li><strong><code>vpc orphan-port suspend</code></strong> &mdash; makes an orphan port follow the vPC state, so when the secondary suspends its member ports the single-attached device's port goes down too and its traffic reroutes, rather than staying up and black-holing.</li>
+      </ul>
+<pre><code>vpc domain 10
+ peer-keepalive destination 10.9.9.2 source 10.9.9.1 vrf management
+ peer-gateway
+ peer-switch
+ ip arp synchronize
+ auto-recovery
+ auto-recovery reload-delay 240
+ delay restore 150
+ delay restore interface-vlan 180
+!
+interface Ethernet1/20
+ vpc orphan-port suspend
+
+show vpc
+show vpc brief
+show vpc role
+show vpc peer-keepalive
+show vpc consistency-parameters global
+show vpc consistency-parameters interface Po10
+show vpc orphan-ports
+show logging | include VPC|PEER_KEEP_ALIVE|PEER_LINK</code></pre>
+      <div class="tip"><b>The keepalive and peer-link must take physically separate paths</b>Everything in the matrix depends on it. If they share a fibre, a conduit or an intermediate switch, the one failure that matters takes out both &mdash; and you land on the split-brain row rather than the degraded-but-correct row. The keepalive conventionally runs over the management VRF and the out-of-band network precisely to keep it independent of the data path. This is the same requirement as StackWise Virtual's dual-active detection, and naming the symmetry is what shows you understand it as a principle.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"Type 1 versus type 2 consistency parameters?"</em> &mdash; a type 1 mismatch <strong>suspends the vPC</strong>, because forwarding would be inconsistent; a type 2 mismatch warns and keeps forwarding. Knowing that a type 1 mismatch takes your vPCs down is what makes you run <code>show vpc consistency-parameters</code> <em>before</em> a change rather than after.</li>
+        <li><em>"Why <code>delay restore</code>?"</em> &mdash; so a rebooted peer does not bring vPC ports and SVIs up before routing has converged and black-hole traffic. Exactly the same failure as HSRP preempt without a delay, and the same fix &mdash; and the <code>interface-vlan</code> variant covers the SVIs separately because they take longer.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you know the matrix rather than a general sense that vPC is redundant. The keepalive-down-is-benign row and the orphan-port isolation are the two details candidates most often get wrong.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="expert">
+    <summary data-n="Q70"><span class="qtext">You are choosing a distribution-layer design. Walk me through the decision.</span><span class="lvl lvl-expert">Expert</span></summary>
+      <div class="body">
+      <p class="lead">Ask what failure you are actually protecting against, what the operational team can run, and whether layer 2 has to extend between access switches. Then choose: StackWise Virtual for operational simplicity, independent switches with routed access for failure isolation, or vPC where the data centre requires multi-chassis bundling. The strongest answer often removes the need for the layer entirely.</p>
+      <span class="step">The decision</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Option</th><th>Protects against</th><th>Does not protect against</th><th>Cost</th></tr></thead>
+          <tbody>
+            <tr><td><strong>StackWise Virtual pair</strong></td><td>Chassis loss, link loss</td><td><strong>Control-plane software fault</strong> &mdash; one config, one plane</td><td>Shared fate; SVL and DAD design</td></tr>
+            <tr><td><strong>Two independent switches, routed access</strong></td><td>Chassis loss, <strong>and software fault</strong></td><td>Nothing structural</td><td>No cross-chassis bundling; VLANs cannot span access switches</td></tr>
+            <tr><td><strong>vPC pair</strong></td><td>Chassis loss, with independent control planes</td><td>Peer-link and keepalive shared fate if cabled badly</td><td>Two configurations to keep consistent</td></tr>
+            <tr><td><strong>Dual-sup chassis</strong></td><td>Supervisor failure</td><td>Chassis, power or site loss</td><td>Single chassis is still one failure domain</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <span class="step">The questions that decide it</span>
+      <ol>
+        <li><strong>Does anything need layer 2 adjacency across access switches?</strong> If not, routed access with two independent distribution switches is the best design on every axis &mdash; no spanning tree between layers, no FHRP, no shared control plane, independent upgrades. If yes, you need a multi-chassis mechanism or a fabric.</li>
+        <li><strong>What is the operational capacity?</strong> One configuration is genuinely easier to run than two, and a team that will not keep two configurations consistent is better served by StackWise Virtual even though it shares fate.</li>
+        <li><strong>How are upgrades done?</strong> Independent switches upgrade one at a time with the other carrying traffic. A shared control plane means ISSU or an outage.</li>
+        <li><strong>What is physically redundant?</strong> Two chassis in one rack on one circuit are one power failure domain whatever the logical design says.</li>
+        <li><strong>Is this a campus or a data centre?</strong> vPC where servers must bundle to two switches; StackWise Virtual where the requirement is a simple campus distribution block.</li>
+      </ol>
+      <div class="tip"><b>The best answer often removes the layer</b>"If nothing needs layer 2 across access switches, I would do routed access with two independent distribution switches and no multi-chassis mechanism at all &mdash; because that removes spanning tree, FHRP, the shared control plane and the peer-link all at once." That is the design with the fewest failure modes, and reaching for it before reaching for a redundancy feature is what distinguishes a designer. Then be honest: if an application genuinely needs stretched layer 2, say so and pick the mechanism, or propose a fabric so the adjacency becomes an overlay service on a routed network.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"Which would you pick if forced to choose today, for a new campus?"</em> &mdash; have a position. Routed access with independent distribution switches, because the failure isolation and independent upgrades outweigh the configuration overhead, and the layer 2 adjacency requirement is usually smaller than people claim once you interrogate it.</li>
+        <li><em>"What would change your mind?"</em> &mdash; a real stretched-layer-2 requirement, a team that cannot operate two configurations, or an existing estate where the migration cost is not justified. Naming what would change your mind is what makes a recommendation credible rather than dogmatic.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you can run a structured decision rather than naming a favourite. The "remove the layer" answer and the willingness to say what would change your mind are both strong signals at design level.</div>
+    </div>
+  </details>
+</section>
+
+<!-- ============ 14 ============ -->
 <section class="block" id="method">
   <div class="sechead">
-    <h2><span class="num">11</span>Troubleshooting</h2>
+    <h2><span class="num">14</span>Troubleshooting</h2>
     <label class="reviewed"><input type="checkbox" data-sec="method"> Done</label>
   </div>
   <p class="lede">Three diagnostic questions. The interviewer is listening for a method that narrows the problem rather than a list of things you would check, and for whether you reach for counters before theories.</p>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q55"><span class="qtext">A user says "the network is slow." What do you do?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q71"><span class="qtext">A user says "the network is slow." What do you do?</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">Turn it into a measurable statement before touching anything. Which source, which destination, which application, how slow compared with what, since when, and for one person or many. Most of the diagnosis is in that conversation, and "slow" very often turns out not to be a network problem at all.</p>
       <span class="step">The questions that scope it</span>
@@ -2814,7 +3498,7 @@ ping 10.9.9.9 size 1472 df-bit source Vlan100   <span class="cmt">! MTU check</s
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q56"><span class="qtext">Users on one VLAN lose connectivity for about thirty seconds every few minutes. Everything else is fine. Diagnose it.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q72"><span class="qtext">Users on one VLAN lose connectivity for about thirty seconds every few minutes. Everything else is fine. Diagnose it.</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">A thirty-second, repeating, single-VLAN outage points at spanning tree. Thirty seconds is almost exactly a forward-delay pair, so something in that VLAN's topology is flapping and the VLAN is reconverging. The first command is the topology-change counter and the interface it names.</p>
       <span class="step">Reading the symptom</span>
@@ -2861,7 +3545,7 @@ show spanning-tree inconsistentports</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q57"><span class="qtext">Walk me through physical-layer triage. What does each error counter mean?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q73"><span class="qtext">Walk me through physical-layer triage. What does each error counter mean?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Each counter points at a different layer. CRC errors mean the frame was corrupted in transit, which is cabling, optics or connectors. Late collisions mean a duplex mismatch. Output drops mean congestion, not a fault. Reading the right counter tells you whether to send someone with a patch lead or to look at configuration.</p>
       <span class="step">Detail</span>
@@ -2908,16 +3592,253 @@ show interfaces status | include half|a-half</code></pre>
 </section>
 
 
-<!-- ============ 12 ============ -->
+<!-- ============ 15 ============ -->
+<section class="block" id="topology">
+  <div class="sechead">
+    <h2><span class="num">15</span>Reference topology</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="topology"> Done</label>
+  </div>
+  <p class="lede">One campus with two deliberately different distribution blocks and a data centre vPC pair. The two campus blocks exist so you can be asked to compare them, and that comparison &mdash; layer 2 access against routed access &mdash; is the most useful switching whiteboard conversation there is.</p>
+
+  <div class="figure">
+    <div class="figscroll">
+      <svg viewBox="0 0 880 465" role="img" aria-label="Campus topology with a StackWise Virtual distribution block, a routed-access distribution block, a core pair and a data centre vPC pair" font-size="12" font-family="var(--font-body)">
+        <text x="24" y="26" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--font-display)">One campus, two distribution designs &mdash; and a vPC pair next door</text>
+
+        <g stroke="var(--line-strong)" stroke-width="1.5" fill="none">
+          <path d="M430 84H450"></path>
+          <path d="M120 152L330 110"></path>
+          <path d="M180 152L500 110"></path>
+          <path d="M375 166L365 110"></path>
+          <path d="M385 166L505 110"></path>
+          <path d="M491 166L375 110"></path>
+          <path d="M511 166L515 110"></path>
+          <path d="M673 166L550 110"></path>
+          <path d="M789 166L570 110"></path>
+          <path d="M146 193H152"></path>
+          <path d="M728 193H734"></path>
+          <path d="M70 300L85 220"></path>
+          <path d="M96 300L197 220"></path>
+          <path d="M202 300L100 220"></path>
+          <path d="M228 300L213 220"></path>
+          <path d="M366 300L370 220"></path>
+          <path d="M392 300L492 220"></path>
+          <path d="M492 300L380 220"></path>
+          <path d="M518 300L506 220"></path>
+          <path d="M652 300L665 220"></path>
+          <path d="M678 300L779 220"></path>
+          <path d="M797 300L795 220"></path>
+        </g>
+
+        <g>
+          <rect x="290" y="58" width="140" height="52" rx="7" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.75"></rect>
+          <text x="360" y="80" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--ink)">CORE-1</text>
+          <text x="360" y="96" text-anchor="middle" font-size="9.5" fill="var(--ink-2)">9600 &middot; OSPF area 0</text>
+          <rect x="450" y="58" width="140" height="52" rx="7" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.75"></rect>
+          <text x="520" y="80" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--ink)">CORE-2</text>
+          <text x="520" y="96" text-anchor="middle" font-size="9.5" fill="var(--ink-2)">9600 &middot; OSPF area 0</text>
+        </g>
+
+        <g font-size="10" font-weight="600" fill="var(--accent-ink)">
+          <text x="24" y="146">BLOCK A &mdash; layer 2 access</text>
+          <text x="320" y="146">BLOCK B &mdash; routed access</text>
+          <text x="606" y="146">DATA CENTRE &mdash; vPC pair</text>
+        </g>
+
+        <g>
+          <rect x="24" y="152" width="250" height="82" rx="9" fill="none" stroke="var(--line-strong)" stroke-width="1.25" stroke-dasharray="5 3"></rect>
+          <rect x="36" y="166" width="110" height="54" rx="6" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.4"></rect>
+          <text x="91" y="187" text-anchor="middle" font-size="11" font-weight="700" fill="var(--ink)">DIST-A1</text>
+          <text x="91" y="203" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">9500</text>
+          <rect x="152" y="166" width="110" height="54" rx="6" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.4"></rect>
+          <text x="207" y="187" text-anchor="middle" font-size="11" font-weight="700" fill="var(--ink)">DIST-A2</text>
+          <text x="207" y="203" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">9500</text>
+          <text x="149" y="229" text-anchor="middle" font-size="9.5" font-weight="600" fill="var(--ink-2)">StackWise Virtual &middot; SVL + DAD &middot; one logical switch</text>
+        </g>
+
+        <g>
+          <rect x="320" y="166" width="110" height="54" rx="6" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.4"></rect>
+          <text x="375" y="187" text-anchor="middle" font-size="11" font-weight="700" fill="var(--ink)">DIST-B1</text>
+          <text x="375" y="203" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">9500 &middot; independent</text>
+          <rect x="446" y="166" width="110" height="54" rx="6" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.4"></rect>
+          <text x="501" y="187" text-anchor="middle" font-size="11" font-weight="700" fill="var(--ink)">DIST-B2</text>
+          <text x="501" y="203" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">9500 &middot; independent</text>
+        </g>
+
+        <g>
+          <rect x="606" y="152" width="250" height="82" rx="9" fill="none" stroke="var(--line-strong)" stroke-width="1.25" stroke-dasharray="5 3"></rect>
+          <rect x="618" y="166" width="110" height="54" rx="6" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.4"></rect>
+          <text x="673" y="187" text-anchor="middle" font-size="11" font-weight="700" fill="var(--ink)">N9K-1</text>
+          <text x="673" y="203" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">vPC primary</text>
+          <rect x="734" y="166" width="110" height="54" rx="6" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.4"></rect>
+          <text x="789" y="187" text-anchor="middle" font-size="11" font-weight="700" fill="var(--ink)">N9K-2</text>
+          <text x="789" y="203" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">vPC secondary</text>
+          <text x="731" y="229" text-anchor="middle" font-size="9.5" font-weight="600" fill="var(--ink-2)">peer-link &middot; keepalive over OOB mgmt VRF</text>
+        </g>
+
+        <g font-size="9.5" fill="var(--ink-2)">
+          <text x="24" y="258">One logical switch &rarr; STP root is here,</text>
+          <text x="24" y="272">one SVI per VLAN, no FHRP, no blocked uplink</text>
+          <text x="320" y="258">No STP and no FHRP between the layers.</text>
+          <text x="320" y="272">VLANs cannot span access switches.</text>
+          <text x="606" y="258">Two control planes, two configurations.</text>
+          <text x="606" y="272">Type 1 consistency mismatch suspends the vPC.</text>
+        </g>
+
+        <g>
+          <rect x="24" y="300" width="118" height="56" rx="6" fill="none" stroke="var(--line)" stroke-width="1.25"></rect>
+          <text x="83" y="320" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink)">ACC-A1</text>
+          <text x="83" y="334" text-anchor="middle" font-size="9" fill="var(--ink-3)">9300 stack &times;3</text>
+          <text x="83" y="347" text-anchor="middle" font-size="9" fill="var(--ink-2)">VLAN 110, 120</text>
+
+          <rect x="156" y="300" width="118" height="56" rx="6" fill="none" stroke="var(--line)" stroke-width="1.25"></rect>
+          <text x="215" y="320" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink)">ACC-A2</text>
+          <text x="215" y="334" text-anchor="middle" font-size="9" fill="var(--ink-3)">9300 stack &times;2</text>
+          <text x="215" y="347" text-anchor="middle" font-size="9" fill="var(--ink-2)">VLAN 110, 120</text>
+
+          <rect x="320" y="300" width="118" height="56" rx="6" fill="none" stroke="var(--line)" stroke-width="1.25"></rect>
+          <text x="379" y="320" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink)">ACC-B1</text>
+          <text x="379" y="334" text-anchor="middle" font-size="9" fill="var(--ink-3)">9300 stack &times;2</text>
+          <text x="379" y="347" text-anchor="middle" font-size="9" fill="var(--ink-2)">VLAN 210 local</text>
+
+          <rect x="446" y="300" width="118" height="56" rx="6" fill="none" stroke="var(--line)" stroke-width="1.25"></rect>
+          <text x="505" y="320" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink)">ACC-B2</text>
+          <text x="505" y="334" text-anchor="middle" font-size="9" fill="var(--ink-3)">9300 stack &times;2</text>
+          <text x="505" y="347" text-anchor="middle" font-size="9" fill="var(--ink-2)">VLAN 220 local</text>
+
+          <rect x="606" y="300" width="118" height="56" rx="6" fill="none" stroke="var(--line)" stroke-width="1.25"></rect>
+          <text x="665" y="320" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink)">SRV-1</text>
+          <text x="665" y="334" text-anchor="middle" font-size="9" fill="var(--ink-3)">LACP to both</text>
+          <text x="665" y="347" text-anchor="middle" font-size="9" fill="var(--ink-2)">vPC member</text>
+
+          <rect x="738" y="300" width="118" height="56" rx="6" fill="var(--amber-soft)" stroke="var(--amber)" stroke-width="1.4"></rect>
+          <text x="797" y="320" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink)">SRV-2</text>
+          <text x="797" y="334" text-anchor="middle" font-size="9" fill="var(--ink-3)">single-homed</text>
+          <text x="797" y="347" text-anchor="middle" font-size="9" font-weight="700" fill="var(--ink)">ORPHAN PORT</text>
+        </g>
+
+        <g font-size="11" fill="var(--ink-2)">
+          <text x="24" y="396">Block A uplinks: cross-stack EtherChannel to both chassis &middot; Block B uplinks: routed point-to-point links with BFD</text>
+          <text x="24" y="416">Addressing: block A 10.10.110.0/24 and 10.10.120.0/24 span both stacks &middot; block B one prefix per access switch</text>
+          <text x="24" y="436">The two blocks are different on purpose. Being asked to compare them is the first question.</text>
+        </g>
+      </svg>
+    </div>
+    <p class="figcap">Reference campus &middot; layer 2 access on block A, routed access on block B, vPC in the data centre.</p>
+  </div>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q74"><span class="qtext">Walk me through this topology.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">Two core switches running OSPF area 0, and three blocks hanging off them built three different ways. Block A is classic layer 2 access into a StackWise Virtual distribution pair, so VLANs span access switches and the distribution block is one logical device. Block B is routed access, so each access switch is a router and there is no spanning tree or FHRP between the layers. The data centre is a Nexus vPC pair with one server dual-homed and one single-homed &mdash; and that single-homed server is the thing I would ask about first.</p>
+      <span class="step">Detail &mdash; narrate it block by block</span>
+      <ol>
+        <li><strong>Core.</strong> Two 9600s in OSPF area 0. Everything below is a stub-ish area or a redistribution point. The cores do no layer 2.</li>
+        <li><strong>Block A.</strong> DIST-A1 and A2 are joined by StackWise Virtual, so they are <em>one</em> switch: one configuration, one STP instance that is automatically the root for the block, <strong>one SVI per VLAN and therefore no FHRP at all</strong>, and access uplinks that are cross-stack EtherChannels &mdash; so no uplink is blocked by spanning tree. VLANs 110 and 120 exist on both access stacks. The cost is a shared control plane and the SVL/DAD design burden.</li>
+        <li><strong>Block B.</strong> DIST-B1 and B2 are independent switches. Access uplinks are routed point-to-point links with BFD, each access switch owns its own prefixes, and VLANs are local to one switch. No spanning tree between access and distribution, no FHRP, no shared control plane, independent upgrades. The cost is that nothing can be layer-2 adjacent across access switches.</li>
+        <li><strong>Data centre.</strong> A vPC pair with a peer-link for data and a keepalive over the out-of-band management VRF. SRV-1 bundles to both switches. SRV-2 is single-homed to N9K-2 &mdash; an orphan port, which means it is exposed to the peer-link failure case unless <code>vpc orphan-port suspend</code> is configured.</li>
+      </ol>
+      <div class="tip"><b>Finish the walkthrough with an observation, not just a description</b>Something like: "the interesting thing here is that blocks A and B solve the same problem differently, so I would want to know what drove the difference &mdash; if it was a genuine stretched-layer-2 requirement in block A I would respect it, and if it was just history I would standardise on B." That turns a recitation into a conversation, and it is what interviewers are waiting for.</div>
+      <div class="verdict"><b>What they're testing</b>Whether you can narrate a diagram in a structured order and name what each design choice costs. Spotting the orphan port unprompted is the single highest-value detail in the picture.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q75"><span class="qtext">Trace a frame from a host in VLAN 110 on ACC-A1 to a host in VLAN 120 on ACC-A2.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">Different VLANs, so it has to be routed, and in block A the only router is the logical distribution switch. The frame goes up to DIST-A, gets routed between two SVIs, and comes back down &mdash; and the detail worth volunteering is that the EtherChannel hash on the way back down can choose a port on the <em>other</em> chassis, so the frame crosses the StackWise Virtual Link. That is why the SVL carries data and not just control traffic.</p>
+      <span class="step">The trace</span>
+      <ol>
+        <li><strong>The host resolves its gateway.</strong> 10.10.110.50 wants 10.10.120.80, sees it is off-subnet, and ARPs for 10.10.110.1. The ARP broadcast floods VLAN 110 &mdash; across ACC-A1's stack, up the cross-stack EtherChannel, through DIST-A, and back down to ACC-A2 as well, because VLAN 110 spans both. <strong>Exactly one device answers</strong>, because the SVL pair is one logical switch with one SVI. No HSRP, no virtual MAC, no active/standby question.</li>
+        <li><strong>ACC-A1 forwards to the gateway MAC.</strong> MAC lookup in VLAN 110 finds the SVI MAC learned on the uplink port-channel. The hash picks one physical member, which lands on either DIST-A1 or DIST-A2 &mdash; and the host has no idea which, which is the entire point of the design.</li>
+        <li><strong>DIST-A routes.</strong> The destination MAC is its own SVI MAC, so it moves up to layer 3. 10.10.120.0/24 is directly connected via SVI 120. ARP for 10.10.120.80 if it is not already cached. Rewrite the headers: source MAC becomes the SVI 120 MAC, destination becomes the host's MAC, TTL decrements by one.</li>
+        <li><strong>Egress &mdash; and the SVL.</strong> The destination MAC is known on the downlink port-channel to ACC-A2. The hash picks a member, and that member may physically live on the chassis the frame did <em>not</em> arrive on &mdash; so the frame traverses the SVL to get there. Normal, expected, and the reason SVL bandwidth is a capacity-planning input rather than an afterthought.</li>
+        <li><strong>ACC-A2 delivers.</strong> MAC lookup in VLAN 120 within the stack, out the access port.</li>
+      </ol>
+      <p><strong>Count:</strong> three MAC lookups, one route lookup, up to two ARP resolutions, one header rewrite, and one possible SVL crossing.</p>
+      <div class="tip"><b>Then contrast with block B unprompted</b>In block B the same question cannot be asked, because VLANs do not span access switches &mdash; two hosts on different access switches are necessarily in different subnets and the traffic is routed three times: the source access switch routes it onto its uplink, the distribution switch routes it across, and the destination access switch routes it to the host. More routing hops, no flooding anywhere, no shared layer 2 failure domain, and convergence governed by the routing protocol and BFD rather than by spanning tree. Volunteering that comparison is what the two-block topology is for.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"Where would you look if it failed?"</em> &mdash; <code>show mac address-table address</code> on both access stacks to confirm learning, <code>show ip arp</code> on DIST-A for both hosts, <code>show etherchannel summary</code> and <code>show interfaces port-channel</code> for member state, and <code>show stackwise-virtual link</code> to confirm the SVL is healthy. In that order, because it follows the path.</li>
+        <li><em>"What if the two hosts were in the <strong>same</strong> VLAN on different access stacks?"</em> &mdash; then it is pure layer 2 and never reaches layer 3: ACC-A1 to DIST-A to ACC-A2, no routing, no TTL decrement, and the frame still potentially crosses the SVL for the same hashing reason.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you know that a StackWise Virtual pair has one SVI and needs no FHRP, and whether you volunteer the SVL data-plane crossing. Both are details that separate people who have run this design from people who have read about it.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="expert">
+    <summary data-n="Q76"><span class="qtext">The StackWise Virtual Link between DIST-A1 and DIST-A2 fails. Then, separately, DIST-B1 fails entirely. Compare what happens.</span><span class="lvl lvl-expert">Expert</span></summary>
+    <div class="body">
+      <p class="lead">The SVL failure is the more disruptive of the two despite both chassis staying powered, because dual-active detection deliberately shuts one chassis down &mdash; block A halves its capacity and depends on DAD having an independent path. The DIST-B1 failure is almost a non-event: routed access means it is just a route withdrawal, and with BFD the access switches reconverge in well under a second. That asymmetry is the argument for routed access.</p>
+      <span class="step">Case A &mdash; SVL fails, both chassis healthy</span>
+      <ol>
+        <li>Both chassis lose sight of each other over the SVL and each would become active.</li>
+        <li><strong>Dual-active detection fires</strong> over its independent path. One chassis loses and enters <strong>recovery mode</strong>, shutting every interface except the SVL and the detection links.</li>
+        <li>Every downstream cross-stack EtherChannel loses the members that landed on that chassis. LACP removes them; the bundles <strong>stay up</strong> on the surviving members.</li>
+        <li>The surviving chassis still has the SVI, the STP root role and the configuration, so forwarding continues &mdash; at roughly <strong>half the uplink and downlink capacity</strong>.</li>
+        <li>When the SVL is repaired, the recovery-mode chassis reloads to rejoin, which is a second, planned disruption.</li>
+      </ol>
+      <div class="gotcha"><b>And if DAD had failed too, this is the worst outcome in the diagram</b>Two chassis, both active, both with the same SVI IP and MAC, both STP root, both with half of every downstream bundle. The access stacks see the gateway MAC on two different port-channel members belonging to two different switches, MACs flap everywhere, and because both chassis forward between VLANs you have a layer 2 loop through the access layer. That is why the DAD path must be physically independent of the SVL &mdash; not in the same fibre bundle, not in the same conduit, not through the same intermediate device. The same requirement applies to the vPC peer-keepalive next door, which is why it runs over the out-of-band management network in this design.</div>
+      <span class="step">Case B &mdash; DIST-B1 fails entirely</span>
+      <ol>
+        <li>ACC-B1 and ACC-B2 each lose one of two equal-cost routed uplinks. <strong>BFD detects it in milliseconds</strong>, well before any routing protocol hello timer would.</li>
+        <li>The routing protocol withdraws the paths through B1; traffic uses the remaining equal-cost path through B2. No flooding, no MAC flush, no spanning tree reconvergence, no FHRP election.</li>
+        <li>CORE-1 and CORE-2 lose their adjacencies to B1 and reconverge the same way.</li>
+        <li>Capacity halves, as in case A &mdash; but the convergence is <strong>sub-second and involves no state rebuild anywhere</strong>.</li>
+      </ol>
+<pre><code><span class="cmt">! block A, after an SVL event</span>
+show stackwise-virtual
+show stackwise-virtual link
+show stackwise-virtual dual-active-detection
+show redundancy states
+show etherchannel summary
+show logging | include STACKWISE|DUAL_ACTIVE|RECOVERY|LACP
+
+<span class="cmt">! block B, after losing a distribution switch</span>
+show ip route 10.10.0.0
+show ip ospf neighbor
+show bfd neighbors details
+show ip cef 10.10.210.0 internal
+show logging | include ADJCHG|BFD|LINEPROTO</code></pre>
+      <div class="tip"><b>Name the comparison explicitly</b>"Same capacity loss, very different blast radius and very different recovery. Block A's failure depends on a detection mechanism working correctly and ends with a planned reload; block B's failure is a route withdrawal with nothing to detect beyond link state. If I were defending routed access to a sceptical audience, this pair of failures is the slide I would use." That framing &mdash; comparing failure modes rather than feature lists &mdash; is design-level thinking.</div>
+      <div class="verdict"><b>What they're testing</b>Whether you know recovery mode is a deliberate shutdown rather than a fault, whether you can state the split-brain consequence concretely, and whether you can compare two failures on blast radius rather than on which product is better.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="expert">
+    <summary data-n="Q77"><span class="qtext">What would you change about this design?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <div class="body">
+      <p class="lead">Four things, in order of how much they would reduce risk: fix the orphan port, verify the dual-active detection path is genuinely independent, interrogate whether block A's spanning VLANs are still a real requirement, and make the two campus blocks the same design. The first two are small changes with large consequences; the second two are projects.</p>
+      <span class="step">In priority order</span>
+      <ol>
+        <li><strong>SRV-2's orphan port.</strong> Either dual-home it, or configure <code>vpc orphan-port suspend</code> so its port follows vPC state. As it stands, if the peer-link fails and N9K-2 becomes the secondary, N9K-2 suspends its vPC member ports but SRV-2's port stays up &mdash; and SRV-2 is isolated while appearing healthy. One line of configuration, one real outage avoided.</li>
+        <li><strong>Prove the DAD path is independent of the SVL.</strong> Not "configured" &mdash; <em>physically independent</em>. Trace the cabling and the conduit. If the fast-hello link shares a path with the SVL, block A has no protection against its own worst failure mode, and nothing in the running configuration reveals that.</li>
+        <li><strong>Interrogate block A's spanning VLANs.</strong> Find out what actually requires VLAN 110 to exist on two access stacks. Very often the answer is a legacy application, a wireless design decision, or nobody remembers. If it is nothing real, block A can migrate to routed access and the campus gets simpler. If it is real, keep block A &mdash; but know what you are paying for.</li>
+        <li><strong>Standardise.</strong> Two distribution designs in one campus doubles the runbooks, doubles what an on-call engineer has to hold in their head at 2 a.m., and makes every change a question of which block it applies to. Converging on one design is worth real effort even when both designs work.</li>
+      </ol>
+      <span class="step">Things I would check before proposing any of it</span>
+      <ul>
+        <li><code>show vpc consistency-parameters global</code> and per-interface on both Nexus switches &mdash; a type 1 mismatch is latent until something reloads, and then it suspends the vPC.</li>
+        <li>Stack member priorities and uplink distribution on all four access stacks &mdash; uplinks on a single member turn a member failure into a block outage.</li>
+        <li>Whether the core pair and both distribution blocks are on software the operations team can actually upgrade, because an HA design nobody dares upgrade is not an HA design.</li>
+        <li>Power and rack diversity, which no amount of logical redundancy substitutes for.</li>
+      </ul>
+      <div class="tip"><b>Rank by risk reduced per unit of effort, and say so</b>Interviewers are not looking for the longest list; they are looking for someone who would fix the orphan port this afternoon and open a conversation about standardising next quarter. Leading with the one-line fix that removes a real failure mode, then naming the project-sized changes separately, is what a senior answer sounds like.</div>
+      <div class="verdict"><b>What they're testing</b>Whether you can prioritise, whether you check things before proposing changes, and whether you distinguish a configuration fix from an architecture project. The "prove it physically" instinct on DAD is a strong signal.</div>
+    </div>
+  </details>
+</section>
+
+<!-- ============ 16 ============ -->
 <section class="block" id="whiteboard">
   <div class="sechead">
-    <h2><span class="num">12</span>Whiteboard scenarios</h2>
+    <h2><span class="num">16</span>Whiteboard scenarios</h2>
     <label class="reviewed"><input type="checkbox" data-sec="whiteboard"> Done</label>
   </div>
   <p class="lede">Open-ended design and diagnosis. State your assumptions, ask about the constraints, and name the trade-offs you are choosing between rather than picking silently.</p>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q58"><span class="qtext">Three buildings, 2,000 users, new build. Design the campus switching.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q78"><span class="qtext">Three buildings, 2,000 users, new build. Design the campus switching.</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">Ask first: how many wiring closets per building, what fibre exists between them, where the WAN and internet attach, is there a server room, what is the wireless plan, and does anything require layer 2 adjacency between buildings. That last question decides the layer 2/3 boundary and therefore most of the design.</p>
       <span class="step">The design</span>
@@ -2953,7 +3874,7 @@ distribution switch must carry the full building load alone.</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q59"><span class="qtext">You have inherited a flat network &mdash; one VLAN, 1,200 hosts, one broadcast domain. Migrate it with no planned downtime.</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q79"><span class="qtext">You have inherited a flat network &mdash; one VLAN, 1,200 hosts, one broadcast domain. Migrate it with no planned downtime.</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">Build the new structure alongside the old and move hosts into it incrementally, rather than cutting over. Create the new VLANs and SVIs, route between old and new so both are reachable throughout, then migrate closet by closet by changing access port VLANs &mdash; each host's move is a DHCP renewal, not an outage.</p>
       <span class="step">The approach</span>
@@ -3001,7 +3922,7 @@ interface range Gi1/0/1-24
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q60"><span class="qtext">Two hosts in the same VLAN on two different switches cannot reach each other. Work through it.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q80"><span class="qtext">Two hosts in the same VLAN on two different switches cannot reach each other. Work through it.</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Work up from the physical layer and inward from both ends, checking one link in the chain at a time: ports up, correct VLAN, VLAN exists on both switches, VLAN allowed on every trunk between them, trunks up with matching native VLANs, and spanning tree forwarding for that VLAN on the path. The failure is almost always one of those.</p>
       <span class="step">The sequence</span>
@@ -3042,7 +3963,7 @@ show interfaces Gi1/0/5 switchport | include Protected|Private</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q61"><span class="qtext">Design the access layer for a modern office: Wi-Fi 6E, IoT devices, guests, and corporate laptops.</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q81"><span class="qtext">Design the access layer for a modern office: Wi-Fi 6E, IoT devices, guests, and corporate laptops.</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">Four device classes with different trust levels, so the design question is segmentation and how it is enforced. The modern answer is one VLAN per closet with identity-based policy on top &mdash; 802.1X and MAB feeding dynamic authorisation &mdash; rather than a VLAN per device class stretched across the campus, because VLAN-based segmentation is what forces VLANs to span and failure domains to grow.</p>
       <span class="step">The design</span>
@@ -3102,7 +4023,7 @@ show interfaces status | include a-2.5G|a-1000</code></pre>
 </div>
 
 <footer>
-  <p><strong>Switching &mdash; Interview Questions &amp; Answers.</strong> Sixty-one questions across twelve sections. Filter with the box at the top or press <kbd>/</kbd>; narrow by depth with the Core, Deep and Expert buttons; <em>Reveal all</em> opens every answer at once. Section checkboxes are stored in this browser only.</p>
+  <p><strong>Switching &mdash; Interview Questions &amp; Answers.</strong> Eighty-one questions across sixteen sections. Filter with the box at the top or press <kbd>/</kbd>; narrow by depth with the Core, Deep and Expert buttons; <em>Reveal all</em> opens every answer at once. Section checkboxes are stored in this browser only.</p>
   <p>Answers are written to be spoken, not recited &mdash; the short answer first, then the supporting detail, then what the question is actually probing for. Platform behaviour varies between families and software trains, particularly path-cost methods, TCAM carving and private VLAN support; check the configuration guide for your release where exact behaviour matters.</p>
 </footer>
 <script>

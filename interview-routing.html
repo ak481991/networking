@@ -190,7 +190,7 @@ footer a{color:var(--accent-ink)}
     <div class="brand">
       <span class="eyebrow">Interview preparation &middot; 1 of 3</span>
       <h1>Routing &mdash; Interview Questions &amp; Answers</h1>
-      <p>Sixty-seven questions pitched at senior and escalation level, each with a short answer you could give out loud, the detail behind it, and a note on what the question is actually testing. Answers start collapsed so the page works as a self-test.</p>
+      <p>Eighty-one questions pitched at senior and escalation level, each with a short answer you could give out loud, the detail behind it, and a note on what the question is actually testing. Answers start collapsed so the page works as a self-test.</p>
     </div>
     <button class="themebtn" id="themebtn" type="button">Switch theme</button>
   </div>
@@ -213,7 +213,7 @@ footer a{color:var(--accent-ink)}
     <div class="progwrap">
       <span>Done</span>
       <span class="progbar"><span class="progfill" id="progfill"></span></span>
-      <span class="num-col" id="progtxt">0/12</span>
+      <span class="num-col" id="progtxt">0/15</span>
     </div>
   </div>
 </div>
@@ -224,6 +224,7 @@ footer a{color:var(--accent-ink)}
   <h2>Contents</h2>
   <ol>
     <li><a href="#forwarding">Forwarding fundamentals</a></li>
+    <li><a href="#services">ARP, DHCP &amp; DNS</a></li>
     <li><a href="#ospf">OSPF</a></li>
     <li><a href="#eigrp">EIGRP</a></li>
     <li><a href="#bgp">BGP</a></li>
@@ -232,8 +233,10 @@ footer a{color:var(--accent-ink)}
     <li><a href="#multicast">Multicast</a></li>
     <li><a href="#ipv6">IPv6 routing</a></li>
     <li><a href="#ha">HA &amp; convergence</a></li>
+    <li><a href="#platha">Platform HA</a></li>
     <li><a href="#overlay">Overlays &amp; SR</a></li>
     <li><a href="#method">Methodology</a></li>
+    <li><a href="#topology">Reference topology</a></li>
     <li><a href="#whiteboard">Whiteboard scenarios</a></li>
   </ol>
 </nav>
@@ -515,15 +518,273 @@ show cef interface Gi0/1 internal | include RPF</code></pre>
 </section>
 
 <!-- ============ 2 ============ -->
+<section class="block" id="services">
+  <div class="sechead">
+    <h2><span class="num">02</span>ARP, DHCP &amp; DNS</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="services"> Done</label>
+  </div>
+  <p class="lede">The three protocols everything else depends on, and the three nobody revises. Interviewers like them precisely because a candidate who can explain a glean adjacency, the <code>giaddr</code> field and the ARP-versus-MAC-aging mismatch has clearly operated a network rather than studied one.</p>
+
+  <details class="qa" data-lvl="core">
+    <summary data-n="Q8"><span class="qtext">Walk through ARP resolution on a router. What is a glean adjacency?</span><span class="lvl lvl-core">Core</span></summary>
+    <div class="body">
+      <p class="lead">For a directly connected prefix, CEF installs a <strong>glean</strong> adjacency &mdash; meaning "the destination is on this segment but I do not yet know its MAC". The first packet to an unresolved host is punted to the CPU, which triggers an ARP request; once the reply arrives, a <strong>complete</strong> adjacency is installed with the rewrite information and subsequent packets are forwarded in hardware.</p>
+      <span class="step">Detail</span>
+      <div class="tablewrap">
+        <table>
+          <caption>Adjacency states and what they mean</caption>
+          <thead><tr><th>State</th><th>Meaning</th><th>Packet fate</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Complete</strong></td><td>MAC known, rewrite ready</td><td>Hardware forwarded</td></tr>
+            <tr><td><strong>Glean</strong></td><td>Connected prefix, specific host unresolved</td><td><strong>Punted</strong> to trigger ARP</td></tr>
+            <tr><td><strong>Incomplete</strong></td><td>ARP was attempted and never answered</td><td><strong>Dropped</strong></td></tr>
+            <tr><td><strong>Punt</strong></td><td>Needs CPU handling &mdash; options, TTL expiry, fragmentation</td><td>Process switched</td></tr>
+            <tr><td><strong>Drop / Null</strong></td><td>Discard route</td><td>Dropped</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code>show ip arp 10.100.0.50
+show ip arp summary
+show adjacency detail
+show adjacency summary
+show ip cef 10.100.0.50 detail
+<span class="cmt">!   attached to Vlan100, adjacency IP adj out of Vlan100, addr 0011.2233.4455</span>
+<span class="cmt">!   or: attached to Vlan100, <span class="bad">glean adjacency</span></span>
+
+show ip cef 10.100.0.0/24 detail
+<span class="cmt">!   the CONNECTED prefix carries the glean adjacency</span>
+
+show arp summary
+show processes cpu sorted | include ARP</code></pre>
+      <div class="gotcha"><b>High ARP Input CPU is a symptom with a specific shape</b>The ARP process spikes when many packets arrive for addresses on a connected subnet that do not exist &mdash; because each one gleans, punts, and generates an ARP request that nobody answers. The two causes are a <strong>scan</strong> sweeping a subnet, and a <strong>routed subnet with few or no hosts</strong> that still attracts traffic. Both produce a flood of incomplete adjacencies. <code>show ip arp summary</code> showing a large incomplete count alongside ARP Input CPU is conclusive, and the remedy is upstream filtering or ARP rate limiting rather than tuning the ARP process.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"Why is the first packet of a flow sometimes lost?"</em> &mdash; because it was punted to trigger ARP, and the punt path is rate-limited and slower than forwarding. Most stacks retransmit, so it is invisible; on a latency-sensitive first packet it is not.</li>
+        <li><em>"What is the ARP table limit?"</em> &mdash; on a layer 3 switch, ARP and ND entries consume hardware adjacency and TCAM resources, so the ceiling is a platform resource rather than a software table. <code>show platform hardware fed switch active fwd-asic resource tcam utilization</code> is where you check it, and a large flat subnet can exhaust it.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you connect ARP to the forwarding plane rather than treating it as a standalone protocol. Glean, complete and incomplete are the three words that show you understand how the control plane populates the data plane.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q9"><span class="qtext">What is proxy ARP, what is local proxy ARP, and why would you disable both?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">Proxy ARP makes a router answer ARP requests for addresses it can route to but that are <em>not</em> on the asking segment, so a host with a wrong subnet mask still works. Local proxy ARP makes it answer for addresses that <em>are</em> on the same subnet, forcing intra-subnet traffic through the router. The first hides misconfiguration and is a security and scaling liability; the second is a deliberate tool for specific designs.</p>
+      <span class="step">Detail</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th></th><th>Proxy ARP</th><th>Local proxy ARP</th></tr></thead>
+          <tbody>
+            <tr><td>Answers for</td><td>Addresses on <strong>other</strong> subnets</td><td>Addresses on the <strong>same</strong> subnet</td></tr>
+            <tr><td>Purpose</td><td>Legacy &mdash; tolerate hosts with an incorrect mask</td><td>Force same-subnet traffic through the router</td></tr>
+            <tr><td>Legitimate use today</td><td>Essentially none</td><td>Private VLANs, wireless client isolation, inspection of intra-subnet traffic</td></tr>
+            <tr><td>Command</td><td><code>ip proxy-arp</code> &mdash; <strong>on by default</strong></td><td><code>ip local-proxy-arp</code> &mdash; off by default</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Why proxy ARP is a problem:</strong></p>
+      <ul>
+        <li><strong>It hides misconfiguration.</strong> A host with a /16 mask on a /24 subnet works perfectly because the router answers for everything. The day proxy ARP is disabled &mdash; or that host moves &mdash; it breaks, and nobody remembers why it ever worked.</li>
+        <li><strong>ARP table bloat.</strong> The router accumulates entries and the hosts accumulate entries pointing at the router's MAC for many addresses.</li>
+        <li><strong>A security exposure.</strong> An attacker on the segment can ask the router for any address it can route to and get an answer, which aids reconnaissance and can be used to intercept traffic.</li>
+        <li><strong>It confuses troubleshooting.</strong> Traffic that should be routed appears to be bridged, and <code>show ip arp</code> on the host shows the router's MAC for a remote address.</li>
+      </ul>
+<pre><code><span class="cmt">! disable on every edge and user-facing interface</span>
+interface Vlan100
+ no ip proxy-arp
+
+<span class="cmt">! local proxy ARP — deliberate, for intra-subnet inspection</span>
+interface Vlan200
+ ip local-proxy-arp
+ no ip redirects                         <span class="cmt">! required, or the router tells hosts to bypass it</span>
+
+show ip interface Vlan100 | include Proxy|proxy
+show ip interface brief | exclude unassigned
+show ip arp | count</code></pre>
+      <div class="tip"><b>The <code>no ip redirects</code> pairing is the detail worth knowing</b>If you enable local proxy ARP to force same-subnet traffic through the router, you must also disable ICMP redirects &mdash; otherwise the router answers the ARP, receives the packet, notices the destination is on the same segment, and sends the host a redirect telling it to go direct. The host then bypasses the router and your inspection point is gone. The two commands go together, and knowing that is what separates someone who has deployed this from someone who has read the command reference.</div>
+      <div class="verdict"><b>What they're testing</b>Whether you know proxy ARP is on by default and should usually be off. The local-proxy-ARP-plus-no-redirects pairing is the expert detail and it is directly relevant to private VLAN and wireless isolation designs.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q10"><span class="qtext">What is gratuitous ARP used for, and what problems does it cause?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">A gratuitous ARP is an unsolicited announcement of your own IP-to-MAC mapping. Its legitimate uses are duplicate address detection, and telling a segment that a mapping has changed &mdash; after a NIC team failover, a VM migration, a cluster failover, or an FHRP event. Its problem is that ARP has no authentication, so the same mechanism is how ARP spoofing works.</p>
+      <span class="step">Detail</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Legitimate use</th><th>What it achieves</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Duplicate address detection</strong></td><td>A host announces its address; a reply means somebody else has it</td></tr>
+            <tr><td><strong>NIC team or bond failover</strong></td><td>The IP has moved to a different MAC &mdash; everyone must update</td></tr>
+            <tr><td><strong>VM migration</strong></td><td>Same MAC, new location &mdash; updates the switches' MAC tables immediately rather than waiting for aging</td></tr>
+            <tr><td><strong>Cluster or appliance failover</strong></td><td>A service address moves between nodes</td></tr>
+            <tr><td><strong>FHRP state change</strong></td><td>Sent on becoming active, to flush any stale mapping</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Why HSRP does not depend on it:</strong> because HSRP uses a shared <em>virtual</em> MAC that moves with the active role, hosts never need to update their ARP entries at all &mdash; the MAC they have is still correct. The gratuitous ARP on state change is belt-and-braces to flush the switches' MAC tables so frames for the virtual MAC reach the new active router quickly. That distinction &mdash; virtual MAC means no host relearning &mdash; is worth stating, because it explains why FHRP failover is faster than a cluster failover that relies on GARP propagation.</p>
+<pre><code>show ip arp
+debug arp                                <span class="cmt">! briefly — it is verbose</span>
+
+<span class="cmt">! control what the router itself sends</span>
+interface Vlan100
+ ip arp gratuitous none                  <span class="cmt">! suppress entirely</span>
+ ip arp gratuitous local                 <span class="cmt">! only for local addresses</span>
+
+<span class="cmt">! and the defence against malicious GARP, at layer 2</span>
+ip arp inspection vlan 100-120
+ip arp inspection validate src-mac dst-mac ip
+show ip arp inspection statistics vlan 100</code></pre>
+      <div class="gotcha"><b>A GARP storm during a failover event is a real failure mode</b>A cluster or hypervisor platform that announces several hundred addresses by gratuitous ARP when it fails over sends a burst of broadcasts, each of which every host and switch processes. On a large flat VLAN that is a brief but genuine broadcast event, and on a device with ARP inspection rate limits it can trip the limit and err-disable the port &mdash; so the failover mechanism takes the port down. The mitigations are smaller VLANs, ARP inspection rate limits set with headroom and burst tolerance, and err-disable recovery configured for ARP inspection.</div>
+      <div class="verdict"><b>What they're testing</b>Whether you know what legitimately generates gratuitous ARP, because the answer tells you whether an observed burst is an attack or a failover. The HSRP virtual-MAC point is a good differentiator.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q11"><span class="qtext">ARP timeout is four hours and MAC aging is five minutes. What does that mismatch cause?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">Persistent unknown unicast flooding. A host that is quiet for more than five minutes loses its MAC table entry on the switches while every other host still has a valid ARP entry for it &mdash; so traffic sent to it is flooded to every port in the VLAN until the host transmits something and is re-learned.</p>
+      <span class="step">Detail</span>
+      <p>The sequence: host A has an ARP entry for host B, valid for four hours. Host B goes quiet for six minutes, so the switches age out its MAC. Host A sends to B's MAC, which is now unknown, so every switch in the VLAN floods the frame out every port. B replies and is re-learned, and the flooding stops &mdash; until B goes quiet again.</p>
+      <p>For a normal host this is a brief, barely noticeable event, because hosts rarely stay silent for five minutes. It becomes a real problem in three cases:</p>
+      <ul>
+        <li><strong>Genuinely silent devices.</strong> Some printers, sensors, licence dongles and appliances only ever receive. They are never re-learned, so <em>all</em> traffic to them floods permanently.</li>
+        <li><strong>Asymmetric paths.</strong> A firewall sandwich or one-armed load balancer means a server's replies leave by a different path, so the switch on the request path never learns its MAC from a frame in that direction.</li>
+        <li><strong>High-rate flows to a quiet destination.</strong> A monitoring or replication stream to a device that does not talk back floods at full rate across the VLAN.</li>
+      </ul>
+      <div class="tablewrap">
+        <table>
+          <caption>Which way to align them</caption>
+          <thead><tr><th>Approach</th><th>Effect</th><th>Trade</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Lengthen MAC aging</strong> past the ARP timeout</td><td>Entries survive the quiet period</td><td>A larger MAC table, and stale entries after a host moves</td></tr>
+            <tr><td><strong>Shorten ARP timeout</strong> below MAC aging</td><td>Hosts re-ARP, which generates the frame that re-learns the MAC</td><td>More ARP traffic and more punts</td></tr>
+            <tr><td>Fix the asymmetry</td><td>Removes the cause</td><td>Often a design change rather than a setting</td></tr>
+            <tr><td><code>switchport block unicast</code> on ports that should never receive flooded traffic</td><td>Contains the damage</td><td>Must not be applied to uplinks</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code><span class="cmt">! align them — lengthen MAC aging for the affected VLAN</span>
+mac address-table aging-time 14400 vlan 200
+
+<span class="cmt">! or shorten ARP on the SVI</span>
+interface Vlan200
+ arp timeout 240
+
+show mac address-table aging-time
+show ip interface Vlan200 | include ARP
+show interfaces Gi1/0/5 counters            <span class="cmt">! flooded traffic shows as input on ports that want none</span>
+show mac address-table address 0011.2233.4455</code></pre>
+      <div class="tip"><b>This is the mechanism behind the "flooding on a healthy network" question</b>If an interviewer describes traffic appearing on ports that have no business receiving it, with no loop and no errors, the answer is unknown unicast flooding, and the cause is one of silent hosts, asymmetric paths, or this timer mismatch. Being able to name the four-hours-versus-five-minutes relationship from memory, and say which way you would align them and why, is a precise and memorable answer.</div>
+      <div class="verdict"><b>What they're testing</b>Whether you hold both timers in your head and understand that the mismatch has a direction. Candidates who know the numbers but not the consequence have memorised a table; the flooding explanation is the understanding.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q12"><span class="qtext">Explain DHCP relay. What does <code>giaddr</code> do, and what else does <code>ip helper-address</code> forward?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">The relay receives the client's broadcast, writes its own receiving-interface address into the <strong><code>giaddr</code></strong> field, and unicasts the request to the server. The server uses <code>giaddr</code> to decide <em>which scope to allocate from</em>, so that one field determines which subnet the client gets an address in. And <code>ip helper-address</code> does not only forward DHCP &mdash; by default it forwards eight UDP services.</p>
+      <span class="step">The flow</span>
+      <ol>
+        <li>Client broadcasts <strong>DISCOVER</strong> to 255.255.255.255 from 0.0.0.0.</li>
+        <li>The SVI or routed interface receives it, sets <code>giaddr</code> to its own primary address on that interface, increments the hop count, and <strong>unicasts</strong> it to each configured helper address.</li>
+        <li>The server matches <code>giaddr</code> against its configured scopes and allocates from the matching one. It sends the <strong>OFFER</strong> unicast back to <code>giaddr</code>.</li>
+        <li>The relay delivers it to the client, broadcast or unicast depending on the broadcast flag.</li>
+        <li>REQUEST and ACK follow the same path.</li>
+      </ol>
+      <div class="gotcha"><b><code>ip helper-address</code> forwards eight UDP services, not one</b>By default it relays TIME (37), TACACS (49), DNS (53), BOOTP server and client (67, 68), TFTP (69), NetBIOS name and datagram service (137, 138). So configuring a helper address pointing at a DHCP server also forwards broadcast DNS, TFTP and NetBIOS traffic to that host &mdash; which is unnecessary load, an information leak, and occasionally a genuine problem when a broadcast-heavy legacy application starts reaching a server it should not. Trim it with <code>no ip forward-protocol udp &lt;port&gt;</code> for everything you do not need, leaving 67 and 68. Very few people know this and it is a good thing to volunteer.</div>
+<pre><code>interface Vlan100
+ ip address 10.100.0.1 255.255.255.0
+ ip helper-address 10.9.9.10
+ ip helper-address 10.9.9.11             <span class="cmt">! sent to BOTH, not failover</span>
+
+<span class="cmt">! trim what is relayed down to DHCP only</span>
+no ip forward-protocol udp 37
+no ip forward-protocol udp 49
+no ip forward-protocol udp 53
+no ip forward-protocol udp 69
+no ip forward-protocol udp 137
+no ip forward-protocol udp 138
+<span class="cmt">! leaving 67 and 68</span>
+
+<span class="cmt">! control the source address, which matters with multiple addresses or loopbacks</span>
+ip dhcp-relay source-interface Loopback0
+interface Vlan100
+ ip dhcp relay source-interface Vlan100
+
+show ip helper-address
+show ip forward-protocol
+debug ip dhcp server packet detail
+debug ip udp</code></pre>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"The SVI has a secondary address &mdash; which one goes in <code>giaddr</code>?"</em> &mdash; the primary, by default, so clients get addresses from the primary subnet's scope. If you need the secondary's scope, the relay source must be set explicitly. This is a classic cause of "clients get the wrong subnet".</li>
+        <li><em>"Two helper addresses &mdash; is that redundancy?"</em> &mdash; it is, in the sense that both servers receive the request and can answer; the client takes the first OFFER. It is not failover in the sense of one being tried first, and both servers must have consistent scopes or you get inconsistent allocation.</li>
+        <li><em>"Why would a client get no address with a correct relay?"</em> &mdash; the server has no scope matching <code>giaddr</code>; the server cannot route back to <code>giaddr</code>; a firewall blocks the unicast; or option 82 was inserted with <code>giaddr</code> zero and the server discarded it. That last one is the DHCP snooping interaction.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you know <code>giaddr</code> selects the scope &mdash; which is the single most useful fact about DHCP relay &mdash; and ideally that helper-address forwards more than DHCP. Both are specific and both come up in real troubleshooting.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q13"><span class="qtext">Explain DNS resolution, and how anycast DNS works.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">A stub resolver on the client asks a recursive resolver, which walks the hierarchy on its behalf &mdash; root, then the TLD's servers, then the zone's authoritative servers &mdash; caching each answer for its TTL. Anycast DNS advertises the same resolver address from many locations and lets ordinary routing pick the nearest instance, which works because DNS queries are stateless.</p>
+      <span class="step">Detail</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Role</th><th>Does</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Stub resolver</strong></td><td>On the client. Asks one question, expects one answer. Does not iterate</td></tr>
+            <tr><td><strong>Recursive resolver</strong></td><td>Does the work: queries root, TLD and authoritative servers, caches, returns the answer</td></tr>
+            <tr><td><strong>Authoritative server</strong></td><td>Holds the zone and answers for it. Does not recurse</td></tr>
+            <tr><td><strong>Forwarder</strong></td><td>A resolver that hands queries to another resolver instead of iterating</td></tr>
+            <tr><td><strong>Conditional forwarder</strong></td><td>Forwards only specific zones elsewhere &mdash; how internal zones are directed to internal servers</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Why anycast suits DNS so well:</strong> a query and its response are a single stateless exchange, so it does not matter which instance answers, and it does not matter if a different instance answers the next query. Advertise 10.9.9.53 from every site with BGP or the IGP; each client reaches the topologically nearest instance; if that instance fails, the route is withdrawn and the next query goes elsewhere with no client reconfiguration. The same property is why anycast works for NTP and for the root servers, and why it does <em>not</em> work for a stateful service.</p>
+<pre><code><span class="cmt">! anycast resolver address, advertised from each site's DNS host or load balancer</span>
+interface Loopback53
+ ip address 10.9.9.53 255.255.255.255
+!
+router ospf 1
+ network 10.9.9.53 0.0.0.0 area 0
+<span class="cmt">! withdraw the route if the service is down — the critical part</span>
+track 10 ip sla 10 reachability
+ip sla 10
+ dns 10.9.9.53 name-server 10.9.9.53 target-address example.com
+ frequency 10
+
+show ip route 10.9.9.53
+show ip ospf database | include 10.9.9.53
+nslookup example.com 10.9.9.53
+show hosts
+ip domain lookup
+ip name-server 10.9.9.53</code></pre>
+      <div class="gotcha"><b>Anycast without health-based withdrawal is worse than unicast</b>The route must be withdrawn when the <em>service</em> fails, not just when the interface goes down. A DNS daemon that has crashed on a host whose loopback is still advertised attracts every nearby client into a black hole, and because routing looks perfect the fault is extremely confusing &mdash; clients at one site fail while identical clients elsewhere work. The service must be health-checked and the advertisement conditional on it, which is what route-health injection or a load balancer in front of the instance provides. Volunteering this is the difference between knowing what anycast is and knowing how to run it.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"Why is DNS the first thing to check for 'slow to start'?"</em> &mdash; because a failed or slow lookup delays every connection by the resolver timeout before anything else happens, and the application reports it as slowness rather than as a name-resolution failure. Slow to start with fast throughput once connected is the signature, and it is nearly always DNS or authentication.</li>
+        <li><em>"When does DNS use TCP?"</em> &mdash; for responses too large for UDP, for zone transfers, and where EDNS0 negotiation has not raised the UDP size. A firewall permitting UDP 53 and not TCP 53 breaks large responses, including DNSSEC-signed ones, which produces intermittent resolution failures for specific names only.</li>
+        <li><em>"What is split-horizon DNS?"</em> &mdash; internal clients get internal answers for the same name that external clients resolve to a public address. It is the correct fix for the internal-host-reaching-its-own-public-address problem, and avoids hairpin NAT entirely.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you understand the resolution chain and can explain why anycast is appropriate for stateless services. The health-withdrawal point is the operational insight and the one that distinguishes a design answer.</div>
+    </div>
+  </details>
+</section>
+
+<!-- ============ 3 ============ -->
 <section class="block" id="ospf">
   <div class="sechead">
-    <h2><span class="num">02</span>OSPF</h2>
+    <h2><span class="num">03</span>OSPF</h2>
     <label class="reviewed"><input type="checkbox" data-sec="ospf"> Done</label>
   </div>
   <p class="lede">OSPF questions separate people who have configured it from people who understand the LSDB. The discriminating topics are the forwarding address, type 4, what actually triggers a full SPF, and the ABR rule that makes inter-area routing loop-free.</p>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q8"><span class="qtext">Why does OSPF elect a DR on a broadcast network but not on point-to-point, and what do the network types change?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q14"><span class="qtext">Why does OSPF elect a DR on a broadcast network but not on point-to-point, and what do the network types change?</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">On a multi-access segment, n routers would otherwise form n(n&minus;1)/2 adjacencies and each would originate its own view of the segment. The DR reduces that to a star and originates one type 2 LSA representing the segment. On point-to-point there are only ever two routers, so there is nothing to optimise and no segment to describe.</p>
       <span class="step">Detail</span>
@@ -558,7 +819,7 @@ ip ospf network point-to-point            <span class="cmt">! common on p2p Ethe
   </details>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q9"><span class="qtext">List the OSPF LSA types with their flooding scope. Why does type 4 exist at all?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q15"><span class="qtext">List the OSPF LSA types with their flooding scope. Why does type 4 exist at all?</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">Type 4 exists because a type 5 LSA names its originating ASBR by router ID, and router IDs are carried in type 1 LSAs which never leave their area. Routers in other areas therefore know the external prefix but have no route to the ASBR advertising it. The ABR fills that gap by originating a type 4 saying "ASBR X is reachable through me at cost N."</p>
       <span class="step">Detail</span>
@@ -600,7 +861,7 @@ show ip ospf database opaque-area</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q10"><span class="qtext">Two routers are stuck with one side in ExStart and the other in Exchange. Diagnose it.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q16"><span class="qtext">Two routers are stuck with one side in ExStart and the other in Exchange. Diagnose it.</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">The classic cause is an interface MTU mismatch. OSPF carries the interface MTU in the database description packet, and a router rejects a DBD advertising an MTU larger than its own, so the exchange never completes. The asymmetric state &mdash; ExStart on one side, Exchange on the other &mdash; is the signature.</p>
       <span class="step">Detail</span>
@@ -643,7 +904,7 @@ interface Gi0/1
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q11"><span class="qtext">What is the forwarding address in a type 5 LSA, when is it non-zero, and what happens if it is unreachable?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q17"><span class="qtext">What is the forwarding address in a type 5 LSA, when is it non-zero, and what happens if it is unreachable?</span><span class="lvl lvl-expert">Expert</span></summary>
     <div class="body">
       <p class="lead">A zero forwarding address means "send traffic for this external prefix to me, the advertising ASBR". A non-zero one means "send it directly to this address instead", letting routers bypass the ASBR when the real next-hop is itself inside OSPF. If the forwarding address is not reachable in OSPF, the external route is not installed at all.</p>
       <span class="step">Detail</span>
@@ -680,7 +941,7 @@ show ip route 192.168.50.0</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q12"><span class="qtext">In an NSSA, which router translates type 7 to type 5, and how is it chosen?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q18"><span class="qtext">In an NSSA, which router translates type 7 to type 5, and how is it chosen?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">The NSSA ABR with the <strong>highest router ID</strong> among those eligible performs the translation. With multiple ABRs only one translates, to avoid duplicate type 5 LSAs for the same prefix entering the backbone.</p>
       <span class="step">Detail</span>
@@ -711,7 +972,7 @@ show ip ospf database external | include Advertising Router</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q13"><span class="qtext">What does a virtual link actually do, and why is it not a tunnel?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q19"><span class="qtext">What does a virtual link actually do, and why is it not a tunnel?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">A virtual link logically extends area 0 across a non-backbone transit area, so an ABR that is physically disconnected from the backbone still has a backbone interface. It carries OSPF control traffic only, as ordinary unicast IP routed through the transit area &mdash; there is no encapsulation and no user data path, which is why it is not a tunnel.</p>
       <span class="step">Detail</span>
@@ -747,7 +1008,7 @@ show ip ospf database router adv-router 10.0.0.9</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q14"><span class="qtext">Which LSA changes trigger a full SPF run and which do not? Why does that matter for design?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q20"><span class="qtext">Which LSA changes trigger a full SPF run and which do not? Why does that matter for design?</span><span class="lvl lvl-expert">Expert</span></summary>
     <div class="body">
       <p class="lead">Only type 1 and type 2 changes alter the topology graph, so only those require a full Dijkstra run &mdash; and only within the affected area. Type 3, 4, 5 and 7 changes are leaf prefixes hanging off an already-computed graph, so they trigger a cheaper partial route calculation instead.</p>
       <span class="step">Detail</span>
@@ -795,7 +1056,7 @@ show ip ospf database database-summary</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q15"><span class="qtext">What exactly makes a router an ABR, and what rule stops inter-area routing from looping?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q21"><span class="qtext">What exactly makes a router an ABR, and what rule stops inter-area routing from looping?</span><span class="lvl lvl-expert">Expert</span></summary>
     <div class="body">
       <p class="lead">An ABR has interfaces in two or more areas, one of which must be area 0 with an active backbone connection. The loop-prevention rule is that an ABR computes inter-area routes <strong>only</strong> from type 3 LSAs received over the backbone, and never re-advertises a type 3 learned from a non-backbone area back into the backbone. Inter-area traffic is therefore forced through area 0.</p>
       <span class="step">Detail</span>
@@ -825,16 +1086,16 @@ show ip ospf interface brief
   </details>
 </section>
 
-<!-- ============ 3 ============ -->
+<!-- ============ 4 ============ -->
 <section class="block" id="eigrp">
   <div class="sechead">
-    <h2><span class="num">03</span>EIGRP</h2>
+    <h2><span class="num">04</span>EIGRP</h2>
     <label class="reviewed"><input type="checkbox" data-sec="eigrp"> Done</label>
   </div>
   <p class="lede">EIGRP interviews live or die on the feasibility condition. Everything else &mdash; queries, stub routers, SIA, variance &mdash; follows from it, and a candidate who can state it precisely can derive the rest on the spot.</p>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q16"><span class="qtext">State the feasibility condition and explain why it guarantees a loop-free path.</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q22"><span class="qtext">State the feasibility condition and explain why it guarantees a loop-free path.</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">A neighbour is a feasible successor if its <strong>reported distance is strictly less than my feasible distance</strong>. That works as a loop guarantee because a neighbour routing through me would necessarily report a distance equal to or greater than my own best metric, so a lower reported distance proves it has an independent path.</p>
       <span class="step">Detail</span>
@@ -873,7 +1134,7 @@ show ip eigrp topology | include Passive|Active</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q17"><span class="qtext">Give the EIGRP metric formula, the default K values, and explain why wide metrics were introduced.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q23"><span class="qtext">Give the EIGRP metric formula, the default K values, and explain why wide metrics were introduced.</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">By default the metric is 256 &times; (10<sup>7</sup>/minimum bandwidth in kbps + total delay in tens of microseconds), because only K1 and K3 are non-zero. Wide metrics exist because 10<sup>7</sup>/bandwidth saturates at high speeds &mdash; a 10 Gbps and a 100 Gbps link produce the same bandwidth term, so classic EIGRP cannot tell them apart.</p>
       <span class="step">Detail</span>
@@ -921,7 +1182,7 @@ interface Gi0/1
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q18"><span class="qtext">When does an EIGRP route go active, and what is Stuck-In-Active?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q24"><span class="qtext">When does an EIGRP route go active, and what is Stuck-In-Active?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">A route goes active when its successor is lost and <strong>no feasible successor exists</strong>, forcing the router to query its neighbours for an alternative. Stuck-In-Active is what happens when some neighbour fails to reply within the active timer &mdash; by default three minutes &mdash; and the router tears down the adjacency to that neighbour to break the deadlock.</p>
       <span class="step">Detail</span>
@@ -962,7 +1223,7 @@ router eigrp 100
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q19"><span class="qtext">How far does an EIGRP query travel, and how do you bound it?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q25"><span class="qtext">How far does an EIGRP query travel, and how do you bound it?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">A query propagates to every neighbour that does not have the information needed to answer it authoritatively, recursively, until it reaches a router that can reply definitively. In a flat network with no boundaries, one link flap can query every router in the AS. The three real boundaries are summarization, stub routers, and filtering.</p>
       <span class="step">Detail</span>
@@ -1009,7 +1270,7 @@ show ip eigrp events | include Active|Query</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q20"><span class="qtext">What does an EIGRP stub router advertise, and what are the options?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q26"><span class="qtext">What does an EIGRP stub router advertise, and what are the options?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">By default <code>eigrp stub</code> advertises connected and summary routes only, and &mdash; the more important half &mdash; its neighbours stop sending it queries entirely. The stub declares itself incapable of being a transit path, which both reduces its advertisements and removes it from the query domain.</p>
       <span class="step">Detail</span>
@@ -1054,7 +1315,7 @@ show ip eigrp topology | include Stub</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q21"><span class="qtext">Explain variance. Why is traffic rarely split the way people expect?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q27"><span class="qtext">Explain variance. Why is traffic rarely split the way people expect?</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">Variance installs additional paths whose total metric is less than the multiplier times the feasible distance &mdash; but <strong>only paths that already pass the feasibility condition</strong>. Traffic is then shared inversely proportional to metric, not evenly, so a path twice as costly carries roughly half the traffic.</p>
       <span class="step">Detail</span>
@@ -1084,7 +1345,7 @@ show ip eigrp topology all-links    <span class="cmt">! what failed feasibility 
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q22"><span class="qtext">You are running EIGRP over DMVPN. Spokes cannot reach each other's prefixes. What is happening?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q28"><span class="qtext">You are running EIGRP over DMVPN. Spokes cannot reach each other's prefixes. What is happening?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">Split horizon on the hub's multipoint tunnel interface is suppressing re-advertisement of routes back out the interface they were learned on, so spoke A's prefixes never reach spoke B. The companion problem is that the hub rewrites the next-hop to itself, forcing all spoke-to-spoke traffic through the hub even once the routes are present.</p>
       <span class="step">Detail</span>
@@ -1134,16 +1395,16 @@ show dmvpn detail</code></pre>
   </details>
 </section>
 
-<!-- ============ 4 ============ -->
+<!-- ============ 5 ============ -->
 <section class="block" id="bgp">
   <div class="sechead">
-    <h2><span class="num">04</span>BGP</h2>
+    <h2><span class="num">05</span>BGP</h2>
     <label class="reviewed"><input type="checkbox" data-sec="bgp"> Done</label>
   </div>
   <p class="lede">The longest section, because BGP is where senior interviews spend most of their time. The best-path list is table stakes; the questions that actually sort candidates are MED comparability, aggregation side effects, multipath conditions and convergence behaviour.</p>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q23"><span class="qtext">Give the BGP best-path algorithm in order.</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q29"><span class="qtext">Give the BGP best-path algorithm in order.</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">Thirteen steps, preceded by a gate: if the next hop is not resolvable, the path is not a candidate at all.</p>
       <span class="step">Detail</span>
@@ -1190,7 +1451,7 @@ router bgp 65001
   </details>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q24"><span class="qtext">Why is <code>next-hop-self</code> needed for iBGP, and what are the alternatives?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q30"><span class="qtext">Why is <code>next-hop-self</code> needed for iBGP, and what are the alternatives?</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">When an eBGP route is advertised into iBGP, the next-hop attribute is left unchanged &mdash; it still points at the external peer's address on the eBGP link. Internal routers have no route to that address, so the path fails the reachability gate and is never selected. <code>next-hop-self</code> rewrites it to the advertising router's own address, which the IGP already knows.</p>
       <span class="step">Detail</span>
@@ -1230,7 +1491,7 @@ show ip bgp | include inaccessible</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q25"><span class="qtext">Why does iBGP require a full mesh, and why does AS_PATH not solve it?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q31"><span class="qtext">Why does iBGP require a full mesh, and why does AS_PATH not solve it?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">AS_PATH is only modified when a route crosses an AS boundary, so two routers inside the same AS see identical AS_PATHs and cannot use them to detect a loop. BGP therefore applies a blunt structural rule instead: <strong>a router never advertises an iBGP-learned route to another iBGP peer</strong>. Because propagation stops after one hop, every internal speaker must hear it directly &mdash; a full mesh.</p>
       <span class="step">Detail</span>
@@ -1256,7 +1517,7 @@ show ip bgp | include inaccessible</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q26"><span class="qtext">How do route reflectors prevent loops, and should redundant RRs share a cluster ID?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q32"><span class="qtext">How do route reflectors prevent loops, and should redundant RRs share a cluster ID?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">Two attributes do the work. ORIGINATOR_ID carries the router ID of the iBGP router that first injected the path, and a router discards any path carrying its own ORIGINATOR_ID. CLUSTER_LIST accumulates the cluster ID of every RR the path passes through, and an RR discards a path whose cluster list already contains its own cluster ID.</p>
       <span class="step">Detail</span>
@@ -1304,7 +1565,7 @@ show bgp ipv4 unicast additional-paths</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q27"><span class="qtext">Why is MED only compared between paths from the same AS? What do <code>always-compare-med</code> and <code>deterministic-med</code> do?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q33"><span class="qtext">Why is MED only compared between paths from the same AS? What do <code>always-compare-med</code> and <code>deterministic-med</code> do?</span><span class="lvl lvl-expert">Expert</span></summary>
     <div class="body">
       <p class="lead">MED is a hint set by a neighbouring AS about which of <em>its</em> entry points to prefer. Two different ASes have no shared scale &mdash; one may use 10 and 20, another 1000 and 2000 &mdash; so comparing across them is meaningless. <code>always-compare-med</code> removes that restriction and makes path selection depend on arbitrary external numbering; <code>deterministic-med</code> makes the outcome independent of the order paths were received.</p>
       <span class="step">Detail</span>
@@ -1345,7 +1606,7 @@ show ip bgp | include metric</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q28"><span class="qtext">Compare weight, local preference, MED and AS-path prepending. Which actually control traffic?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q34"><span class="qtext">Compare weight, local preference, MED and AS-path prepending. Which actually control traffic?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">Weight and local preference reliably control <strong>outbound</strong> traffic because they are yours and nobody else's policy can override them. MED and AS-path prepending attempt to influence <strong>inbound</strong> traffic by asking other ASes to prefer one of your entry points, and either can be overridden by their local preference &mdash; so neither is a control, only a request.</p>
       <span class="step">Detail</span>
@@ -1393,7 +1654,7 @@ show ip bgp neighbors 203.0.113.1 received-routes   <span class="cmt">! needs so
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q29"><span class="qtext">Explain BGP communities &mdash; standard, extended and large &mdash; and the well-known values.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q35"><span class="qtext">Explain BGP communities &mdash; standard, extended and large &mdash; and the well-known values.</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">A community is a tag attached to a prefix so that policy can be applied by matching the tag rather than the prefix. Standard communities are 32 bits, conventionally written AS:value. Extended communities are 64 bits and typed, which is what MPLS VPN route targets use. Large communities are 96 bits and exist because a 4-byte AS number does not fit in the standard format.</p>
       <span class="step">Detail</span>
@@ -1454,7 +1715,7 @@ show ip community-list</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q30"><span class="qtext">You configure <code>aggregate-address</code> and nothing appears. Why? Then explain <code>as-set</code>, <code>summary-only</code> and the suppress maps.</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q36"><span class="qtext">You configure <code>aggregate-address</code> and nothing appears. Why? Then explain <code>as-set</code>, <code>summary-only</code> and the suppress maps.</span><span class="lvl lvl-expert">Expert</span></summary>
     <div class="body">
       <p class="lead">An aggregate is only generated if at least one <strong>more specific component route already exists in the BGP table</strong>. BGP will not invent a summary for address space it has no evidence of, so if the components are in the RIB but were never brought into BGP, the aggregate never appears.</p>
       <span class="step">Detail</span>
@@ -1504,7 +1765,7 @@ show ip bgp neighbors 203.0.113.1 advertised-routes</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q31"><span class="qtext">What must be equal for BGP to install multiple paths, and what does <code>as-path multipath-relax</code> change?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q37"><span class="qtext">What must be equal for BGP to install multiple paths, and what does <code>as-path multipath-relax</code> change?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">Every attribute evaluated before the multipath decision point must match: weight, local preference, AS_PATH length, origin, MED, path type (both eBGP or both iBGP) and the IGP metric to the next hop. By default the AS_PATH must also be <em>identical in content</em>, not merely the same length &mdash; and <code>as-path multipath-relax</code> removes exactly that requirement.</p>
       <span class="step">Detail</span>
@@ -1548,7 +1809,7 @@ show ip bgp 10.2.0.0/16 | count multipath</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q32"><span class="qtext">Why does BGP converge slowly, and what would you tune?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q38"><span class="qtext">Why does BGP converge slowly, and what would you tune?</span><span class="lvl lvl-expert">Expert</span></summary>
     <div class="body">
       <p class="lead">BGP was designed for stability and scale rather than speed, so its defaults deliberately damp change: a 60-second hold on next-hop revalidation by the scanner, a 30-second minimum advertisement interval to eBGP peers, and 60/180-second keepalive and hold timers. The modern answer is not to shorten timers but to make failure detection event-driven &mdash; BFD, next-hop tracking, and a precomputed backup path.</p>
       <span class="step">Detail</span>
@@ -1601,7 +1862,7 @@ show bfd neighbors detail</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q33"><span class="qtext">What is RPKI origin validation, what are the three states, and what does it not protect against?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q39"><span class="qtext">What is RPKI origin validation, what are the three states, and what does it not protect against?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">RPKI lets a prefix holder publish a signed Route Origin Authorisation stating which AS may originate that prefix and up to what length. A router fetches validated data from a cache over the RTR protocol and classifies each path as Valid, Invalid or NotFound. It validates <strong>only the origin</strong> &mdash; it says nothing about whether the rest of the AS_PATH is genuine.</p>
       <span class="step">Detail</span>
@@ -1645,16 +1906,16 @@ show bgp ipv4 unicast rpki table | count valid</code></pre>
   </details>
 </section>
 
-<!-- ============ 5 ============ -->
+<!-- ============ 6 ============ -->
 <section class="block" id="policy">
   <div class="sechead">
-    <h2><span class="num">05</span>Redistribution &amp; policy</h2>
+    <h2><span class="num">06</span>Redistribution &amp; policy</h2>
     <label class="reviewed"><input type="checkbox" data-sec="policy"> Done</label>
   </div>
   <p class="lede">Redistribution is where most real routing outages come from, so interviewers weight it heavily. The questions are rarely about syntax &mdash; they are about whether you can see the loop before you create it.</p>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q34"><span class="qtext">Two routers mutually redistribute OSPF and EIGRP. What goes wrong and how do you prevent it?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q40"><span class="qtext">Two routers mutually redistribute OSPF and EIGRP. What goes wrong and how do you prevent it?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">A route can leave one domain, cross into the other, come back through the second redistribution point, and be re-advertised into its original domain with a better administrative distance than the native route &mdash; producing a loop or a black hole. The standard prevention is route tagging: tag on the way out and deny tagged routes on the way back in.</p>
       <span class="step">Detail</span>
@@ -1715,7 +1976,7 @@ show ip route | include EX|E2</code></pre>
   </details>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q35"><span class="qtext">Which protocols need a seed metric on redistribution, and what are the defaults?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q41"><span class="qtext">Which protocols need a seed metric on redistribution, and what are the defaults?</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">EIGRP and RIP treat a redistributed route with no metric as unreachable, so they need one explicitly. OSPF and IS-IS supply a default &mdash; 20 for OSPF, or 1 when redistributing from BGP &mdash; so redistribution into them works without configuration. BGP carries the IGP metric into MED.</p>
       <span class="step">Detail</span>
@@ -1758,7 +2019,7 @@ show ip ospf database external | include Metric Type</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q36"><span class="qtext">Explain route-map processing order, the implicit deny, and what <code>continue</code> does.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q42"><span class="qtext">Explain route-map processing order, the implicit deny, and what <code>continue</code> does.</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">Clauses are evaluated in sequence number order and processing stops at the <strong>first clause whose match conditions are all satisfied</strong>. That clause's permit or deny then decides the outcome, and its set statements apply. If no clause matches, an implicit deny applies &mdash; which in redistribution means the route is not redistributed.</p>
       <span class="step">Detail</span>
@@ -1815,7 +2076,7 @@ show route-map                       <span class="cmt">! includes hit counts per
   </details>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q37"><span class="qtext">Compare distribute-list, prefix-list, route-map and filter-list. When do you use each?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q43"><span class="qtext">Compare distribute-list, prefix-list, route-map and filter-list. When do you use each?</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">Prefix lists match prefix and length and are the right tool for filtering by address. Filter lists match AS_PATH with a regular expression and are BGP-only. Route maps are full policy &mdash; they can match on anything and also <em>set</em> attributes. Distribute lists are the older IGP mechanism that applies an ACL or prefix list to updates on an interface or neighbour.</p>
       <span class="step">Detail</span>
@@ -1863,7 +2124,7 @@ show ip bgp filter-list 10</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q38"><span class="qtext">A colleague proposes fixing a routing problem by changing administrative distance. Why is that usually wrong?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q44"><span class="qtext">A colleague proposes fixing a routing problem by changing administrative distance. Why is that usually wrong?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">Administrative distance is purely local &mdash; it changes which route <em>this</em> router installs and nothing about what any protocol advertises. So you alter one router's forwarding decision while every other router keeps its own, which is how you turn a suboptimal path into asymmetric forwarding and, with redistribution in the picture, into a loop.</p>
       <span class="step">Detail</span>
@@ -1909,16 +2170,16 @@ show running-config | include distance</code></pre>
   </details>
 </section>
 
-<!-- ============ 6 ============ -->
+<!-- ============ 7 ============ -->
 <section class="block" id="mpls">
   <div class="sechead">
-    <h2><span class="num">06</span>MPLS &amp; VRF</h2>
+    <h2><span class="num">07</span>MPLS &amp; VRF</h2>
     <label class="reviewed"><input type="checkbox" data-sec="mpls"> Done</label>
   </div>
   <p class="lede">The reliable discriminator here is whether you can keep RD and RT separate, and whether you can narrate a packet through the core label by label. Both are things people half-remember, and interviewers know it.</p>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q39"><span class="qtext">What is the difference between a route distinguisher and a route target?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q45"><span class="qtext">What is the difference between a route distinguisher and a route target?</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">The route distinguisher makes a prefix <strong>unique</strong> in the shared VPNv4 table, so two customers can both use 10.1.1.0/24 without colliding. The route target is an extended community that controls <strong>membership</strong> &mdash; which VRFs import and export which routes. RD is about uniqueness; RT is about policy. They are entirely independent.</p>
       <span class="step">Detail</span>
@@ -1962,7 +2223,7 @@ show bgp vpnv4 unicast all | include Route Distinguisher</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q40"><span class="qtext">Walk a packet from CE through an MPLS VPN core to the far CE, naming every label.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q46"><span class="qtext">Walk a packet from CE through an MPLS VPN core to the far CE, naming every label.</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">Two labels in the stack. The outer transport label gets the packet across the core to the remote PE and is swapped at every P router; the inner VPN label tells the remote PE which VRF the packet belongs to and is only read at the end.</p>
       <span class="step">Detail</span>
@@ -2013,7 +2274,7 @@ show mpls forwarding-table labels 24015 detail</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q41"><span class="qtext">Why is MTU a recurring problem in MPLS, and what does <code>no mpls ip propagate-ttl</code> do?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q47"><span class="qtext">Why is MTU a recurring problem in MPLS, and what does <code>no mpls ip propagate-ttl</code> do?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">Every label adds four bytes, and a VPN packet carries at least two &mdash; more with fast reroute or traffic engineering. A 1500-byte customer packet becomes 1508 or more, which does not fit a default core MTU, and MPLS has no good path-MTU mechanism for the label stack. <code>no mpls ip propagate-ttl</code> stops the IP TTL being copied into the label, which hides the core hops from customer traceroutes.</p>
       <span class="step">Detail</span>
@@ -2053,7 +2314,7 @@ show mpls forwarding-table labels 16005 detail | include MTU</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q42"><span class="qtext">What is VRF-lite, how does it differ from MPLS VPN, and how do you leak routes between VRFs?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q48"><span class="qtext">What is VRF-lite, how does it differ from MPLS VPN, and how do you leak routes between VRFs?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">VRF-lite is routing-table separation on a single device with no MPLS and no MP-BGP. Because there are no labels, every VRF needs its own link or VLAN between devices, so the number of interfaces grows with the number of VRFs &mdash; which is exactly the scaling problem MPLS VPN solves by multiplexing all VRFs over one labelled core.</p>
       <span class="step">Detail</span>
@@ -2112,7 +2373,7 @@ show bgp vpnv4 unicast all summary</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q43"><span class="qtext">What problem does LDP-IGP synchronisation solve, and how does segment routing avoid it entirely?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q49"><span class="qtext">What problem does LDP-IGP synchronisation solve, and how does segment routing avoid it entirely?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">The IGP and LDP converge independently, so a restored link can be in the IGP's shortest path before LDP has exchanged labels on it. Traffic is then forwarded over a path with no label binding and is dropped &mdash; a black hole lasting until LDP catches up. LDP-IGP sync holds the link at maximum IGP metric until LDP is ready. Segment routing removes the problem by deriving labels from the IGP itself, so there is no second protocol to be out of step with.</p>
       <span class="step">Detail</span>
@@ -2166,16 +2427,16 @@ show ospf 1 interface Gi0/1 | include Cost|sync</code></pre>
   </details>
 </section>
 
-<!-- ============ 7 ============ -->
+<!-- ============ 8 ============ -->
 <section class="block" id="multicast">
   <div class="sechead">
-    <h2><span class="num">07</span>Multicast</h2>
+    <h2><span class="num">08</span>Multicast</h2>
     <label class="reviewed"><input type="checkbox" data-sec="multicast"> Done</label>
   </div>
   <p class="lede">Multicast questions sort candidates fast because the failure modes are unusual &mdash; RPF, state in the middle of the network, and a layer 2 behaviour that depends on something sending queries. Most engineers have configured it; far fewer have debugged it.</p>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q44"><span class="qtext">Compare PIM dense mode, sparse mode, SSM and bidirectional PIM.</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q50"><span class="qtext">Compare PIM dense mode, sparse mode, SSM and bidirectional PIM.</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">Dense mode floods and prunes, assuming receivers are everywhere &mdash; wrong for almost every real network, and effectively deprecated. Sparse mode requires an explicit join toward a rendezvous point, which is the general-purpose answer. SSM drops the RP entirely by having receivers name the source. Bidir builds one shared tree used in both directions for many-to-many applications.</p>
       <span class="step">Detail</span>
@@ -2219,7 +2480,7 @@ show ip mroute 239.1.1.1 | include Flags</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q45"><span class="qtext">What is the multicast RPF check, and why is it the most common cause of multicast failure?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q51"><span class="qtext">What is the multicast RPF check, and why is it the most common cause of multicast failure?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">A router accepts a multicast packet only if it arrives on the interface that the unicast routing table says is the way <em>toward the source</em>. Anything else is dropped. That single rule is how PIM builds loop-free trees without any topology computation &mdash; and it means multicast forwarding depends entirely on the unicast routing table being symmetric.</p>
       <span class="step">Detail</span>
@@ -2270,7 +2531,7 @@ ip mroute 10.1.1.0 255.255.255.0 10.0.0.9</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q46"><span class="qtext">How can a router learn the RP, and how do you make the RP redundant?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q52"><span class="qtext">How can a router learn the RP, and how do you make the RP redundant?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">Four options: static configuration, Auto-RP, BSR, or &mdash; for redundancy &mdash; Anycast RP with MSDP. Anycast RP is the standard answer for resilience: several routers share one RP address, receivers reach the nearest by unicast routing, and MSDP between them shares knowledge of active sources.</p>
       <span class="step">Detail</span>
@@ -2318,7 +2579,7 @@ show ip msdp count</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q47"><span class="qtext">Explain the switchover from the shared tree to the shortest-path tree, and when you would suppress it.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q53"><span class="qtext">Explain the switchover from the shared tree to the shortest-path tree, and when you would suppress it.</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">A receiver's first-hop router joins (*,G) toward the RP, so traffic initially flows down the shared tree. Once packets arrive, the last-hop router learns the actual source address, joins (S,G) directly toward the source, and once that traffic arrives on the correct RPF interface it sends an (S,G) RP-bit prune toward the RP to stop the duplicate. By default this happens on the first packet.</p>
       <span class="step">Detail</span>
@@ -2355,7 +2616,7 @@ show ip pim rp 239.1.1.1</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q48"><span class="qtext">Multicast is flooding to every port in a VLAN despite IGMP snooping being enabled. Why?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q54"><span class="qtext">Multicast is flooding to every port in a VLAN despite IGMP snooping being enabled. Why?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">Almost always because nothing is sending IGMP queries in that VLAN. Snooping builds its port list from membership reports, and hosts only report in response to queries. With no querier the reports stop, the snooping entries age out, and the switch falls back to flooding &mdash; which is the safe default, because dropping multicast would break receivers.</p>
       <span class="step">Detail</span>
@@ -2401,16 +2662,16 @@ ip igmp snooping vlan 100 mrouter interface Gi1/0/49</code></pre>
   </details>
 </section>
 
-<!-- ============ 8 ============ -->
+<!-- ============ 9 ============ -->
 <section class="block" id="ipv6">
   <div class="sechead">
-    <h2><span class="num">08</span>IPv6 routing</h2>
+    <h2><span class="num">09</span>IPv6 routing</h2>
     <label class="reviewed"><input type="checkbox" data-sec="ipv6"> Done</label>
   </div>
   <p class="lede">IPv6 questions are often used as a currency check. The ones that discriminate are why you cannot run IPv6 without router advertisements, and what OSPFv3 changed architecturally rather than cosmetically.</p>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q49"><span class="qtext">Explain SLAAC, stateful and stateless DHCPv6, and the RA flags that select between them.</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q55"><span class="qtext">Explain SLAAC, stateful and stateless DHCPv6, and the RA flags that select between them.</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">Three flags in the router advertisement decide. The <strong>A</strong> bit in the prefix option says "use this prefix for autoconfiguration", the <strong>M</strong> bit says "get your address from DHCPv6", and the <strong>O</strong> bit says "get other configuration such as DNS from DHCPv6". The combination selects SLAAC, stateful DHCPv6, or SLAAC plus stateless DHCPv6.</p>
       <span class="step">Detail</span>
@@ -2456,7 +2717,7 @@ debug ipv6 nd</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q50"><span class="qtext">Walk through Neighbor Discovery. What replaced ARP, and what are the security implications?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q56"><span class="qtext">Walk through Neighbor Discovery. What replaced ARP, and what are the security implications?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">ND is a set of ICMPv6 messages that replaces ARP, router discovery and redirects in one protocol. Neighbor solicitation and advertisement do address resolution using solicited-node multicast rather than broadcast; router solicitation and advertisement handle gateway and prefix discovery. Because it runs over ICMPv6 and is unauthenticated, any host on the link can impersonate the router or any neighbour.</p>
       <span class="step">Detail</span>
@@ -2509,7 +2770,7 @@ show ipv6 neighbors binding</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q51"><span class="qtext">What actually changed between OSPFv2 and OSPFv3?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q57"><span class="qtext">What actually changed between OSPFv2 and OSPFv3?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">The architectural change is that <strong>topology and addressing were separated</strong>. Type 1 and type 2 LSAs no longer carry prefixes; they describe the graph only, and addresses are carried in new type 8 and type 9 LSAs. Everything else &mdash; link-local transport, removed authentication, per-link operation, instance IDs &mdash; follows from that split or from running over IPv6.</p>
       <span class="step">Detail</span>
@@ -2564,7 +2825,7 @@ show ipv6 route ospf</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q52"><span class="qtext">How do you carry IPv6 in BGP, and what are the options for the next hop?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q58"><span class="qtext">How do you carry IPv6 in BGP, and what are the options for the next hop?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">MP-BGP carries IPv6 as a separate address family &mdash; AFI 2, SAFI 1 for unicast &mdash; activated per neighbour. The cleanest design is separate IPv6 sessions over IPv6 transport, so the next hop is naturally an IPv6 address. Carrying IPv6 prefixes over an IPv4 session works but needs the next hop fixing, either with a route-map or with RFC 5549.</p>
       <span class="step">Detail</span>
@@ -2619,16 +2880,16 @@ show bgp all summary</code></pre>
   </details>
 </section>
 
-<!-- ============ 9 ============ -->
+<!-- ============ 10 ============ -->
 <section class="block" id="ha">
   <div class="sechead">
-    <h2><span class="num">09</span>HA &amp; convergence</h2>
+    <h2><span class="num">10</span>HA &amp; convergence</h2>
     <label class="reviewed"><input type="checkbox" data-sec="ha"> Done</label>
   </div>
   <p class="lede">The theme of this section is that convergence is a budget with several line items, and the one most candidates ignore &mdash; hardware programming time &mdash; is often the largest. Interviewers probing for architects ask these.</p>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q53"><span class="qtext">How does BFD work, where should you deploy it, and where should you not?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q59"><span class="qtext">How does BFD work, where should you deploy it, and where should you not?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">BFD is a deliberately minimal hello protocol whose only job is to detect that a forwarding path has failed, fast, and tell a client protocol. Because it does nothing else it can run at sub-second intervals and be offloaded to hardware, which routing protocol hellos cannot. BFD detects; the client protocol reconverges.</p>
       <span class="step">Detail</span>
@@ -2682,7 +2943,7 @@ show bfd drops</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q54"><span class="qtext">Explain LFA, remote LFA and TI-LFA. What problem does each solve that the previous one did not?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q60"><span class="qtext">Explain LFA, remote LFA and TI-LFA. What problem does each solve that the previous one did not?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">LFA precomputes a backup next hop that provably will not send the packet back, so failover needs no recomputation &mdash; but coverage depends on topology and is poor in rings. Remote LFA extends coverage by tunnelling to a node from which the destination is reachable without looping. TI-LFA uses a segment-routing SID list to steer the packet along the <em>post-convergence</em> path, giving complete coverage and eliminating microloops.</p>
       <span class="step">Detail</span>
@@ -2727,7 +2988,7 @@ show mpls forwarding-table labels 16005 detail | include backup</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q55"><span class="qtext">Distinguish SSO, NSF, graceful restart and NSR.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q61"><span class="qtext">Distinguish SSO, NSF, graceful restart and NSR.</span><span class="lvl lvl-deep">Deep</span></summary>
       <div class="body">
       <p class="lead">SSO is hardware redundancy &mdash; a standby supervisor with synchronised state takes over. NSF is the forwarding behaviour during that event: keep using the existing FIB while the control plane recovers. Graceful restart is the protocol extension by which <em>neighbours</em> agree to help, holding routes during the grace period. NSR replicates the protocol state itself, so no neighbour cooperation is needed at all.</p>
       <span class="step">Detail</span>
@@ -2783,7 +3044,7 @@ show ip bgp neighbors 10.0.0.2 | include End-of-RIB</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q56"><span class="qtext">Break down a convergence budget. What actually takes the time?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q62"><span class="qtext">Break down a convergence budget. What actually takes the time?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">Six components: failure detection, local reaction, flooding, computation, RIB update, and hardware FIB programming. Candidates focus on the first four, which modern platforms have largely solved. At scale the dominant term is usually the last one &mdash; writing hundreds of thousands of entries into hardware &mdash; and that is what precomputed protection exists to avoid.</p>
       <span class="step">Detail</span>
@@ -2839,16 +3100,221 @@ show isis fast-reroute summary</code></pre>
   </details>
 </section>
 
-<!-- ============ 10 ============ -->
+<!-- ============ 11 ============ -->
+<section class="block" id="platha">
+  <div class="sechead">
+    <h2><span class="num">11</span>Platform HA &amp; maintenance</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="platha"> Done</label>
+  </div>
+  <p class="lede">What a supervisor switchover, a stack failover or a vPC pair does to your routing. The two answers that matter most are that aggressive failure detection can defeat the HA mechanism entirely, and that draining a device before maintenance is better than letting it fail over.</p>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q63"><span class="qtext">A supervisor switches over. What happens to the routing adjacencies, and what do you check afterwards?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">With SSO the data plane keeps forwarding from the existing FIB, so traffic continues. The control plane restarts, and whether the neighbours notice depends on which mechanism is in play: with graceful restart they hold the routes for a grace period, with NSR the session state is replicated and they never see a restart at all, and with neither they tear the adjacency down and reconverge.</p>
+      <span class="step">Detail</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Mechanism</th><th>Neighbour's view</th><th>Needs the neighbour to&hellip;</th></tr></thead>
+          <tbody>
+            <tr><td><strong>SSO + NSF with graceful restart</strong></td><td>Sees a restart, holds routes for the grace period</td><td><strong>Support GR or be NSF-aware</strong></td></tr>
+            <tr><td><strong>NSR</strong></td><td>Sees nothing &mdash; the session state was replicated</td><td>Nothing</td></tr>
+            <tr><td>SSO alone, neighbour not GR-capable</td><td>Adjacency drops, full reconvergence</td><td>&mdash;</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <span class="step">What to check afterwards</span>
+<pre><code>show redundancy states
+show redundancy switchover history
+show redundancy history | include SWITCHOVER|PEER
+
+<span class="cmt">! did the adjacencies survive, and did they restart?</span>
+show ip ospf neighbor                    <span class="cmt">! uptime tells you if they reset</span>
+show ip ospf | include Non-Stop|NSF|graceful
+show ip bgp summary                      <span class="cmt">! Up/Down column is the giveaway</span>
+show ip bgp neighbors 10.0.0.2 | include Graceful|End-of-RIB|restart
+
+<span class="cmt">! did forwarding actually continue?</span>
+show ip cef summary
+show ip route summary
+show platform hardware fed switch active fwd-asic resource tcam utilization
+
+<span class="cmt">! and did BFD survive, or did it cause the problem?</span>
+show bfd neighbors details
+show logging | include BFD|ADJCHG|NSF|SSO</code></pre>
+      <div class="gotcha"><b>Aggressive BFD defeats the thing SSO exists for</b>A switchover takes longer than a 150-millisecond BFD detection window, so BFD declares the peer dead during a <em>successful, non-disruptive</em> switchover, the neighbour withdraws everything, and the network reconverges &mdash; which is precisely the outage the HA feature was deployed to prevent. The HA mechanism and the failure-detection mechanism must be designed together: either timers slow enough to tolerate the switchover, or BFD made NSF-aware where the platform supports it. The symptom to recognise is "the redundancy worked and we had an outage anyway", and the evidence is BFD log entries timestamped inside the switchover window.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"The neighbour's uptime reset. Is that a failure?"</em> &mdash; it means graceful restart did not apply, either because the neighbour is not GR-capable or because the feature is not configured. Forwarding may still have continued via NSF, so it is not necessarily an outage &mdash; but it is a reconvergence you did not need, and on a large table that is seconds of churn.</li>
+        <li><em>"What does not survive a switchover?"</em> &mdash; anything stateful that is not replicated. The specifics are platform and release dependent, which is the honest answer, and the way to find out is to perform a planned switchover in a maintenance window and observe, rather than to assume from the documentation.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you know the neighbour's cooperation is part of the mechanism, and whether you spot the BFD interaction. That interaction has caused real outages and is the reason this question is asked at senior level.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="expert">
+    <summary data-n="Q64"><span class="qtext">Why is routing over a vPC a problem, and what is <code>layer3 peer-router</code> for?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <div class="body">
+      <p class="lead">Because of the vPC loop-prevention rule: a frame received on the peer-link is never forwarded out a vPC member port. A routed packet that arrives at the wrong vPC peer and needs to reach a device attached by vPC would have to cross the peer-link and then egress a member port &mdash; which the rule forbids, so it is dropped. <code>layer3 peer-router</code> relaxes that specifically for routed traffic, which is what makes a dynamic routing adjacency over a vPC workable.</p>
+      <span class="step">Detail</span>
+      <p>The rule exists for a good reason. For bridged traffic, the peer that received a frame from the fabric has already delivered it to the dual-attached device locally, so forwarding the peer-link copy out a member port would duplicate it. For <em>routed</em> traffic that reasoning does not hold &mdash; the packet may legitimately need to traverse the peer-link to reach its next hop &mdash; but the ASIC rule does not distinguish, so the packet is discarded.</p>
+      <div class="tablewrap">
+        <table>
+          <caption>The three vPC features that come up together</caption>
+          <thead><tr><th>Feature</th><th>Solves</th></tr></thead>
+          <tbody>
+            <tr><td><strong><code>peer-gateway</code></strong></td><td>Lets each peer route frames addressed to the <em>other's</em> router MAC. Needed because some storage arrays, load balancers and appliances reply to the source MAC of the request rather than to the gateway MAC</td></tr>
+            <tr><td><strong><code>peer-switch</code></strong></td><td>Both peers present the same STP bridge ID, so they appear as a single root and a peer failure does not cause an STP topology change</td></tr>
+            <tr><td><strong><code>layer3 peer-router</code></strong></td><td>Permits routed traffic to traverse the peer-link and egress a vPC member port, which is what a routing adjacency over a vPC requires</td></tr>
+            <tr><td><code>ip arp synchronize</code></td><td>Keeps ARP tables aligned so a switchover does not require relearning</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code>vpc domain 10
+ role priority 100
+ peer-keepalive destination 10.9.9.2 source 10.9.9.1 vrf management
+ peer-gateway
+ peer-switch
+ layer3 peer-router
+ ip arp synchronize
+ auto-recovery
+ delay restore 150
+ delay restore interface-vlan 180
+
+show vpc
+show vpc brief
+show vpc consistency-parameters global
+show vpc consistency-parameters interface Po10
+show vpc role
+show vpc orphan-ports
+show ip route vrf default | include 0.0.0.0</code></pre>
+      <div class="tip"><b>The design answer that avoids the question</b>Do not route over the vPC at all. Build <strong>separate, dedicated layer 3 links</strong> between the vPC peers and any router that needs to peer with them &mdash; point-to-point routed interfaces outside the vPC, which have none of these restrictions. That is the recommended design, it is simpler to reason about, and it avoids depending on a feature whose behaviour varies by platform and release. Reaching for <code>layer3 peer-router</code> is the answer when you have inherited a design that already peers over the vPC; building a new one that way is choosing a constraint you do not need.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"What are type 1 and type 2 consistency parameters?"</em> &mdash; type 1 mismatches <strong>suspend the vPC</strong> because forwarding would be inconsistent; type 2 mismatches raise a warning and keep forwarding because the consequence is suboptimal rather than broken. Knowing that a type 1 mismatch takes your vPCs down is what makes you check <code>show vpc consistency-parameters</code> before a change rather than after.</li>
+        <li><em>"Why <code>delay restore</code>?"</em> &mdash; after a reload, the peer needs time to establish the peer-link, synchronise state and converge routing before bringing vPC member ports and SVIs up. Without the delay it brings ports up and black-holes traffic for the duration &mdash; the same failure mode as HSRP preempt without a delay, and the same fix.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you understand the peer-link forwarding rule well enough to see why routing is affected. The "use dedicated L3 links instead" recommendation is the design answer and is worth more than naming the feature.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q65"><span class="qtext">How do you take a router or switch out of the forwarding path before maintenance?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">Drain it rather than letting it fail. Make the device unattractive to every protocol it participates in &mdash; maximum metric in the IGP, AS-path prepending or withdrawal in BGP, isolate its vPC role &mdash; wait for traffic to move, verify it is carrying nothing, and only then touch it. NX-OS packages this as maintenance mode; elsewhere you assemble it from the individual knobs.</p>
+      <span class="step">Detail</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Protocol</th><th>How to make the device unattractive</th></tr></thead>
+          <tbody>
+            <tr><td><strong>OSPF</strong></td><td><code>max-metric router-lsa</code> &mdash; advertises itself as a transit path of last resort while keeping adjacencies up</td></tr>
+            <tr><td><strong>IS-IS</strong></td><td>Set the overload bit</td></tr>
+            <tr><td><strong>BGP</strong></td><td>Prepend heavily outbound, lower local preference inbound, or withdraw with a graceful shutdown community</td></tr>
+            <tr><td><strong>EIGRP</strong></td><td>Raise the interface delay substantially, or filter</td></tr>
+            <tr><td><strong>vPC</strong></td><td>Isolate the vPC role so the peer takes over</td></tr>
+            <tr><td><strong>FHRP</strong></td><td>Lower the priority so the peer becomes active &mdash; and confirm it did</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code><span class="cmt">! ── NX-OS: the packaged version ──</span>
+system mode maintenance
+<span class="cmt">!   isolates the device: IGP max-metric, BGP shutdown, vPC isolate</span>
+show system mode
+show system mode maintenance
+<span class="cmt">   ... do the work ...</span>
+system mode normal
+
+<span class="cmt">! or define exactly what it does</span>
+configure maintenance profile maintenance-mode
+ router ospf 1
+  isolate
+ router bgp 65001
+  isolate
+end
+
+<span class="cmt">! ── IOS-XE: assemble it ──</span>
+router ospf 1
+ max-metric router-lsa on-startup 300
+ max-metric router-lsa                  <span class="cmt">! applied now, for maintenance</span>
+!
+router bgp 65001
+ neighbor 203.0.113.1 route-map DRAIN out
+route-map DRAIN permit 10
+ set as-path prepend 65001 65001 65001 65001
+
+<span class="cmt">! then PROVE it is drained before touching anything</span>
+show interfaces | include rate
+show ip route summary
+show ip ospf database router self-originate | include Metric
+show ip bgp neighbors 203.0.113.1 advertised-routes | count
+show standby brief                       <span class="cmt">! did FHRP actually move?</span></code></pre>
+      <div class="tip"><b>Verify the drain, do not assume it</b>The step people skip is confirming that traffic actually left. Set the metrics, then look at interface rates: a device that is still carrying significant traffic has not drained, and the reason is usually that it is the only path for something, or a static route or policy bypasses the metric you changed. Proceeding at that point converts a planned maintenance into an outage. The sequence is drain, <strong>verify</strong>, work, restore, verify again &mdash; and the two verification steps are what make it a procedure rather than a hope.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"What is the BGP graceful shutdown community?"</em> &mdash; RFC 8326 defines <code>GRACEFUL_SHUTDOWN</code> (65535:0), which a peer honouring it treats as "deprioritise this path, I am about to go away". It lets traffic move before the session drops rather than after, which removes the reconvergence gap. Worth knowing because it is the standardised version of prepending for maintenance.</li>
+        <li><em>"Why <code>max-metric router-lsa</code> rather than shutting the interfaces?"</em> &mdash; because it keeps the adjacencies up and the LSDB consistent while removing the device from the shortest-path tree, so traffic moves gracefully in one SPF run. Shutting interfaces forces adjacency teardown and a more disruptive reconvergence, and it removes your own management path if you are not careful.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you drain before maintenance or just reload and rely on redundancy. Draining is what distinguishes planned work from a tested failover, and verifying the drain is what distinguishes a procedure from an intention.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q66"><span class="qtext">What does ISSU actually promise, and when would you not use it?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">An In-Service Software Upgrade upgrades the standby control plane, switches over to it, then upgrades the former active &mdash; so forwarding continues throughout and the device never fully reboots. It promises near-hitless upgrade, and it is supported only between specific version pairs, so the version you want may not be reachable in one step.</p>
+      <span class="step">Detail</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Consideration</th><th>Detail</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Version compatibility</strong></td><td>Only specific source-to-target pairs are supported. A large jump may need an intermediate hop, which doubles the windows</td></tr>
+            <tr><td><strong>Requires redundancy</strong></td><td>Dual supervisors, a stack with a standby, or an SSO pair. A single-supervisor device cannot do it</td></tr>
+            <tr><td><strong>Duration</strong></td><td>Longer than a reload, because it is two sequential upgrades plus a switchover</td></tr>
+            <tr><td><strong>Neighbour cooperation</strong></td><td>Relies on graceful restart, so neighbours must be GR-capable or NSF-aware</td></tr>
+            <tr><td><strong>Feature support</strong></td><td>Some features do not survive; the compatibility check reports them before you commit</td></tr>
+            <tr><td><strong>Rollback</strong></td><td>Possible, and it is another switchover &mdash; not instant</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre><code><span class="cmt">! check first — this tells you whether it will work at all</span>
+show issu state detail
+show install summary
+install add file bootflash:image.bin
+install activate issu
+install commit
+
+<span class="cmt">! NX-OS</span>
+show install all impact nxos bootflash:image.bin
+install all nxos bootflash:image.bin
+show install all status
+
+<span class="cmt">! the pre-flight checks that matter more than the command</span>
+show redundancy states
+show module
+show inventory
+dir bootflash: | include free
+show logging onboard error-stats</code></pre>
+      <div class="gotcha"><b>When not to use ISSU</b>When a maintenance window is available and the device is drained, a plain reload is faster, simpler, better understood and easier to roll back. ISSU earns its complexity when you genuinely cannot take an outage &mdash; a device with no redundant path, a service with no maintenance window &mdash; and in exchange you accept a longer, more complex procedure with more ways to go wrong and a version path you may not control. The honest position: <strong>drain and reload where you can, ISSU where you must</strong>, and run the compatibility check before promising anyone a hitless upgrade. Candidates who treat ISSU as the obvious choice for every upgrade have not had one stall halfway.</div>
+      <span class="step">Follow-ups to expect</span>
+      <ul>
+        <li><em>"What is the equivalent for a stack?"</em> &mdash; in-service upgrade mechanisms on Catalyst stacks upgrade members in groups so part of the stack keeps forwarding. The same trade applies, plus the detail that uplinks must be distributed across members for it to help &mdash; if every uplink is on one member, upgrading that member is an outage regardless.</li>
+        <li><em>"How do you reduce AP or endpoint impact on a wireless controller upgrade?"</em> &mdash; predownload the image to the APs first, so the reload does not include a serialised image download over the WAN. That turns a long outage into a short one and is the same class of preparation as draining.</li>
+      </ul>
+      <div class="verdict"><b>What they're testing</b>Whether you weigh ISSU's complexity against its benefit rather than treating it as free. "Drain and reload where you can" is the answer of someone who has managed upgrade windows at scale.</div>
+    </div>
+  </details>
+</section>
+
+<!-- ============ 12 ============ -->
 <section class="block" id="overlay">
   <div class="sechead">
-    <h2><span class="num">10</span>Overlays &amp; SR</h2>
+    <h2><span class="num">12</span>Overlays &amp; SR</h2>
     <label class="reviewed"><input type="checkbox" data-sec="overlay"> Done</label>
   </div>
   <p class="lede">Every modern overlay is the same idea &mdash; separate identity from location and distribute the mapping with a control plane. Showing that you see the pattern across VXLAN EVPN, LISP, SD-WAN and segment routing is worth more than deep recall of any single one.</p>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q57"><span class="qtext">Explain VXLAN EVPN. What are the main route types and what does each carry?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q67"><span class="qtext">Explain VXLAN EVPN. What are the main route types and what does each carry?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">VXLAN is the data plane &mdash; a 24-bit VNI in a UDP header on port 4789, encapsulating the original frame between VTEPs. EVPN is the control plane: an MP-BGP address family that distributes MAC and IP reachability so the fabric does not have to learn by flooding. The combination gives you layer 2 and layer 3 overlay with no unknown-unicast flooding.</p>
       <span class="step">Detail</span>
@@ -2900,7 +3366,7 @@ show l2route evpn mac-ip all</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q58"><span class="qtext">Why did VXLAN move from flood-and-learn to EVPN? Explain the distributed anycast gateway and symmetric IRB.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q68"><span class="qtext">Why did VXLAN move from flood-and-learn to EVPN? Explain the distributed anycast gateway and symmetric IRB.</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">Flood-and-learn has no control plane, so every unknown destination and every ARP floods across the entire fabric, host moves are learned only by re-flooding, and there is no way to coordinate multihoming. EVPN replaces data-plane learning with BGP advertisement, which removes the flooding, enables ARP suppression, handles mobility explicitly with sequence numbers, and makes multihoming possible.</p>
       <span class="step">Detail</span>
@@ -2963,7 +3429,7 @@ show forwarding distribution peer-id</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q59"><span class="qtext">Compare the control planes of LISP, Cisco SD-WAN and EVPN. What is the common pattern?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q69"><span class="qtext">Compare the control planes of LISP, Cisco SD-WAN and EVPN. What is the common pattern?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">All three separate <em>identity</em> from <em>location</em> and use a control plane to distribute the mapping. LISP uses a pull model with map-servers answering queries; SD-WAN uses OMP to push routes and transport locators from a controller; EVPN uses MP-BGP to push MAC and IP reachability. The difference is push versus pull and who holds the authoritative mapping.</p>
       <span class="step">Detail</span>
@@ -3012,7 +3478,7 @@ show sdwan policy from-vsmart</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q60"><span class="qtext">Compare SR-MPLS and SRv6. What does SRv6 enable, and what does it cost?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q70"><span class="qtext">Compare SR-MPLS and SRv6. What does SRv6 enable, and what does it cost?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">Both use source routing with a list of segments. SR-MPLS encodes segments as 4-byte MPLS labels and needs an MPLS data plane; SRv6 encodes them as full 128-bit IPv6 addresses in a segment routing header, so it needs only native IPv6 forwarding. SRv6 buys you a single data plane and network programmability; it costs header overhead and requires hardware that can process the SRH.</p>
       <span class="step">Detail</span>
@@ -3068,16 +3534,16 @@ show segment-routing srv6 manager</code></pre>
   </details>
 </section>
 
-<!-- ============ 11 ============ -->
+<!-- ============ 13 ============ -->
 <section class="block" id="method">
   <div class="sechead">
-    <h2><span class="num">11</span>Methodology</h2>
+    <h2><span class="num">13</span>Methodology</h2>
     <label class="reviewed"><input type="checkbox" data-sec="method"> Done</label>
   </div>
   <p class="lede">For senior and escalation roles these matter more than any protocol question. The interviewer is deciding whether they would hand you a live P1, and what they are listening for is a repeatable method rather than a list of causes.</p>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q61"><span class="qtext">You are handed a problem on a technology you have never worked with. Walk me through your approach.</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q71"><span class="qtext">You are handed a problem on a technology you have never worked with. Walk me through your approach.</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">Establish the facts before the theory: what changed, what exactly is broken, and what still works. Then bisect the path rather than guessing at causes, and compare the broken case against a working one. Unfamiliarity with the technology changes how long each step takes, not the steps.</p>
       <span class="step">Detail</span>
@@ -3101,7 +3567,7 @@ show segment-routing srv6 manager</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q62"><span class="qtext">How do you decide when to stop investigating and escalate, or involve a vendor?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q72"><span class="qtext">How do you decide when to stop investigating and escalate, or involve a vendor?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">Escalate on evidence, not on frustration. The trigger is reaching the boundary of what you can observe or change &mdash; a suspected software defect, a hardware fault, something inside a provider's network &mdash; or hitting a time box you set at the start against the business impact. Escalating with a tight problem statement and the state already collected is the skill; escalating because you are stuck is not.</p>
       <span class="step">Detail</span>
@@ -3132,7 +3598,7 @@ show segment-routing srv6 manager</code></pre>
   </details>
 
   <details class="qa" data-lvl="core">
-    <summary data-n="Q63"><span class="qtext">"Tell me about the hardest network problem you have solved." How should you structure that?</span><span class="lvl lvl-core">Core</span></summary>
+    <summary data-n="Q73"><span class="qtext">"Tell me about the hardest network problem you have solved." How should you structure that?</span><span class="lvl lvl-core">Core</span></summary>
     <div class="body">
       <p class="lead">Pick a problem whose difficulty was <em>diagnostic</em>, not operational &mdash; something where the cause was genuinely hidden rather than something that was merely stressful or long. Then structure it as impact, what made it hard, the step that broke it open, the fix, and what you changed afterwards so it could not recur.</p>
       <span class="step">Detail</span>
@@ -3157,16 +3623,265 @@ show segment-routing srv6 manager</code></pre>
   </details>
 </section>
 
-<!-- ============ 12 ============ -->
+
+<!-- ============ 14 ============ -->
+<section class="block" id="topology">
+  <div class="sechead">
+    <h2><span class="num">14</span>Reference topology</h2>
+    <label class="reviewed"><input type="checkbox" data-sec="topology"> Done</label>
+  </div>
+  <p class="lede">One topology, four questions asked against it. "Walk me through this" is the single most common whiteboard opener, and the skill being assessed is narration &mdash; naming the protocol boundaries, tracing a packet, and predicting a failure out loud.</p>
+
+  <div class="figure">
+    <div class="figscroll">
+      <svg viewBox="0 0 760 560" role="img" aria-label="Reference enterprise topology with BGP edge, OSPF core, campus, data centre fabric and MPLS WAN" font-size="12" font-family="var(--font-body)">
+        <text x="24" y="26" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--font-display)">AS 65001 &mdash; the topology these four questions are asked against</text>
+
+        <g stroke="var(--line-strong)" stroke-width="1.5" fill="none">
+          <path d="M220 96V138"></path>
+          <path d="M540 96V138"></path>
+          <path d="M292 164H468"></path>
+          <path d="M220 192V234"></path>
+          <path d="M540 192V234"></path>
+          <path d="M256 192L504 234"></path>
+          <path d="M504 192L256 234"></path>
+          <path d="M292 260H468"></path>
+          <path d="M186 288L120 338"></path>
+          <path d="M240 288L350 338"></path>
+          <path d="M520 288L410 338"></path>
+          <path d="M574 288L646 338"></path>
+          <path d="M108 396V442"></path>
+          <path d="M380 396V442"></path>
+          <path d="M652 396V442"></path>
+        </g>
+
+        <g>
+          <rect x="150" y="50" width="140" height="46" rx="20" fill="none" stroke="var(--line-strong)" stroke-width="1.25" stroke-dasharray="5 3"></rect>
+          <text x="220" y="70" text-anchor="middle" font-size="11.5" font-weight="600" fill="var(--ink)">ISP A</text>
+          <text x="220" y="86" text-anchor="middle" font-size="10" fill="var(--ink-3)">AS 64500</text>
+          <rect x="470" y="50" width="140" height="46" rx="20" fill="none" stroke="var(--line-strong)" stroke-width="1.25" stroke-dasharray="5 3"></rect>
+          <text x="540" y="70" text-anchor="middle" font-size="11.5" font-weight="600" fill="var(--ink)">ISP B</text>
+          <text x="540" y="86" text-anchor="middle" font-size="10" fill="var(--ink-3)">AS 64501</text>
+        </g>
+
+        <g>
+          <rect x="150" y="138" width="142" height="54" rx="7" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.75"></rect>
+          <text x="221" y="160" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--ink)">EDGE-1</text>
+          <text x="221" y="177" text-anchor="middle" font-size="9.5" fill="var(--ink-2)">eBGP &middot; default only</text>
+          <rect x="468" y="138" width="142" height="54" rx="7" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.75"></rect>
+          <text x="539" y="160" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--ink)">EDGE-2</text>
+          <text x="539" y="177" text-anchor="middle" font-size="9.5" fill="var(--ink-2)">eBGP &middot; default only</text>
+        </g>
+
+        <g>
+          <rect x="150" y="234" width="142" height="54" rx="7" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.75"></rect>
+          <text x="221" y="256" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--ink)">CORE-1</text>
+          <text x="221" y="273" text-anchor="middle" font-size="9.5" fill="var(--ink-2)">OSPF area 0 &middot; BGP RR</text>
+          <rect x="468" y="234" width="142" height="54" rx="7" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.75"></rect>
+          <text x="539" y="256" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--ink)">CORE-2</text>
+          <text x="539" y="273" text-anchor="middle" font-size="9.5" fill="var(--ink-2)">OSPF area 0 &middot; BGP RR</text>
+        </g>
+
+        <g>
+          <rect x="24" y="338" width="168" height="58" rx="7" fill="none" stroke="var(--line-strong)" stroke-width="1.5"></rect>
+          <text x="108" y="360" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--ink)">CAMPUS DIST</text>
+          <text x="108" y="376" text-anchor="middle" font-size="9.5" fill="var(--ink-2)">ABR &middot; area 10</text>
+          <text x="108" y="390" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">summarise 10.10.0.0/16</text>
+
+          <rect x="300" y="338" width="160" height="58" rx="7" fill="none" stroke="var(--line-strong)" stroke-width="1.5"></rect>
+          <text x="380" y="360" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--ink)">DC BORDER</text>
+          <text x="380" y="376" text-anchor="middle" font-size="9.5" fill="var(--ink-2)">eBGP to fabric</text>
+          <text x="380" y="390" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">EVPN route reflector</text>
+
+          <rect x="570" y="338" width="166" height="58" rx="7" fill="none" stroke="var(--line-strong)" stroke-width="1.5"></rect>
+          <text x="653" y="360" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--ink)">WAN PE</text>
+          <text x="653" y="376" text-anchor="middle" font-size="9.5" fill="var(--ink-2)">MPLS L3VPN</text>
+          <text x="653" y="390" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">VPNv4 to 200 branches</text>
+        </g>
+
+        <g>
+          <rect x="40" y="442" width="136" height="52" rx="7" fill="none" stroke="var(--line)" stroke-width="1.25" stroke-dasharray="4 3"></rect>
+          <text x="108" y="464" text-anchor="middle" font-size="11" font-weight="600" fill="var(--ink)">Access</text>
+          <text x="108" y="480" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">10.10.x.0/24 routed</text>
+
+          <rect x="310" y="442" width="140" height="52" rx="7" fill="none" stroke="var(--line)" stroke-width="1.25" stroke-dasharray="4 3"></rect>
+          <text x="380" y="464" text-anchor="middle" font-size="11" font-weight="600" fill="var(--ink)">Leaf-spine</text>
+          <text x="380" y="480" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">VXLAN EVPN, AS 65100</text>
+
+          <rect x="585" y="442" width="136" height="52" rx="7" fill="none" stroke="var(--line)" stroke-width="1.25" stroke-dasharray="4 3"></rect>
+          <text x="653" y="464" text-anchor="middle" font-size="11" font-weight="600" fill="var(--ink)">200 branches</text>
+          <text x="653" y="480" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">10.20.x.0/24, EIGRP CE</text>
+        </g>
+
+        <g font-size="10" fill="var(--accent-ink)" font-weight="600">
+          <text x="300" y="122">eBGP &mdash; default route only, no full table</text>
+          <text x="300" y="158">iBGP</text>
+          <text x="22" y="222">OSPF area 0 + iBGP, next-hop-self at the edge</text>
+        </g>
+
+        <g font-size="11" fill="var(--ink-2)">
+          <text x="24" y="524">Addressing: campus 10.10.0.0/16 &middot; branches 10.20.0.0/16 &middot; data centre 10.30.0.0/16 &middot; public 203.0.113.0/24</text>
+          <text x="24" y="544">Redistribution happens in exactly one place in this design. Finding it is the first question.</text>
+        </g>
+      </svg>
+    </div>
+    <p class="figcap">Reference topology &middot; AS 65001, four protocol domains, one redistribution boundary.</p>
+  </div>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q74"><span class="qtext">Walk me through this topology. What runs where, and why?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">Four domains with deliberate boundaries. eBGP at the edge taking defaults only; OSPF as the IGP with area 0 in the core and the campus in its own area, summarised at the ABR; iBGP carried through the core with the cores as route reflectors; and two further domains &mdash; an eBGP-underlay VXLAN fabric and an MPLS L3VPN &mdash; attached through border devices rather than merged into the IGP.</p>
+      <span class="step">Narrate it layer by layer</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Boundary</th><th>Protocol</th><th>Why there</th></tr></thead>
+          <tbody>
+            <tr><td>ISP &harr; edge</td><td><strong>eBGP, default only</strong></td><td>Policy boundary. Taking a default rather than the full table keeps memory and convergence modest; take full tables only if you genuinely do best-path selection against them</td></tr>
+            <tr><td>Edge &harr; edge, edge &harr; core</td><td><strong>iBGP</strong> with <code>next-hop-self</code></td><td>External next hops are not in the IGP, so the edge rewrites them to its own loopback</td></tr>
+            <tr><td>Core</td><td><strong>OSPF area 0</strong>, cores as BGP RRs</td><td>The IGP carries loopbacks and infrastructure so iBGP next hops resolve. RRs avoid a full iBGP mesh</td></tr>
+            <tr><td>Campus</td><td><strong>OSPF area 10</strong>, summarised at the ABR</td><td>Bounds full SPF to the campus and hides access-layer churn from the core</td></tr>
+            <tr><td>Data centre</td><td><strong>eBGP underlay</strong>, EVPN overlay</td><td>A separate failure and policy domain, attached at a border rather than merged</td></tr>
+            <tr><td>WAN</td><td><strong>MPLS L3VPN</strong>, VPNv4</td><td>200 branches multiplexed over one core without per-branch state in the middle</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Where redistribution happens:</strong> at the WAN PE, between the branches' EIGRP and VPNv4 &mdash; and nowhere else. The campus is native OSPF, the data centre is attached by eBGP so no redistribution is needed, and the internet is a default route rather than redistributed prefixes. One redistribution boundary is a design choice, and it is the right one: every additional boundary is a place loops form.</p>
+      <div class="tip"><b>Narrate boundaries, not boxes</b>The instinct is to describe the devices top to bottom. The better narration describes the <strong>boundaries</strong>: where policy changes, where a failure domain ends, where one protocol hands over to another, and what information is deliberately withheld at each. That is how a designer talks about a topology, and it leads naturally into the interesting questions &mdash; what is summarised, what is redistributed, what does each side not know. Finishing with "and here is the one place redistribution happens, which is deliberate" shows you read the design rather than the diagram.</div>
+      <div class="verdict"><b>What they're testing</b>Whether you can read a design and articulate its intent. The summarisation at the ABR, <code>next-hop-self</code> at the edge, and the single redistribution point are the three things a strong candidate notices and explains without being asked.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="deep">
+    <summary data-n="Q75"><span class="qtext">Trace a packet from a branch user at 10.20.5.50 to a public web service. Name every lookup.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <div class="body">
+      <p class="lead">Six lookups and two label operations. The branch CE routes on its default toward the PE; the PE imposes a VPN label and a transport label; the core switches the transport label only; the WAN PE pops into the global table at the edge; the edge router routes on its default toward the ISP and translates the source; and the ISP routes it onward.</p>
+      <span class="step">The path</span>
+      <ol>
+        <li><strong>Branch CE.</strong> Destination is not in the branch's EIGRP table, so it follows the default route learned from the PE and forwards to the PE across the access circuit.</li>
+        <li><strong>WAN PE, ingress.</strong> Looks the destination up in the branch's <strong>VRF</strong> table. Finds a default pointing out of the VRF &mdash; which requires a deliberate leak or a per-VRF default toward the internet edge. Imposes the <strong>VPN label</strong> for the egress and the <strong>transport label</strong> for the next PE or the border.</li>
+        <li><strong>Core.</strong> Swaps the outer transport label only. Holds no branch routes and never sees the VPN label &mdash; which is why 200 branches cost the core nothing.</li>
+        <li><strong>Exit from the VPN.</strong> At the egress point the labels are popped and the packet is in the global table, now routed by the OSPF and iBGP state in the core.</li>
+        <li><strong>Core routing.</strong> The destination is covered by the default route learned via iBGP from the edge routers, with the next hop resolved by OSPF to an edge loopback. Two equal paths means an ECMP hash picks EDGE-1 or EDGE-2.</li>
+        <li><strong>Edge router.</strong> Routes on its own eBGP default toward the ISP, and <strong>translates the source address</strong> from 10.20.5.50 to something in 203.0.113.0/24. The connection state for the return path lives here.</li>
+        <li><strong>ISP.</strong> Routes it onward. Return traffic arrives at the public address, is un-translated, and follows the reverse path &mdash; which must come back through the <em>same</em> edge router, because that is where the translation state is.</li>
+      </ol>
+      <div class="gotcha"><b>The return path is the interesting half, and it constrains the design</b>Because NAT state lives on the edge router that created it, return traffic must arrive at that same router. With two edge routers and two ISPs, inbound traffic to 203.0.113.0/24 could arrive at either &mdash; and if it arrives at the wrong one, there is no translation entry and the packet is dropped. The resolutions are: advertise the public range such that it is reliably drawn to one edge, use a shared translation pool with state synchronisation if the platform supports it, or terminate NAT on a stateful pair that shares its table. Volunteering this unprompted is the strongest thing you can say about this topology, because it is the real design problem hiding behind a simple-looking diagram.</div>
+      <span class="step">What to check at each hop</span>
+<pre><code><span class="cmt">! branch CE</span>
+show ip route 0.0.0.0
+show ip eigrp neighbors
+
+<span class="cmt">! WAN PE — the VRF lookup and the imposed label stack</span>
+show ip route vrf BRANCH-A 0.0.0.0
+show bgp vpnv4 unicast vrf BRANCH-A 0.0.0.0/0
+show ip cef vrf BRANCH-A 0.0.0.0 detail
+show mpls forwarding-table
+
+<span class="cmt">! core — transport label only, no customer routes</span>
+show mpls forwarding-table labels 16005 detail
+show ip route 10.20.5.0                 <span class="cmt">! should be absent in the global table</span>
+
+<span class="cmt">! core routing toward the edge</span>
+show ip bgp 0.0.0.0
+show ip route 0.0.0.0
+show ip cef exact-route 10.20.5.50 93.184.216.34
+
+<span class="cmt">! edge — the translation and the eBGP default</span>
+show ip nat translations | include 10.20.5.50
+show ip bgp summary
+show ip bgp 0.0.0.0</code></pre>
+      <div class="verdict"><b>What they're testing</b>Whether you can carry a packet across protocol boundaries without losing track of which table is consulted where. Naming the two labels, saying the core holds no branch routes, and raising the NAT return-path constraint are the three markers of a complete answer.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="expert">
+    <summary data-n="Q76"><span class="qtext">EDGE-1 loses power. Walk through what happens, in order, with timings.</span><span class="lvl lvl-expert">Expert</span></summary>
+      <div class="body">
+      <p class="lead">Five things happen in sequence, and the slowest dominates. The ISP's eBGP session and the local OSPF adjacencies fail on link-down in milliseconds; the IGP withdraws its loopback in tens of milliseconds; iBGP next-hop tracking then invalidates every prefix learned through it; BGP recomputes and reprograms; and any NAT state held on EDGE-1 is simply gone, so those sessions reset.</p>
+      <span class="step">The sequence</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>#</th><th>Event</th><th>Time</th><th>Governed by</th></tr></thead>
+          <tbody>
+            <tr><td class="num-col">1</td><td>Link down detected by directly connected neighbours</td><td>Milliseconds</td><td>Loss of light, or BFD if the handoff is over a carrier service</td></tr>
+            <tr><td class="num-col">2</td><td>OSPF adjacencies drop; EDGE-1's loopback withdrawn from area 0</td><td>Tens of ms</td><td>LSA generation and SPF throttle</td></tr>
+            <tr><td class="num-col">3</td><td><strong>iBGP next hop becomes unreachable</strong></td><td>Milliseconds with next-hop tracking; <strong>up to 60 s with the scanner</strong></td><td><code>bgp nexthop trigger</code></td></tr>
+            <tr><td class="num-col">4</td><td>BGP best path recomputed; traffic moves to EDGE-2</td><td>Fast with a precomputed backup; otherwise a full run</td><td>BGP PIC, add-path</td></tr>
+            <tr><td class="num-col">5</td><td>FIB reprogrammed in hardware</td><td><strong>Dominant at scale</strong>, unless PIC avoids per-prefix work</td><td>Prefix count and platform</td></tr>
+            <tr><td class="num-col">6</td><td>NAT sessions held on EDGE-1 are lost</td><td>Immediate and unrecoverable</td><td>Nothing &mdash; the state was local</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Which step actually hurts:</strong> step 3, if next-hop tracking is not enabled. The default scanner runs on a 60-second cycle, so the core can keep forwarding toward a dead edge router for up to a minute while every protocol reports healthy &mdash; OSPF has converged, the iBGP session to the dead router has not yet timed out, and the prefixes still point at an unreachable next hop. That is the single highest-value thing to tune in this design, and it is one command.</p>
+<pre><code><span class="cmt">! the fix for step 3 — event-driven instead of a 60-second scan</span>
+router bgp 65001
+ bgp nexthop trigger enable
+ bgp nexthop trigger delay 1
+ !
+ address-family ipv4 unicast
+  <span class="cmt">! and precompute the alternative so step 5 is not per-prefix</span>
+  bgp additional-paths install
+  bgp additional-paths select backup
+
+<span class="cmt">! step 1, if the ISP handoff is over carrier Ethernet</span>
+interface GigabitEthernet0/0
+ bfd interval 300 min_rx 300 multiplier 3
+router bgp 65001
+ neighbor 203.0.113.1 fall-over bfd
+
+<span class="cmt">! verify the behaviour rather than assuming it</span>
+show ip bgp 0.0.0.0 | include inaccessible|best|backup
+show ip route repair-paths 0.0.0.0
+show bgp ipv4 unicast neighbors 10.0.0.1 | include Up|Down
+show ip ospf neighbor
+show ip nat statistics</code></pre>
+      <div class="tip"><b>Name the slowest step and fix that</b>The strong answer to any convergence question is to identify which component dominates and address it, rather than tuning everything. Here it is next-hop revalidation, then hardware programming &mdash; and both are solved architecturally (event-driven tracking, precomputed backup paths) rather than by shortening timers. Then be honest about step 6: NAT state cannot be preserved by any routing change, so sessions through EDGE-1 reset regardless, and if that is unacceptable the answer is a stateful pair with table synchronisation, which is a different design.</div>
+      <div class="verdict"><b>What they're testing</b>Whether you can order the events and identify the dominant term. The 60-second scanner is the specific trap in this topology, and recognising that NAT state is unrecoverable shows you distinguish routing convergence from service continuity.</div>
+    </div>
+  </details>
+
+  <details class="qa" data-lvl="expert">
+    <summary data-n="Q77"><span class="qtext">What would you change about this design?</span><span class="lvl lvl-expert">Expert</span></summary>
+      <div class="body">
+      <p class="lead">Start by asking what the requirements are, because several of these choices are only wrong against requirements nobody has stated. Then raise the three things that are weak on their own terms: the NAT state is a single point for established sessions, inbound traffic engineering is unaddressed, and the WAN depends on a single PE attachment per site.</p>
+      <span class="step">What I would question</span>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Observation</th><th>Question to ask</th><th>Possible change</th></tr></thead>
+          <tbody>
+            <tr><td><strong>NAT state is per-edge-router</strong></td><td>Do established sessions need to survive an edge failure?</td><td>A stateful firewall pair with session synchronisation at the edge, rather than NAT on the routers</td></tr>
+            <tr><td><strong>Inbound path control is absent</strong></td><td>Is traffic arriving where you want it, and does it matter?</td><td>Provider communities, and measure from outside before assuming it works</td></tr>
+            <tr><td><strong>Default route only from both ISPs</strong></td><td>Do you need to make outbound path decisions per destination?</td><td>Take partial tables &mdash; the providers' own customer routes &mdash; which gives most of the benefit at modest cost</td></tr>
+            <tr><td><strong>Single PE per branch</strong></td><td>What is a branch outage worth?</td><td>Dual attachment, or internet as a backup path with an overlay</td></tr>
+            <tr><td><strong>Cores are both RRs and in the forwarding path</strong></td><td>Is RR placement giving clients the right hot-potato choice?</td><td>It is correct here because the cores are topologically central &mdash; worth stating as deliberate</td></tr>
+            <tr><td><strong>One campus area</strong></td><td>How large and how stable is the campus?</td><td>Fine as drawn; split only if full-SPF churn becomes measurable</td></tr>
+            <tr><td><strong>Redistribution at the WAN PE</strong></td><td>Are route tags in place in both directions?</td><td>Tag on the way in, deny the tag on the way back &mdash; non-negotiable at any redistribution point</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <span class="step">What I would leave alone, and say so</span>
+      <ul>
+        <li><strong>Default-only from the ISPs</strong> is a defensible choice, not an oversight. It keeps the edge hardware modest and convergence fast, and most enterprises make no use of a full table.</li>
+        <li><strong>Summarisation at the campus ABR</strong> is correct and should be pointed out approvingly &mdash; it converts access-layer churn into a non-event for the rest of the network.</li>
+        <li><strong>Attaching the data centre by eBGP</strong> rather than extending the IGP into the fabric is right: separate failure domain, clear policy boundary, and no shared SPF.</li>
+        <li><strong>One redistribution boundary</strong> is good design and worth naming as such.</li>
+      </ul>
+      <div class="tip"><b>Say what is right before saying what is wrong</b>A design review that opens with a list of criticisms reads as point-scoring, and in an interview the design is often the interviewer's own. Naming the deliberate good choices first &mdash; summarisation, the single redistribution point, the eBGP boundary to the fabric &mdash; demonstrates that you can read intent, and it makes the criticisms land as engineering rather than as fault-finding. Then frame each criticism as a question about requirements: "if established sessions must survive an edge failure, the NAT placement needs to change" is better than "the NAT is wrong".</div>
+      <div class="verdict"><b>What they're testing</b>Judgement and how you give feedback. The NAT state observation is the strongest technical finding; opening with what is deliberately well done, and framing changes as requirement questions, is what makes the answer sound like a senior engineer rather than a candidate looking for mistakes.</div>
+    </div>
+  </details>
+</section>
+<!-- ============ 15 ============ -->
 <section class="block" id="whiteboard">
   <div class="sechead">
-    <h2><span class="num">12</span>Whiteboard scenarios</h2>
+    <h2><span class="num">15</span>Whiteboard scenarios</h2>
     <label class="reviewed"><input type="checkbox" data-sec="whiteboard"> Done</label>
   </div>
   <p class="lede">Open-ended design and diagnosis questions, where there is no single right answer and the interviewer is watching how you reason. Say your assumptions out loud, ask about constraints, and state trade-offs rather than picking silently.</p>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q64"><span class="qtext">Design a dual-homed internet edge with two providers. Talk me through it.</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q78"><span class="qtext">Design a dual-homed internet edge with two providers. Talk me through it.</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">Start by asking what the requirement actually is &mdash; resilience only, or active-active load sharing, and whether you own address space and an AS number. Those answers change the design completely, and asking is part of the answer.</p>
       <span class="step">Questions to ask first</span>
@@ -3216,7 +3931,7 @@ ip prefix-list MY-SPACE-ONLY seq 5 permit 203.0.113.0/24</code></pre>
   </details>
 
   <details class="qa" data-lvl="deep">
-    <summary data-n="Q65"><span class="qtext">A campus has 400 switches across 12 buildings. Design the routing. How many OSPF areas, and where do you summarize?</span><span class="lvl lvl-deep">Deep</span></summary>
+    <summary data-n="Q79"><span class="qtext">A campus has 400 switches across 12 buildings. Design the routing. How many OSPF areas, and where do you summarize?</span><span class="lvl lvl-deep">Deep</span></summary>
     <div class="body">
       <p class="lead">Area boundaries should follow the addressing plan, and the addressing plan should follow the physical topology &mdash; so each building gets a contiguous block and becomes an area, summarized at its distribution layer into area 0. If the addressing does not allow contiguous summarization, fix the addressing first, because areas without summarization deliver only a fraction of the benefit.</p>
       <span class="step">The design</span>
@@ -3265,7 +3980,7 @@ show ip ospf | include SPF|Area</code></pre>
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q66"><span class="qtext">Inbound traffic is arriving almost entirely over your backup link. You have tried prepending and it did not help. What now?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q80"><span class="qtext">Inbound traffic is arriving almost entirely over your backup link. You have tried prepending and it did not help. What now?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">Prepending failed because AS_PATH is step 4 of best-path selection and the provider has already decided at step 2 with local preference &mdash; typically because one path comes from a customer and the other from a peer or transit. The options, in order of reliability: the provider's published communities, then selective more-specific advertisement, then conditional advertisement, then a conversation with the provider.</p>
       <span class="step">Why prepending failed</span>
@@ -3312,7 +4027,7 @@ show interfaces Gi0/0 | include rate
   </details>
 
   <details class="qa" data-lvl="expert">
-    <summary data-n="Q67"><span class="qtext">One prefix is unreachable from one region, intermittently, and everything else is fine. Where do you start?</span><span class="lvl lvl-expert">Expert</span></summary>
+    <summary data-n="Q81"><span class="qtext">One prefix is unreachable from one region, intermittently, and everything else is fine. Where do you start?</span><span class="lvl lvl-expert">Expert</span></summary>
       <div class="body">
       <p class="lead">The specificity is the evidence. One prefix means the problem is per-prefix state rather than a link or a device. One region means the divergence is somewhere between that region and the rest. Intermittent means either something is flapping or two paths exist and one of them is broken &mdash; and the second is far more common than the first.</p>
       <span class="step">Reading the three constraints</span>
@@ -3367,7 +4082,7 @@ show platform packet-trace summary</code></pre>
 </div>
 
 <footer>
-  <p><strong>Routing &mdash; Interview Questions &amp; Answers.</strong> Sixty-seven questions across twelve sections. Filter with the box at the top or press <kbd>/</kbd>; narrow by depth with the Core, Deep and Expert buttons; <em>Reveal all</em> opens every answer at once. Section checkboxes are stored in this browser only.</p>
+  <p><strong>Routing &mdash; Interview Questions &amp; Answers.</strong> Eighty-one questions across fifteen sections. Filter with the box at the top or press <kbd>/</kbd>; narrow by depth with the Core, Deep and Expert buttons; <em>Reveal all</em> opens every answer at once. Section checkboxes are stored in this browser only.</p>
   <p>Answers are written to be spoken, not recited &mdash; the short answer first, then the supporting detail, then what the question is actually probing for. Where a topic is genuinely contested or platform-dependent, that is stated rather than smoothed over; prefer the configuration guide for your release when exact syntax matters.</p>
 </footer>
 <script>
